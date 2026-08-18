@@ -1,5 +1,7 @@
-// Init da Fase 4 (Solana mainnet): rrv + igp-oracle-governor.
-// Uso:  node deploy/solana-init.mjs <RRV_PROGRAM_ID> <GOV_PROGRAM_ID> [--transfer-igp] [--set-beneficiary] [--seed]
+// Init da Fase 4 (Solana mainnet): programa ÚNICO `pod` (vault + governor fundidos
+// p/ pagar o rent da runtime uma vez só — 1,29 SOL em vez de 1,9).
+// O 1º byte do instruction data roteia: 0x00=rrv(vault) · 0x01=governor.
+// Uso:  node deploy/solana-init.mjs <POD_PROGRAM_ID> [--vault-only] [--transfer-igp] [--set-beneficiary] [--seed]
 // Keypair: SOLANA_KEYPAIR (default: keypair do owner atual do IGP).
 // Requer os node_modules do oracle-agent (symlink deploy/node_modules).
 import fs from "node:fs";
@@ -28,12 +30,14 @@ const SEED_LAMPORTS = 300_000_000n;      // 0,3 SOL (100× tarifa)
 
 const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 const VAULT_ONLY = process.argv.includes("--vault-only");
-const rrvId = positional[0] ? new PublicKey(positional[0]) : null;
-const govId = positional[1] ? new PublicKey(positional[1]) : null;
-if (!rrvId || (!VAULT_ONLY && !govId)) {
-  console.error("uso: solana-init.mjs <RRV_ID> [<GOV_ID>] [--vault-only] [--transfer-igp] [--set-beneficiary] [--seed]");
+const podId = positional[0] ? new PublicKey(positional[0]) : null;
+if (!podId) {
+  console.error("uso: solana-init.mjs <POD_PROGRAM_ID> [--vault-only] [--transfer-igp] [--set-beneficiary] [--seed]");
   process.exit(1);
 }
+// pod = vault + governor no mesmo program id; módulo escolhido pelo 1º byte
+const rrvId = podId, govId = podId;
+const MOD_RRV = Buffer.from([0]), MOD_GOV = Buffer.from([1]);
 const DO_TRANSFER = process.argv.includes("--transfer-igp");
 const DO_BENEFICIARY = process.argv.includes("--set-beneficiary");
 const DO_SEED = process.argv.includes("--seed");
@@ -58,10 +62,10 @@ const sep = Buffer.from("-");
 
 const pda = (programId, seeds) => PublicKey.findProgramAddressSync(seeds, programId)[0];
 const rrvConfig = pda(rrvId, [Buffer.from("rrv"), sep, Buffer.from("config")]);
-const govConfig = govId ? pda(govId, [Buffer.from("gov"), sep, Buffer.from("config")]) : null;
-const govDomain = govId ? pda(govId, [Buffer.from("gov"), sep, Buffer.from("domain"), sep, u32(TC_DOMAIN)]) : null;
+const govConfig = pda(govId, [Buffer.from("gov"), sep, Buffer.from("config")]);
+const govDomain = pda(govId, [Buffer.from("gov"), sep, Buffer.from("domain"), sep, u32(TC_DOMAIN)]);
 console.log("rrv config PDA (o POOL / beneficiary):", rrvConfig.toBase58());
-if (govConfig) console.log("gov config PDA (futuro owner do IGP):", govConfig.toBase58());
+console.log("gov config PDA (futuro owner do IGP):", govConfig.toBase58());
 
 /** Lê o RemoteGasData VIGENTE do domínio 132556 direto do Igp de produção
  *  (borsh: disc[8] + bump u8 + salt[32] + Option<owner>(1[+32]) + beneficiary[32]
@@ -109,7 +113,7 @@ else await send("rrv Init", new TransactionInstruction({
     { pubkey: rrvConfig, isSigner: false, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ],
-  data: Buffer.concat([u8(0), vecPk(OPS(kp.publicKey)), u8(QUORUM), u64(REWARD_LAMPORTS), u64(EPOCH_SECS)]),
+  data: Buffer.concat([MOD_RRV, u8(0), vecPk(OPS(kp.publicKey)), u8(QUORUM), u64(REWARD_LAMPORTS), u64(EPOCH_SECS)]),
 }));
 
 // ---- VAULT_ONLY: aponta o beneficiary do IGP direto p/ o pool do rrv e encerra.
@@ -145,7 +149,7 @@ else await send("governor Init", new TransactionInstruction({
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ],
   data: Buffer.concat([
-    u8(0), pk(kp.publicKey), vecPk(OPS(kp.publicKey)), u8(QUORUM),
+    MOD_GOV, u8(0), pk(kp.publicKey), vecPk(OPS(kp.publicKey)), u8(QUORUM),
     u64(EPOCH_SECS), u64(DELTA_BPS), pk(IGP_PROGRAM), pk(IGP_INNER),
   ]),
 }));
@@ -168,7 +172,7 @@ else {
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
     data: Buffer.concat([
-      u8(2), u32(TC_DOMAIN),
+      MOD_GOV, u8(2), u32(TC_DOMAIN),
       u128(b.minRate), u128(b.maxRate), u128(b.minGas), u128(b.maxGas),
       u8(cur.decimals),
     ]),
@@ -209,7 +213,7 @@ if (DO_BENEFICIARY) {
       { pubkey: IGP_PROGRAM, isSigner: false, isWritable: false },
       { pubkey: IGP_INNER, isSigner: false, isWritable: true },
     ],
-    data: Buffer.concat([u8(9), pk(rrvConfig)]),
+    data: Buffer.concat([MOD_GOV, u8(9), pk(rrvConfig)]),
   }));
 }
 
@@ -221,4 +225,4 @@ if (DO_SEED) {
 }
 
 console.log("\nfeito. PENDÊNCIAS DE SEGURANÇA (§8 do handoff):");
-console.log("  solana program set-upgrade-authority <RRV_ID e GOV_ID> --new-upgrade-authority <MULTISIG>");
+console.log("  solana program set-upgrade-authority <POD_ID> --new-upgrade-authority <MULTISIG>");

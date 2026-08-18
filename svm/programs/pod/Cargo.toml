@@ -1,0 +1,20 @@
+[package]
+name = "pod"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program.workspace = true
+rrv = { path = "../relayer-reward-vault", features = ["no-entrypoint"] }
+igp-oracle-governor = { path = "../igp-oracle-governor", features = ["no-entrypoint"] }
+
+[lints]
+workspace = true

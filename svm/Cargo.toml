@@ -3,6 +3,7 @@ members = [
     "programs/relayer-reward-vault",
     "programs/igp-oracle-governor",
     "programs/mock-igp",
+    "programs/pod",
 ]
 resolver = "2"
 

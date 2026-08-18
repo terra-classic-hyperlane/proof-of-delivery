@@ -8,8 +8,9 @@
 #   bash deploy/solana-deploy.sh            # deploy dos .so + init + domínio
 #   bash deploy/solana-deploy.sh finalize   # transfer IGP + beneficiary + seed
 #
-# Keypair: owner atual do IGP (BirXd4…Ef1j). Custo estimado do deploy: ~2 SOL
-# de rent dos programas (recuperável via close se abortar).
+# Keypair: owner atual do IGP (BirXd4…Ef1j).
+# Custo: ~1,29 SOL de rent do pod.so (vault+governor FUNDIDOS num programa) +
+# ~0,09 SOL de init/top-up. Rent recuperável via `solana program close`.
 # =============================================================================
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,20 +30,19 @@ say "signer: $(solana address -k "$KEYPAIR") · saldo: $(solana balance -k "$KEY
 [ -e "$ROOT/deploy/node_modules" ] || ln -s ../oracle-agent/node_modules "$ROOT/deploy/node_modules"
 
 if [ "${1:-}" = "finalize" ]; then
-  RRV=$(get_state RRV_ID); GOV=$(get_state GOV_ID)
-  [ -n "$RRV" ] && [ -n "$GOV" ] || { echo "❌ rode o deploy antes"; exit 1; }
+  POD=$(get_state POD_ID)
+  [ -n "$POD" ] || { echo "❌ rode o deploy antes"; exit 1; }
   say "FINALIZE: transfer IGP + beneficiary + seed (você TESTOU em devnet? ctrl-c se não)"
   sleep 5
-  SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$RRV" "$GOV" --transfer-igp --set-beneficiary --seed
+  SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$POD" --transfer-igp --set-beneficiary --seed
   echo; echo "⚠️ ÚLTIMO PASSO DE SEGURANÇA (manual, quando o multisig existir):"
-  echo "   solana program set-upgrade-authority $RRV --new-upgrade-authority <MULTISIG> -k $KEYPAIR -u $RPC"
-  echo "   solana program set-upgrade-authority $GOV --new-upgrade-authority <MULTISIG> -k $KEYPAIR -u $RPC"
+  echo "   solana program set-upgrade-authority $POD --new-upgrade-authority <MULTISIG> -k $KEYPAIR -u $RPC"
   exit 0
 fi
 
-say "1/3 build-sbf (usa os .so já buildados se presentes)"
-[ -f "$ROOT/svm/target/deploy/rrv.so" ] || (cd "$ROOT/svm" && cargo build-sbf)
-ls -la "$ROOT"/svm/target/deploy/*.so | grep -v mock
+say "1/2 build-sbf (usa o pod.so já buildado se presente)"
+[ -f "$ROOT/svm/target/deploy/pod.so" ] || (cd "$ROOT/svm" && cargo build-sbf)
+ls -la "$ROOT"/svm/target/deploy/pod.so
 
 # --max-len = tamanho EXATO do .so → rent pela METADE (sem os 2x de headroom de
 # upgrade). Trade-off: upgrade só p/ binário <= tamanho atual; upgrade maior exige
@@ -55,24 +55,22 @@ deploy_prog() {  # $1=arquivo.so $2=state_key $3=passo
   out=$(solana program deploy "$so" --max-len "$(stat -c%s "$so")" -k "$KEYPAIR" -u "$RPC" --output json)
   mark "$key" "$(echo "$out" | python3 -c 'import sys,json;print(json.load(sys.stdin)["programId"])')"
 }
-deploy_prog rrv.so RRV_ID "2/3" >/dev/null
-echo "✓ rrv program: $(get_state RRV_ID)"
+# pod.so = vault + governor FUNDIDOS num programa só (a runtime solana+borsh,
+# ~90% dos bytes, é paga UMA vez): rent 1,29 SOL vs 1,9 dos dois separados.
+deploy_prog pod.so POD_ID "2/2" >/dev/null
+echo "✓ pod program (vault+governor): $(get_state POD_ID)"
 
-# VAULT_ONLY=1 → deploya SÓ o vault (~0,85 SOL). O governor (preço/oracle) é
-# adiado p/ a Fase 4b: com 1 operador (quórum 1) ele só repassa o valor — o owner
-# do IGP já atualiza o preço direto. Vale a pena qdo houver VÁRIOS operadores.
+# VAULT_ONLY=1 → inicializa SÓ o módulo vault e aponta o beneficiary do IGP
+# direto (sem governor). O preço segue com o owner do IGP até a Fase 4b.
 if [ "${VAULT_ONLY:-0}" = "1" ]; then
-  say "init (SÓ vault — VAULT_ONLY): rrv + beneficiary do IGP direto"
-  SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state RRV_ID)" --vault-only ${VAULT_ONLY_FLAGS:-}
-  echo; echo "governor adiado (Fase 4b). Rode sem VAULT_ONLY quando quiser deployá-lo."
+  say "init (SÓ módulo vault — VAULT_ONLY)"
+  SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state POD_ID)" --vault-only ${VAULT_ONLY_FLAGS:-}
+  echo; echo "governor (já no binário) fica p/ a Fase 4b: rode sem VAULT_ONLY p/ inicializá-lo."
   exit 0
 fi
 
-deploy_prog igp_oracle_governor.so GOV_ID "3/3" >/dev/null
-echo "✓ governor program: $(get_state GOV_ID)"
-
-say "init (rrv + governor + domínio 132556 + top-up da config PDA)"
-SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state RRV_ID)" "$(get_state GOV_ID)"
+say "init (vault + governor + domínio 132556 + top-up da config PDA)"
+SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state POD_ID)"
 
 say "PRÓXIMOS PASSOS"
 echo "1. TESTE EM DEVNET a devolução de posse (spec §08 — obrigatório):"
