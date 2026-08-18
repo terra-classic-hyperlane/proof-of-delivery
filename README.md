@@ -21,8 +21,29 @@ Confirmado nos repositórios locais (`~/tc-cw-hyperlane` e `~/hyperlane-monorepo
 | `Igp { owner, beneficiary, gas_oracles: HashMap }` — oracle dentro do IGP | `hyperlane-sealevel-igp/src/accounts.rs:159-169` | ✅ |
 | `set_gas_oracle_configs` exige owner signer | `hyperlane-sealevel-igp/src/processor.rs:637` (+ ensure_owner_signer) | ✅ |
 
-Pendente da Fase 0 (mainnet): raw query do `DELIVERIES` numa mensagem real; conferir se o wasm
-EM PRODUÇÃO bate com `~/tc-cw-hyperlane` (data_hash); hooks do Mailbox.
+## Fase 0 — data_hash: FECHADA ✅ (18/08/2026)
+
+O `data_hash` de **TODOS os contratos implantados** no Terra Classic confere byte a byte com os
+artefatos staged do repositório de deploy (`tc-cw-hyperlane/tmp/codes/*.wasm`):
+
+| Contrato | code_id | Verificação |
+|---|---|---|
+| hpl_mailbox | 11371 | ✅ `B6D789C1A31EE79548FD736BAD241DBCD3B8B319D66A776F31479743FE49EB01` |
+| hpl_validator_announce | 11372 | ✅ |
+| hpl_ism_multisig / routing | 11374 / 11376 | ✅ |
+| hpl_igp / hpl_igp_oracle | 11377 / 11388 | ✅ |
+| hooks (aggregate/merkle/pausable/fee) | 11378–11381 | ✅ |
+| hpl_warp_cw20 | 11389 | ✅ |
+
+Evidência forense adicional: o wasm on-chain embute o rustc `cc66ad46…` = **1.73.0 musl**, o
+toolchain exato do `cosmwasm/optimizer:0.15.0` do Makefile — e o fonte dos contratos não é
+alterado desde jan/2025. Cadeia completa: fonte verificado ➝ artefato staged idêntico ao
+on-chain ➝ comportamento confirmado em mainnet (raw query do DELIVERIES).
+
+Nota de reprodutibilidade: o `Cargo.lock` da época do deploy não foi versionado no
+tc-cw-hyperlane (o lock atual, regenerado por cargo novo, resolve crates edition2024 que o
+cargo 1.73 nem compila). Para futuros deploys DESTE repositório os locks são versionados —
+o rebuild-from-source independente do upstream fica como exercício para auditoria externa.
 
 ## Fase 0 — evidência de MAINNET (18/08/2026) ✅
 

@@ -15,7 +15,7 @@ description: >-
 ## Fase 0 — gates antes de QUALQUER deploy
 - [x] Raw query `DELIVERIES` validada em mainnet (README: 2 entregas decodificadas,
       Mailbox `terra1fwg35n...jpx3p9`, code_id 11371, relayer terra1run9wz…26mawp)
-- [ ] `data_hash` do code_id 11371 == `checksums.txt` do build reproduzível do tc-cw-hyperlane
+- [x] `data_hash` de TODOS os 12 contratos TC == wasms staged do tc-cw-hyperlane (README)
 - [ ] Build reproduzível dos NOSSOS contratos: `cosmwasm/optimizer` (CW) · `cargo build-sbf` (SOL)
 - [ ] 91 testes verdes + clippy limpo nos 2 workspaces + forge
 
