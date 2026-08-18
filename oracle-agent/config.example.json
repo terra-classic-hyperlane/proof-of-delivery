@@ -37,7 +37,7 @@
       "governor": "0x...ENDERECO_DO_GASORACLEGOVERNOR",
       "privateKeyEnv": "EVM_PRIVATE_KEY",
       "remotes": {
-        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "28325000" } }
+        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }
       }
     },
     "ethereum": {
@@ -48,7 +48,7 @@
       "governor": "0x...ENDERECO_DO_GASORACLEGOVERNOR",
       "privateKeyEnv": "EVM_PRIVATE_KEY",
       "remotes": {
-        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "28325000" } }
+        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }
       }
     },
     "solana": {
@@ -61,7 +61,7 @@
       "igpAccount": "CONTA_DO_IGP",
       "keypairEnv": "SOLANA_KEYPAIR_PATH",
       "remotes": {
-        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "28325000" } }
+        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }
       }
     }
   }
