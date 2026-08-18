@@ -82,7 +82,7 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
 
 - **Upgrade authority do pod + multisig do governor:** `BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j` (deployer).
 - **Operadores:** `BirXd4Q…` e `PbEo7Fn2…` (relayer, registrado 18/08) · **quórum 1**.
-- Tarifa 0,003 SOL · época 21.600 s · faixas(132556): rate `[9800000000·88200000000]` ·
+- Tarifa 0,003 SOL · época 21.600 s · quórum do vault **1** (2→1 via proposta 2-de-2, 18/08) · faixas(132556): rate `[9800000000·88200000000]` ·
   gas `[9441·84975]` · decimals 6 · pool **0,3 SOL** ✓.
 - `pod.so` 184.904 bytes, deploy `--max-len` exato (custo 1,359 SOL + finalize; rent recuperável).
 

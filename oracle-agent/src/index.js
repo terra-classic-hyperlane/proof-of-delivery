@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { fetchUsdPrices, exchangeRate, fetchRemoteGasPrice } from "./prices.js";
+import { runClaims } from "./claims.js";
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes("--dry-run");
@@ -124,6 +125,12 @@ async function round() {
 
   // chains em paralelo; cada uma é independente
   await Promise.allSettled(chains.map(([name, c]) => runChain(name, c, usd)));
+
+  // fase de CLAIMS (sequencial — poupa os RPCs públicos); estado no state.json
+  for (const [name, c] of chains) {
+    await runClaims(name, c, state, DRY, config.epochDurationSecs ?? 21_600);
+  }
+  if (!DRY) saveState();
 }
 
 console.log(`[agent] oracle-agent iniciando · chains: ${Object.keys(config.chains).filter((k) => config.chains[k].enabled).join(", ")}${DRY ? " · DRY-RUN" : ""}`);

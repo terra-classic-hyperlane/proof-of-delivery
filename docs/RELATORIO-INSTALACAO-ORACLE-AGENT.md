@@ -90,3 +90,18 @@ Dois defeitos encontrados e corrigidos pelo teste:
    submissão era gravada mas nunca aplicava (CPI ausente nos logs da tx
    `eEH96Mtq…`). Ajustado p/ quórum 1 via multisig (tx `bbpnAfwZ…`); reteste
    aplicou no IGP real. `minChangeBps` restaurado p/ 300; serviço ativo.
+
+## Adendo (18/08 22:27 UTC): claim-agent integrado e ativo
+
+- `src/claims.js` adicionado ao MESMO serviço (fase 2 de cada rodada de 1 h):
+  claim automático TC/EVM + relatório de época/withdraw na Solana.
+- Scanner TC validado contra a entrega REAL `d039daa1…a28c4f04` (bloco
+  29422362, relayer terra1run9wz…): id e sender extraídos corretamente.
+  Essa entrega específica está EXPIRADA para claim (586.753 blocos > janela de
+  200.000) — o resgate automático vale para entregas novas.
+- **Quórum do vault Solana reduzido 2→1** pelo fluxo de proposta §09 com as DUAS
+  aprovações (BirXd4 `VRQUgUzx…`, PbEo `f2DPjZdB…` — executa na 2ª): sem isso,
+  relatórios de época jamais creditariam com 1 operador ativo. De quebra, o
+  fluxo de admin multi-operador foi validado em produção.
+- Cursors iniciais gravados nas 4 chains (TC 30009127 · BSC 116736155 ·
+  ETH 25784960 · SOL 3LRV8CuM…). Serviço `active`, próximas rodadas a cada 1 h.

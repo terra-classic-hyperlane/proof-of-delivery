@@ -1,8 +1,26 @@
-# oracle-agent — instalação, execução e auditoria
+# oracle-agent + claim-agent — instalação, execução e auditoria
 
 O agente off-chain do operador: a cada **1 hora** (`intervalSeconds: 3600`) cota
 preços (CoinGecko) e gás, e submete `SubmitPrice` aos governors das 4 redes.
 Quórum, mediana, faixa e delta são aplicados **on-chain** — o agente não decide nada.
+
+## Fase 2 de cada rodada: CLAIMS (o claim-agent)
+
+No mesmo processo/serviço, após os preços, o agente **resgata os pagamentos
+das entregas do relayer** (`src/claims.js`, config `chains.<nome>.claims`):
+
+- **TC**: varre `wasm-mailbox_process_id` no Mailbox (tx_search) filtrando
+  `message.sender = relayer`, confere `claimed`/solvência e chama `Claim` em lote.
+- **BSC/ETH**: varre o evento `ProcessId` do Mailbox (getLogs, janelas de 2000
+  blocos), filtra `mailbox.processor(id) = relayer`, confere `claimedBy`/pool e
+  chama `claim(ids)`. Sem pool, os ids ficam PENDENTES no state (semear o vault).
+- **Solana**: conta os `process()` pagos pelo relayer no Mailbox por época;
+  época fechada → `SubmitEpochReport` (módulo rrv do pod; quórum on-chain) →
+  `Withdraw` do crédito disponível (respeitando o rent do pool).
+
+Cursors/pendências/épocas ficam no `state.json`. **Primeira rodada só grava o
+cursor** — apenas entregas NOVAS são resgatadas automaticamente (antigas:
+manual, `OPERACAO-CONTRATOS.md`). Janela TC: 200k blocos; BSC 1,6M; ETH 100,8k.
 
 ## Modo ÂNCORA (por que ele não calcula preço do zero)
 

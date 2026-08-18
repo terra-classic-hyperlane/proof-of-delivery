@@ -45,7 +45,13 @@
         }
       },
       "privateKeyEnv": "TC_PRIVATE_KEY",
-      "oracle": "terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d"
+      "oracle": "terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d",
+      "claims": {
+        "enabled": true,
+        "mailbox": "terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9",
+        "vault": "terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q",
+        "relayer": "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp"
+      }
     },
     "bsc": {
       "type": "evm",
@@ -63,7 +69,13 @@
           }
         }
       },
-      "oracle": "0x7dE950f8F0a037783989a6BE84B3620916552306"
+      "oracle": "0x7dE950f8F0a037783989a6BE84B3620916552306",
+      "claims": {
+        "enabled": true,
+        "mailbox": "0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4",
+        "vault": "0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D",
+        "relayer": "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291"
+      }
     },
     "ethereum": {
       "type": "evm",
@@ -81,7 +93,13 @@
           }
         }
       },
-      "oracle": "0x3987cCE8f08037EBF93Ef3a934753540A94196cE"
+      "oracle": "0x3987cCE8f08037EBF93Ef3a934753540A94196cE",
+      "claims": {
+        "enabled": true,
+        "mailbox": "0xc005dc82818d67AF737725bD4bf75435d065D239",
+        "vault": "0xDf90d3b7FF98466E148B334128374807b3e89EbD",
+        "relayer": "0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae"
+      }
     },
     "solana": {
       "type": "solana",
@@ -101,7 +119,12 @@
           }
         }
       },
-      "privateKeyEnv": "SOL_PRIVATE_KEY"
+      "privateKeyEnv": "SOL_PRIVATE_KEY",
+      "claims": {
+        "enabled": true,
+        "mailboxProgram": "E588QtVUvresuXq2KoNEwAmoifCzYGpRBdHByN9KQMbi",
+        "relayer": "PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS"
+      }
     }
   }
 }
