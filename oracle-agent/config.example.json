@@ -1,0 +1,68 @@
+{
+  "$comment": "Copie para config.json. Cada entrada em `chains` é UMA chain local onde o agente atualiza o oracle (via governor); `remotes` são os domínios remotos cujo preço é cotado NA MOEDA local. token_exchange_rate = preço(remoto)/preço(local) × scale da VM (1e10 CW/EVM · 1e19 Solana — spec §08).",
+
+  "intervalSeconds": 3600,
+  "coingecko": {
+    "baseUrl": "https://api.coingecko.com/api/v3",
+    "ids": {
+      "terraclassic": "terra-luna",
+      "bsc": "binancecoin",
+      "ethereum": "ethereum",
+      "solana": "solana"
+    }
+  },
+
+  "chains": {
+    "terraclassic": {
+      "type": "cosmwasm",
+      "enabled": true,
+      "localCoin": "terraclassic",
+      "rpc": "https://terra-classic-rpc.publicnode.com",
+      "chainId": "columbus-5",
+      "gasPrice": "28.325uluna",
+      "prefix": "terra",
+      "governor": "terra1...ENDERECO_DO_ORACLE_GOVERNOR",
+      "mnemonicEnv": "TC_MNEMONIC",
+      "remotes": {
+        "56":         { "coin": "bsc",      "gasPriceSource": { "type": "evm-rpc", "url": "https://bsc-rpc.publicnode.com" } },
+        "1":          { "coin": "ethereum", "gasPriceSource": { "type": "evm-rpc", "url": "https://ethereum-rpc.publicnode.com" } },
+        "1399811149": { "coin": "solana",   "gasPriceSource": { "type": "fixed", "value": "10000" } }
+      }
+    },
+    "bsc": {
+      "type": "evm",
+      "enabled": true,
+      "localCoin": "bsc",
+      "rpc": "https://bsc-rpc.publicnode.com",
+      "governor": "0x...ENDERECO_DO_GASORACLEGOVERNOR",
+      "privateKeyEnv": "EVM_PRIVATE_KEY",
+      "remotes": {
+        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "28325000" } }
+      }
+    },
+    "ethereum": {
+      "type": "evm",
+      "enabled": true,
+      "localCoin": "ethereum",
+      "rpc": "https://ethereum-rpc.publicnode.com",
+      "governor": "0x...ENDERECO_DO_GASORACLEGOVERNOR",
+      "privateKeyEnv": "EVM_PRIVATE_KEY",
+      "remotes": {
+        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "28325000" } }
+      }
+    },
+    "solana": {
+      "type": "solana",
+      "enabled": true,
+      "localCoin": "solana",
+      "rpc": "https://api.mainnet-beta.solana.com",
+      "governorProgram": "PROGRAM_ID_DO_IGP_ORACLE_GOVERNOR",
+      "igpProgram": "PROGRAM_ID_DO_HYPERLANE_IGP",
+      "igpAccount": "CONTA_DO_IGP",
+      "keypairEnv": "SOLANA_KEYPAIR_PATH",
+      "remotes": {
+        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "28325000" } }
+      }
+    }
+  }
+}

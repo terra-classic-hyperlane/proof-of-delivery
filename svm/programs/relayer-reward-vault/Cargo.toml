@@ -1,0 +1,25 @@
+[package]
+name = "rrv"
+description = "RelayerRewardVault (Solana): a PDA de config É o pool (beneficiary do IGP); créditos por quórum de época e saque por débito de lamports."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program.workspace = true
+borsh.workspace = true
+
+[dev-dependencies]
+solana-program-test.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

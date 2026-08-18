@@ -1,0 +1,20 @@
+[package]
+name = "mock-igp"
+description = "Mock do hyperlane-sealevel-igp p/ testes: mesmos índices borsh e layout de contas das instruções 5/7/9."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program.workspace = true
+borsh.workspace = true
+
+[lints]
+workspace = true

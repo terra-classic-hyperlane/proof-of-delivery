@@ -1,0 +1,33 @@
+[workspace]
+members = [
+    "programs/relayer-reward-vault",
+    "programs/igp-oracle-governor",
+    "programs/mock-igp",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["AveraChain"]
+license = "Apache-2.0"
+
+[workspace.dependencies]
+solana-program = "=1.18.26"
+borsh = { version = "1.5", features = ["derive"] }
+thiserror = "1.0.37"
+
+# testes (nativos, sem build-sbf)
+solana-program-test = "=1.18.26"
+solana-sdk = "=1.18.26"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+# O entrypoint! do solana-program 1.18 emite cfgs que o check-cfg do rustc >=1.80
+# não conhece (target_os="solana", custom-heap/custom-panic) — falso positivo padrão.
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow" }

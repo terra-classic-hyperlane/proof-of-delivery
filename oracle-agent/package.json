@@ -1,0 +1,20 @@
+{
+  "name": "oracle-agent",
+  "version": "0.1.0",
+  "description": "Agente off-chain do operador: observa preços/gás e submete SubmitPrice aos governors de TODAS as chains da ponte (Terra Classic, BSC, Ethereum, Solana). O quórum + mediana + faixa acontecem on-chain.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "once": "node src/index.js --once",
+    "dry-run": "node src/index.js --once --dry-run",
+    "test": "node --test src/"
+  },
+  "dependencies": {
+    "@cosmjs/cosmwasm-stargate": "^0.32.4",
+    "@cosmjs/proto-signing": "^0.32.4",
+    "@solana/web3.js": "^1.95.0",
+    "ethers": "^6.13.0"
+  }
+}

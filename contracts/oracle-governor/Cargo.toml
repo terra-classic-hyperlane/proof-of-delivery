@@ -1,0 +1,26 @@
+[package]
+name = "oracle-governor"
+description = "Governor do StorageGasOracle no Terra Classic: operadores submetem preço, o contrato aplica a MEDIANA dentro da FAIXA definida pela governança — com caminho de emergência."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+library = []
+
+[dependencies]
+cosmwasm-std.workspace = true
+cosmwasm-schema.workspace = true
+cw-storage-plus.workspace = true
+cw2.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cw-multi-test.workspace = true
+anyhow.workspace = true

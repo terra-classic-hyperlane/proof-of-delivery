@@ -1,0 +1,26 @@
+[package]
+name = "igp-oracle-governor"
+description = "IgpOracleGovernor (Solana): vira owner do IGP e reconstrói a separação de poderes — porta 1 (operadores, quórum+mediana+faixa) e porta 2 (multisig, emergências)."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program.workspace = true
+borsh.workspace = true
+
+[dev-dependencies]
+solana-program-test.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
+mock-igp = { path = "../mock-igp", features = ["no-entrypoint"] }
+
+[lints]
+workspace = true

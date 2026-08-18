@@ -1,0 +1,26 @@
+[package]
+name = "relayer-reward-vault"
+description = "Vault beneficiary do IGP no Terra Classic: paga relayers pelo que ENTREGARAM, provado por raw query no storage do Mailbox (hpl-mailbox DELIVERIES)."
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# use `library` para importar este contrato sem os entry points
+library = []
+
+[dependencies]
+cosmwasm-std.workspace = true
+cosmwasm-schema.workspace = true
+cw-storage-plus.workspace = true
+cw2.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cw-multi-test.workspace = true

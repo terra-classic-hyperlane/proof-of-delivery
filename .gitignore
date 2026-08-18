@@ -1,0 +1,11 @@
+# builds
+target/
+evm/out/
+evm/cache/
+# dependências baixadas (reinstaláveis)
+node_modules/
+evm/lib/forge-std/
+# segredos e config local do operador
+oracle-agent/config.json
+.env
+*.keypair.json
