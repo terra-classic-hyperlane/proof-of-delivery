@@ -74,3 +74,16 @@ por raw query do Vault é viável na mainnet. (Falta só o rigor final: comparar
 | `oracle-agent/` (off-chain, multi-chain) | ✅ escrito · 5 testes node:test · dry-run validado com CoinGecko + RPCs reais (4 chains) |
 
 Build de produção: usar o `cosmwasm/optimizer` (build reproduzível) antes do store na chain.
+
+
+## Build reproduzível (CosmWasm) — artefatos p/ a proposta
+
+Gerado com `cosmwasm/optimizer:0.17.0` sobre o commit `27dab3b` (locks versionados —
+qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
+
+| Artefato | sha256 |
+|---|---|
+| `artifacts/relayer_reward_vault.wasm` (231 KB) | `c9699711a661607bebe30819ee1dc0035ff5276523dbb08b80a108fb03721d82` |
+| `artifacts/oracle_governor.wasm` (268 KB) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
+
+Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
