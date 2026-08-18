@@ -19,7 +19,9 @@ CHAIN="${1:?uso: evm-deploy.sh bsc|ethereum}"
 
 case "$CHAIN" in
   bsc)
-    RPC="https://bsc-rpc.publicnode.com"
+    # publicnode retorna 403 "archive requires token" em sends — usar dataseed oficial.
+    # override: RPC_OVERRIDE=https://... bash evm-deploy.sh bsc
+    RPC="${RPC_OVERRIDE:-https://bsc-dataseed.bnbchain.org}"
     EXPECTED_OWNER="0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291"
     MAILBOX="0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4"
     IGP="0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923"
@@ -29,7 +31,7 @@ case "$CHAIN" in
     SEED_WEI="5000000000000000"        # 0,005 BNB (100× tarifa)
     ;;
   ethereum)
-    RPC="https://ethereum-rpc.publicnode.com"
+    RPC="${RPC_OVERRIDE:-https://ethereum-rpc.publicnode.com}"
     EXPECTED_OWNER="0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae"
     MAILBOX="0xc005dc82818d67AF737725bD4bf75435d065D239"
     IGP="0x9650F1f8DB492750323172145e67Df4e89E964Aa"
