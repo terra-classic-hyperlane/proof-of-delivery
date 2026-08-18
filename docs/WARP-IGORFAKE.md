@@ -82,18 +82,41 @@ Token: **IGORFAKE** · 6 decimais · TC = colateral (cw20) · remotas = sintéti
 
 ## Solana (domain **1399811149**) — LADO SINTÉTICO
 
+Fonte: log de deploy `WARP-SOLANAMAINNET-IGORFAKE-BUFFER.txt` + `REFERENCE-IGP`
+(09/07) + tx real de dispatch (abaixo).
+
 | Peça | Endereço |
 |---|---|
-| Warp/router (hex no TC) | `c6de5b1fd8d285c06fa3967440530edfec35e907464599e3b485c5f273437f95` |
-| IGP program | `FLZuKRsfdovLqd8n1AYhPCwLqBjfFyZY3A2edgnjdJoR` |
-| IGP account (inner) | `FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk` |
-| Overhead IGP account | `FXacR73HiuNyvW7x34KYCDyv8XxM86pz31Ap8t2v3RCJ` |
-| ISM (MultisigISM program) | `4MzF7HCfxuwj4EFHqZSEpvkcZZvv1mF37DP4pDHwR5VQ` |
-| Owner | `BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j` |
+| **Warp/router (program)** | `EPJNrrpCeZGqDPoFtdV9u9uDWBNW3Xqh84LfM7345zcL` (hex `c6de5b1f…437f95` = a rota no TC) |
+| Mint (token sintético) | `CeLHx5Wm9AzuWRnP4URMfNqNa9kDDrnsNGoATCS96QwD` |
+| Mailbox (sealevel) | `E588QtVUvresuXq2KoNEwAmoifCzYGpRBdHByN9KQMbi` |
+| **IGP program** | `FLZuKRsfdovLqd8n1AYhPCwLqBjfFyZY3A2edgnjdJoR` (binário sha256 `4321c426…08c6d`) |
+| IGP account (inner — RECEBE o pagamento) | `FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk` |
+| Overhead IGP (o que o WARP usa) | `FXacR73HiuNyvW7x34KYCDyv8XxM86pz31Ap8t2v3RCJ` |
+| ISM (MultisigISM program) | `4MzF7HCfxuwj4EFHqZSEpvkcZZvv1mF37DP4pDHwR5VQ` (mainnet ID `LwNfVYMDzAe5dCJgA5CipTZcT34Eyf74zLr81K91jxk`) |
+| Owner / upgrade authority | `BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j` |
 
-- Oracle vive DENTRO do IGP (`gas_oracles` do Igp) — rate/gas do TC lidos on-chain
-  no deploy (fallback: rate 2,94e10 · gas 28325 · decimals 6 · overhead 3e6).
-- ISM threshold 1. Também existe rota p/ **Solana testnet** (dom 1399811151).
+- **RemoteGasData do TC (132556) no IGP:** exchange_rate `29400000000` · gas_price
+  `28325` · token_decimals `6` · gas_overhead `3000000` (o deploy lê o VIGENTE
+  on-chain; estes são os valores de referência de 09/07).
+- ISM threshold 1. Há também rota p/ **Solana testnet** (dom 1399811151).
+
+> ⚠️ Dois IGP accounts: o **inner `FPTvDso…`** é quem acumula os lamports (é ELE
+> que recebe `beneficiary = vault` e `owner = governor`); o **overhead
+> `FXacR73…`** é o que o warp referencia. O `solana-init.mjs` já usa `FPTvDso…`.
+
+### Prova do ciclo completo (tx real)
+
+`4wiG4TtZDFgvzY1wWYTkTDr8J64svrDZD4qShLYk5VQXKchEM1MCGoCw11X9ZyBzuZcztqFVHQymrChDX5Q6fpX1`
+(slot 431826035): burn do sintético → `Dispatched message to 132556, ID
+0xd039daa1c75d5b558906fef6d790b13d…` → `Paid IGP FPTvDsow… for 6000000 gas`.
+Essa é **a mesma mensagem** que o relayer `terra1run9wz…` entregou no TC (bloco
+29422362) e que o vault valida via `layout_check` (`ok:true`) — o fluxo
+SOL→TC→prova-de-entrega fechado de ponta a ponta.
+
+> Existe um deploy ANTERIOR (program `Behbk6ULj6PjvN9ZTb5vesyfor2hFhkw6y131UCRtgPx`,
+> mint `HHVv9R48…`, IGP `BhNcatUDC2D…`, domain 1325/testnet) preservado nos logs —
+> NÃO é o de produção. O de produção é o `EPJNrr…` acima.
 
 ---
 
