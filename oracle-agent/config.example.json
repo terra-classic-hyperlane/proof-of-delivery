@@ -56,9 +56,9 @@
       "enabled": true,
       "localCoin": "solana",
       "rpc": "https://api.mainnet-beta.solana.com",
-      "governorProgram": "PROGRAM_ID_DO_IGP_ORACLE_GOVERNOR",
-      "igpProgram": "PROGRAM_ID_DO_HYPERLANE_IGP",
-      "igpAccount": "CONTA_DO_IGP",
+      "governorProgram": "2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj",
+      "igpProgram": "FLZuKRsfdovLqd8n1AYhPCwLqBjfFyZY3A2edgnjdJoR",
+      "igpAccount": "FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk",
       "keypairEnv": "SOLANA_KEYPAIR_PATH",
       "remotes": {
         "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }

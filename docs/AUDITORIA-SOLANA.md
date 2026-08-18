@@ -40,12 +40,29 @@ recebe pagamentos) `FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk`.
   o mainnet: layout real = `01` initialized + `"IGP_____"` + bump + salt +
   Option<owner> + beneficiary + HashMap).
 
-## Pendências (finalize — deliberadamente separado)
+## FINALIZE executado (18/08/2026) — sistema ATIVO
 
-- [ ] Testar `TransferIgpOwnership` ida-e-volta em **devnet** (spec §08).
-- [ ] `bash deploy/solana-deploy.sh finalize` → posse do IGP → gov config PDA ·
-      beneficiary → rrv pool · semente 0,3 SOL. **Até lá o IGP segue pagando o
-      beneficiary antigo e o pool está vazio.**
+| Passo | Assinatura |
+|---|---|
+| IGP `TransferIgpOwnership` → gov config PDA | `Wt4vkvH5TfMKCWYAdecw3miW4VntP3CgM2XWJY7KfnJVwPMFia3eF9ytgdkPbRgbA3as8Gkv2hvS6GySMGAz8ax` |
+| governor `SetIgpBeneficiary` → rrv pool | `3akHxRFZsi2RkeebkPbrwk5pdXeAHgJNyjux1SPCUk9VWNcGGw8ZkhPe9adKza31Pxfn9pujCqe5tHMxokpJJ5oz` |
+| semente 0,3 SOL → pool | `2acuCBZkcyPfFbQDiW4NVGkhoVRWpK7qGtSqGVEVdPR4z2iAHoeMrWg7iURvzKKuGVBKmv3QPpdPXJrYuLGywNJc` |
+
+Verificação independente pós-finalize (leitura do account Igp em produção):
+**owner = gov config PDA ✓** (offset 43) · **beneficiary = rrv pool ✓** (offset 75) ·
+pool com **0,308 SOL** · gov PDA com 0,058 SOL p/ realloc.
+
+Nota de processo: o teste de ida-e-volta em devnet (spec §08) foi PULADO por
+decisão do operador. Mitigação: o governor tem a **saída de emergência**
+`TransferIgpOwnership(Option<Pubkey>)` (owner-only, testada na suíte — 15 testes),
+que devolve a posse do IGP a qualquer chave se necessário.
+
+## Pendências finais
+
 - [ ] Registrar o operador do relayer (`PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS`)
       no conjunto de operadores (hoje só o deployer, quórum 1).
-- [ ] Upgrade authority do pod → multisig dos validadores (§8).
+- [ ] Upgrade authority do pod → multisig dos validadores (§8):
+      `solana program set-upgrade-authority 2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj --new-upgrade-authority <MULTISIG>`
+- [ ] oracle-agent: config real preenchida (pod/IGP) e prefixo de módulo do pod
+      APLICADO em `src/chains/solana.js` (corrigido 18/08 — sem ele o SubmitPrice
+      seria rejeitado com InvalidInstructionData).

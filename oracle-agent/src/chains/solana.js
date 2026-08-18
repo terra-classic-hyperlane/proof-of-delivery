@@ -1,5 +1,8 @@
 // Submissão no igp-oracle-governor (Solana): borsh manual da instrução
 //   SubmitPrice { domain: u32, token_exchange_rate: u128, gas_price: u128 }  (variante 1)
+// DEPLOY REAL (18/08/2026): o governor vive dentro do programa único `pod`
+// (2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj) — o 1º byte do instruction
+// data escolhe o módulo (0=vault, 1=governor) e o restante é a instrução acima.
 // Contas: [operator s w, config, domain w, round w, system, igp_program, igp w]
 // Seeds iguais às do programa: ["gov","-","config"] · ["gov","-","domain","-",u32le]
 //                              · ["gov","-","price","-",u32le,"-",u64le]
@@ -13,6 +16,7 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 
+const POD_MODULE_GOV = 1; // roteador do pod: 0=vault (rrv), 1=governor
 const SUBMIT_PRICE_VARIANT = 1;
 
 function u32le(n) {
@@ -37,7 +41,7 @@ function u128le(n) {
 
 export function submitPriceData(domain, rate, gasPrice) {
   return Buffer.concat([
-    Buffer.from([SUBMIT_PRICE_VARIANT]),
+    Buffer.from([POD_MODULE_GOV, SUBMIT_PRICE_VARIANT]),
     u32le(domain),
     u128le(rate),
     u128le(gasPrice),
