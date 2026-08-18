@@ -30,8 +30,11 @@ recebe pagamentos) `FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk`.
 
 ## Parâmetros gravados
 
-- Vault: tarifa 0,003 SOL/entrega · época 21600 s · operadores `[BirXd4Q…]` · quórum 1.
-- Governor: delta 2000 bps · época 21600 s · faixas do domínio 132556:
+- Vault: tarifa 0,003 SOL/entrega · época 21600 s.
+- Governor: multisig `BirXd4Q…` · operadores `[BirXd4Q…, PbEo7Fn2…]` ·
+  **quórum 1** (init gravou 2 — o deploy rodou com OPERATOR2 no ambiente;
+  ajustado p/ 1 em 18/08, tx `bbpnAfwZSVyfqivUNksy8VFhJmwZ7yManksR2FDUNxo2ztHVGPevfFm2zTpbEdB7p8CLGYqUQC8R2UYdVUkAAbQ`,
+  por ser 1 operador ativo nesta fase) · delta 2000 bps · faixas do domínio 132556:
   rate `[9800000000 · 88200000000]` · gas `[9441 · 84975]` · decimals 6.
 - Faixas derivadas de rate=29400000000/gas=28325: o init caiu no fallback de
   09/07 (bug de offset no parser do account Igp), mas a leitura on-chain

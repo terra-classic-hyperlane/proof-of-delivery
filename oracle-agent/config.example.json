@@ -100,7 +100,8 @@
             "value": "29"
           }
         }
-      }
+      },
+      "privateKeyEnv": "SOL_PRIVATE_KEY"
     }
   }
 }

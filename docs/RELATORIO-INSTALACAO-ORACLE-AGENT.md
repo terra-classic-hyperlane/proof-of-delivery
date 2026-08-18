@@ -69,3 +69,24 @@ oracle-agent` → serviço **active**. Primeira rodada REAL (log de produção):
 ✅ As 6 âncoras criadas exatamente nos valores de produção; nenhuma submissão na
 estreia (comportamento projetado). A partir da próxima rodada (1 h), submete
 apenas se o drift ≥ 3%, sempre dentro de faixa/delta/quórum on-chain.
+
+## Teste de ponta a ponta (18/08 20:49–20:53 UTC — submissões REAIS)
+
+Com `minChangeBps=0` temporário, uma rodada real submeteu nas 6 rotas:
+
+| Rota | Tx | Resultado |
+|---|---|---|
+| TC → dom 1 (ETH) | `CA15CE3C0ED2B29D1F3028E3ABB9EEF214D2BD25C559E463D8A9B800EC0CBA92` | ✅ aplicado |
+| TC → dom 56 (BSC) | `044EE80E81B049D95C08E67B1508E63E46220810FC36631EB586292E7C627D28` | ✅ aplicado |
+| TC → dom SOL | `1DCA67D5B6C2DDB383BEF9EECA6F02383B3D0C7140356D4E524901D16B90D8D2` | ✅ aplicado |
+| BSC → dom 132556 | `0x87cb7dc1af9066c35d710c52a8d7d866dc4bcd0eb9eef4e32467d2db663e3300` | ✅ aplicado |
+| ETH → dom 132556 | `0x453dc7213306e940cb63f0e10111cb70a1009d6c960e48f144bfe1285bce5ce3` | ✅ aplicado |
+| SOL → dom 132556 | `wbYQMDyobCgkoReWph9SPQMcqUoLTxYAMhJqoWovxs5vkMtRV7LhJh37o4AUg5PRZjhLwqiSqu7n2AtkBm12Ttk` | ✅ aplicado (IGP: 29400000000 → 29484263762, verificado) |
+
+Dois defeitos encontrados e corrigidos pelo teste:
+1. **config sem `privateKeyEnv` na Solana** → 1ª tentativa falhou com `env
+   SOLANA_KEYPAIR_PATH ausente`; corrigido no config.json e no example.
+2. **Quórum 2 no governor Solana** (o init rodou com OPERATOR2 no ambiente) →
+   submissão era gravada mas nunca aplicava (CPI ausente nos logs da tx
+   `eEH96Mtq…`). Ajustado p/ quórum 1 via multisig (tx `bbpnAfwZ…`); reteste
+   aplicou no IGP real. `minChangeBps` restaurado p/ 300; serviço ativo.
