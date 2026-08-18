@@ -67,29 +67,31 @@ const govDomain = pda(govId, [Buffer.from("gov"), sep, Buffer.from("domain"), se
 console.log("rrv config PDA (o POOL / beneficiary):", rrvConfig.toBase58());
 console.log("gov config PDA (futuro owner do IGP):", govConfig.toBase58());
 
-/** Lê o RemoteGasData VIGENTE do domínio 132556 direto do Igp de produção
- *  (borsh: disc[8] + bump u8 + salt[32] + Option<owner>(1[+32]) + beneficiary[32]
- *   + HashMap<u32,GasOracle>{len u32, [domain u32, variante u8=0, rate u128,
- *   gas u128, decimals u8]...}). Fallback avisado se o layout mudar. */
+/** Lê o RemoteGasData VIGENTE do domínio 132556 direto do Igp de produção.
+ *  Verificado on-chain 18/08/2026: o account é `01`(initialized) + "IGP_____"
+ *  (disc 8B) + bump + salt[32] + Option<owner> + beneficiary[32] + HashMap.
+ *  Em vez de offsets fixos (frágeis — já quebraram uma vez), VARRE o buffer
+ *  pelo domínio LE e valida a entrada [domain u32][variante 0][rate u128]
+ *  [gas u128][decimals u8]. Fallback avisado se nada plausível for achado. */
 async function readCurrentGasData() {
   try {
     const info = await conn.getAccountInfo(IGP_INNER);
     const d = info.data;
-    let o = 8 + 1 + 32;                    // discriminator + bump + salt
-    o += d[o] === 1 ? 33 : 1;              // Option<owner>
-    o += 32;                               // beneficiary
-    const len = d.readUInt32LE(o); o += 4; // HashMap len
+    const needle = u32(TC_DOMAIN);
     const readU128 = (p) => { let v = 0n; for (let i = 15; i >= 0; i--) v = (v << 8n) | BigInt(d[p + i]); return v; };
-    for (let i = 0; i < len; i++) {
-      const domain = d.readUInt32LE(o); o += 4;
-      const variant = d[o]; o += 1;
-      if (variant !== 0) throw new Error("GasOracle variante desconhecida");
-      const rate = readU128(o); o += 16;
-      const gas = readU128(o); o += 16;
-      const decimals = d[o]; o += 1;
-      if (domain === TC_DOMAIN) return { rate, gas, decimals };
+    let idx = -1;
+    while ((idx = d.indexOf(needle, idx + 1)) !== -1) {
+      if (idx + 38 > d.length) break;
+      const variant = d[idx + 4];
+      const rate = readU128(idx + 5);
+      const gas = readU128(idx + 21);
+      const decimals = d[idx + 37];
+      // sanidade: variante RemoteGasData, valores plausíveis
+      if (variant === 0 && rate > 0n && gas > 0n && decimals >= 1 && decimals <= 18) {
+        return { rate, gas, decimals };
+      }
     }
-    throw new Error(`domínio ${TC_DOMAIN} não encontrado no Igp`);
+    throw new Error(`entrada plausível do domínio ${TC_DOMAIN} não encontrada (${d.length} bytes)`);
   } catch (e) {
     console.warn(`⚠️ leitura do Igp de produção falhou (${e.message}) — usando FALLBACK de 09/07. CONFIRA!`);
     return { rate: FALLBACK.rate, gas: FALLBACK.gas, decimals: TOKEN_DECIMALS };

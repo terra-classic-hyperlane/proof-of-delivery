@@ -88,6 +88,13 @@ qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
 
 Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 
+## Implantação — Solana (Fase 4): ✅ NO AR (18/08/2026) — finalize pendente
+
+Programa único `pod` (vault+governor fundidos) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
+pool PDA `Eq1mJGTS…Dwb9w` · custo real 1,359 SOL (rent recuperável). Falta o
+`finalize` (posse do IGP + beneficiary + semente) após o teste em devnet.
+Registro: `docs/AUDITORIA-SOLANA.md`.
+
 ## Implantação — Ethereum (Fase 3): ✅ NO AR (18/08/2026)
 
 Vault `0xDf90d3b7FF98466E148B334128374807b3e89EbD` · Governor
