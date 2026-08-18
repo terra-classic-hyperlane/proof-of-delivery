@@ -193,6 +193,6 @@ echo "-- vault config:";   q "$VAULT_ADDR" '{"config":{}}' | jget "json.dumps(d[
 echo "-- vault solvency:"; q "$VAULT_ADDR" '{"solvency":{}}' | jget "json.dumps(d['data'])"
 echo "-- layout_check (mensagem real d039daa1…):"
 q "$VAULT_ADDR" '{"layout_check":{"message_id":"d039daa1c75d5b558906fef6d790b13dc94a8b39e58e1e7f219b3967a28c4f04"}}' | jget "json.dumps(d['data'])"
-echo "-- igp beneficiary:"; q "$IGP" '{"beneficiary":{}}' | jget "d['data']" || true
+echo "-- igp beneficiary:"; q "$IGP" '{"igp":{"beneficiary":{}}}' | jget "d['data']" || true
 
 say "DEPLOY CONCLUÍDO 🎉  (endereços salvos em $STATE)"

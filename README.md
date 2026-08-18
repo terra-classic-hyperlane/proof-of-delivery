@@ -87,3 +87,20 @@ qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
 | `artifacts/oracle_governor.wasm` (268 KB) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
 
 Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
+
+## Implantação — Terra Classic (Fases 1–2): ✅ NO AR (18/08/2026, columbus-5)
+
+| Peça | Valor |
+|---|---|
+| **oracle-governor** | `terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj` (code_id **11587**) |
+| **relayer-reward-vault** | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` (code_id **11588**) |
+| data_hash on-chain | ✅ = `checksums.txt` (verificado pelo script no store) |
+| Owner do StorageGasOracle | ✅ = oracle-governor (posse em 2 passos, txs `31B0DF7E…`/`EDE72113…`) |
+| Faixas (dom 1 · 56 · 1399811149) | ✅ derivadas do oracle de produção no momento do deploy (÷3·×3) |
+| IGP.beneficiary | ✅ = vault (tx `4895068D…`; confirmado por query `{"igp":{"beneficiary":{}}}`) |
+| Pool | ✅ 5.000 LUNC · tarifa 50 LUNC · **claims_payable = 100** · janela 200k blocos |
+| `layout_check` (msg real `d039daa1…`) | ✅ `ok:true` — prova por raw query operando em produção |
+| Operadores / quórum | 1 (deployer) / 1 — expandir via `docs/OPERADORES.md` |
+| Owner (governor + vault) | deployer — handoff p/ governança: §8 de `docs/PARAMETROS_PROPOSTA.md` |
+
+Txs principais: store `657F893F…`/`2DE362BA…` · instantiate `31DB39EB…`/`6653EFCB…` · seed `B55FD50B…`.
