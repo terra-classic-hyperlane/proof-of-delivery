@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.22;
 
-/// @dev Subconjunto do StorageGasOracle do Hyperlane (OZ Ownable, passo único).
+/// @dev Interface do oracle governado. Assinatura FLAT — compatível com o
+///      TerraClassicOracle em produção (selector 0x666af432, verificado no
+///      bytecode on-chain em BSC/ETH) E com o StorageGasOracle canônico? NÃO:
+///      o canônico usa struct. Este governor alveja o TerraClassicOracle.
 interface IStorageGasOracle {
-    struct RemoteGasDataConfig {
-        uint32 remoteDomain;
-        uint128 tokenExchangeRate;
-        uint128 gasPrice;
-    }
-
-    function setRemoteGasData(RemoteGasDataConfig calldata _config) external;
+    function setRemoteGasData(
+        uint32 remoteDomain,
+        uint128 tokenExchangeRate,
+        uint128 gasPrice
+    ) external;
 
     function transferOwnership(address newOwner) external;
 }
@@ -191,9 +192,7 @@ contract GasOracleGovernor {
         lastApplied[domain] = AppliedData(medianRate, medianGas, true, false);
         emit PriceApplied(domain, epoch, medianRate, medianGas, false);
 
-        oracle.setRemoteGasData(
-            IStorageGasOracle.RemoteGasDataConfig(domain, medianRate, medianGas)
-        );
+        oracle.setRemoteGasData(domain, medianRate, medianGas);
     }
 
     // ============ Internos ============
@@ -292,9 +291,7 @@ contract GasOracleGovernor {
     ) external onlyOwner {
         lastApplied[domain] = AppliedData(tokenExchangeRate, gasPrice, true, true);
         emit PriceApplied(domain, currentEpoch(), tokenExchangeRate, gasPrice, true);
-        oracle.setRemoteGasData(
-            IStorageGasOracle.RemoteGasDataConfig(domain, tokenExchangeRate, gasPrice)
-        );
+        oracle.setRemoteGasData(domain, tokenExchangeRate, gasPrice);
     }
 
     /// SAÍDA DE EMERGÊNCIA: devolve a posse do oracle (OZ Ownable, passo único).

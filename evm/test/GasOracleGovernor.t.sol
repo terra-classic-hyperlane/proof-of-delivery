@@ -4,10 +4,12 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {GasOracleGovernor, IStorageGasOracle} from "../src/GasOracleGovernor.sol";
 
-/// Mock do StorageGasOracle: OZ Ownable de passo único + setRemoteGasData onlyOwner.
+/// Mock do TerraClassicOracle real: setRemoteGasData FLAT (selector 0x666af432,
+/// como no bytecode on-chain) + Ownable de passo único.
 contract MockStorageGasOracle {
     address public owner;
-    mapping(uint32 => IStorageGasOracle.RemoteGasDataConfig) public data;
+    mapping(uint32 => uint128) public rates;
+    mapping(uint32 => uint128) public gasPrices;
 
     constructor(address _owner) {
         owner = _owner;
@@ -19,9 +21,12 @@ contract MockStorageGasOracle {
     }
 
     function setRemoteGasData(
-        IStorageGasOracle.RemoteGasDataConfig calldata _config
+        uint32 remoteDomain,
+        uint128 tokenExchangeRate,
+        uint128 gasPrice
     ) external onlyOwner {
-        data[_config.remoteDomain] = _config;
+        rates[remoteDomain] = tokenExchangeRate;
+        gasPrices[remoteDomain] = gasPrice;
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
@@ -29,8 +34,7 @@ contract MockStorageGasOracle {
     }
 
     function get(uint32 domain) external view returns (uint128 rate, uint128 gas) {
-        IStorageGasOracle.RemoteGasDataConfig memory c = data[domain];
-        return (c.tokenExchangeRate, c.gasPrice);
+        return (rates[domain], gasPrices[domain]);
     }
 }
 

@@ -67,15 +67,24 @@ governança/quórum se o pool drenar.
 | 56 (BSC) | 1,27e17 | [4e16 · 4e17] | [1e7 · 1e10] wei (0,01–10 gwei) |
 | 1399811149 (Solana) | 1,62e16 | [5e15 · 5e16] | [1 · 100000] (µ-lamports/CU, partida 10000) |
 
-### Nas remotas (domínio 132556 = Terra Classic)
-| Chain local | scale | rate atual | faixa rate | faixa gas_price (uluna/gas) |
-|---|---|---|---|---|
-| BSC | 1e10 | 786 | [250 · 2500] | [15 · 90] · partida **29** |
-| Ethereum | 1e10 | 247 | [80 · 750] | [15 · 90] · partida **29** |
-| Solana | **1e19** | 6,17e12 | [2e12 · 2e13] | [15 · 90] · partida **29** |
+### Nas remotas (domínio 132556 = Terra Classic) — CONVENÇÃO REAL (medida on-chain 18/08)
 
-> O gas_price do TC nos oracles remotos é **29 uluna/gas** (mínimo 28,325
-> arredondado p/ cima) — NÃO 28.325 (o valor do bug do relayer).
+⚠️ Os IGPs remotos são CUSTOM (`TerraClassicIGPStandalone` + `TerraClassicOracle`
+no EVM; overhead-IGP na Solana) com calibração própria validada em produção
+(`tc-cw-hyperlane/terraclassic/doc/WARP-GAS-CONFIG.md`). As faixas ancoram os
+VALORES VIGENTES (÷3 · ×3) — não a convenção teórica:
+
+| Chain local | valores vigentes (rate · gas) | faixa rate | faixa gas_price |
+|---|---|---|---|
+| BSC | 9.047.190 · 1e10 | [3.015.730 · 27.141.570] | [3,33e9 · 3e10] |
+| Ethereum | 26.585.078 · 1e10 | [8.861.692 · 79.755.234] | [3,33e9 · 3e10] |
+| Solana (scale 1e19 + 10^(9−decimals)) | 2,94e10 · 28.325 · decimals 6 · overhead 3e6 | [9,8e9 · 8,82e10] | [9.442 · 84.975] |
+
+Fórmulas validadas: EVM `wei=(gas+overhead)×gasPrice×rate/1e10` · Solana
+`lamports=(gas+overhead)×gasPrice×rate/1e19×10^(9−decimals)`.
+Oracle EVM: `setRemoteGasData(uint32,uint128,uint128)` FLAT (selector 0x666af432)
+— o GasOracleGovernor.sol usa esta assinatura. TODO: recalibrar a fórmula EVM/SOL
+do oracle-agent para a convenção por alvo (hoje ele calcula na convenção canônica).
 
 ## 5. Operadores, quórum e época de entregas (Solana)
 
