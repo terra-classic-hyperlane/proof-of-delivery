@@ -60,12 +60,17 @@ governança/quórum se o pool drenar.
   (larga p/ volatilidade real, estreita o bastante p/ conter manipulação — e o
   delta de 20%/época limita a velocidade de qualquer deriva).
 
-### No Terra Classic (scale 1e10) — governança define
-| Domínio | rate atual | faixa rate | faixa gas_price |
+### No Terra Classic — CONVENÇÃO REAL do cw-hyperlane (medida on-chain 18/08)
+
+Fórmula da IDA (guia oficial do deploy TC): `fee_uluna = gas × gas_price_destino ×
+exchange_rate / 1e12`, com `exchange_rate = (LUNC_USD / NATIVO_USD) × 1e12` —
+é a razão **local/remoto** (inversa da canônica!). Faixas = vigentes ÷3/×3:
+
+| Domínio | vigente (rate · gas) | faixa rate | faixa gas_price |
 |---|---|---|---|
-| 1 (Ethereum) | 4,04e17 | [1,3e17 · 1,2e18] | [5e7 · 5e10] wei (0,05–50 gwei) |
-| 56 (BSC) | 1,27e17 | [4e16 · 4e17] | [1e7 · 1e10] wei (0,01–10 gwei) |
-| 1399811149 (Solana) | 1,62e16 | [5e15 · 5e16] | [1 · 100000] (µ-lamports/CU, partida 10000) |
+| 1 (Ethereum) | 376 · 1e10 (10 gwei) | [125 · 1.128] | [3,33e9 · 3e10] wei |
+| 56 (BSC) | 1.098 · 3e9 (3 gwei) | [366 · 3.294] | [1e9 · 9e9] wei |
+| 1399811149 (Solana) | 383.001.553.014 · 1 (modelo lamport) | [1,28e11 · 1,15e12] | [1 · 10] |
 
 ### Nas remotas (domínio 132556 = Terra Classic) — CONVENÇÃO REAL (medida on-chain 18/08)
 
@@ -122,7 +127,7 @@ ETH 0,04 ETH (~$77) · SOL 0,3 SOL (~$23).
 Hoje `terra1run9wz…26mawp` é owner E admin de tudo (verificado on-chain em
 18/08/2026). Ao final da implantação, transferir:
 
-### Terra Classic → módulo de governança (`terra10d07y265gmmuvt4z0w9aw880jnsr700juxf95n`*)
+### Terra Classic → módulo de governança (`terra10d07y265gmmuvt4z0w9aw880jnsr700juxf95n` — confirmado no guia oficial do deploy)
 - [ ] `owner` do Mailbox, ISM multisig, IGP e IGP-oracle (Ownable, 2 passos:
       init pelo deployer + claim via proposta)
 - [ ] `owner` do relayer-reward-vault e do oracle-governor (UpdateConfig/SetOwner)
@@ -140,6 +145,5 @@ Hoje `terra1run9wz…26mawp` é owner E admin de tudo (verificado on-chain em
 - [ ] **upgrade authority dos programas** rrv e igp-oracle-governor → multisig
 - [ ] multisig do governor (`SetMultisig`) apontando para a conta multiassinatura real
 
-\* conferir o endereço do módulo gov do columbus-5 antes de usar.
 
 A proposta de governança final = este handoff + os parâmetros das seções 2–7.

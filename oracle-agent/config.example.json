@@ -1,5 +1,5 @@
 {
-  "$comment": "Copie para config.json. Cada entrada em `chains` é UMA chain local onde o agente atualiza o oracle (via governor); `remotes` são os domínios remotos cujo preço é cotado NA MOEDA local. token_exchange_rate = preço(remoto)/preço(local) × scale da VM (1e10 CW/EVM · 1e19 Solana — spec §08).",
+  "$comment": "Copie para config.json. Cada entrada em `chains` é UMA chain local onde o agente atualiza o oracle (via governor); `remotes` são os domínios remotos cujo preço é cotado NA MOEDA local. ATENÇÃO: cada deployment tem convenção própria — TC usa rate=LUNC/NATIVO×1e12 (inversa!), EVM/SOL remotos têm calibração por alvo (WARP-GAS-CONFIG.md). As FAIXAS nos governors protegem contra submissão em convenção errada; TODO: formulas por chain no agente.",
 
   "intervalSeconds": 3600,
   "coingecko": {
@@ -26,7 +26,7 @@
       "remotes": {
         "56":         { "coin": "bsc",      "gasPriceSource": { "type": "evm-rpc", "url": "https://bsc-rpc.publicnode.com" } },
         "1":          { "coin": "ethereum", "gasPriceSource": { "type": "evm-rpc", "url": "https://ethereum-rpc.publicnode.com" } },
-        "1399811149": { "coin": "solana",   "gasPriceSource": { "type": "fixed", "value": "10000" } }
+        "1399811149": { "coin": "solana",   "gasPriceSource": { "type": "fixed", "value": "1" } }
       }
     },
     "bsc": {

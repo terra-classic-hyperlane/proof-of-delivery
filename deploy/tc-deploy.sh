@@ -137,11 +137,12 @@ fi
 echo "✓ governor é owner do oracle"
 
 if ! done_step BOUNDS; then
-  say "6/9 faixas por domínio (docs/PARAMETROS_PROPOSTA.md §4)"
+  say "6/9 faixas por domínio — CONVENÇÃO REAL do cw-hyperlane TC (rate = LUNC_USD/NATIVO_USD × 1e12)"
+  # ancoradas nos valores VIGENTES on-chain (18/08/2026): ETH 376·1e10 / BSC 1098·3e9 / SOL 383001553014·1
   set_bounds() { tx wasm execute "$GOV_ADDR" "{\"set_bounds\":{\"domain\":$1,\"bounds\":{\"min_exchange_rate\":\"$2\",\"max_exchange_rate\":\"$3\",\"min_gas_price\":\"$4\",\"max_gas_price\":\"$5\"}}}" >/dev/null; }
-  set_bounds 1          "130000000000000000" "1200000000000000000" "50000000" "50000000000"   # Ethereum
-  set_bounds 56         "40000000000000000"  "400000000000000000"  "10000000" "10000000000"   # BSC
-  set_bounds 1399811149 "5000000000000000"   "50000000000000000"   "1"        "100000"        # Solana
+  set_bounds 1          "125"          "1128"          "3333333333" "30000000000"  # Ethereum (gas em wei)
+  set_bounds 56         "366"          "3294"          "1000000000" "9000000000"   # BSC (gas em wei)
+  set_bounds 1399811149 "127667184338" "1149004659042" "1"          "10"           # Solana (modelo lamport, gas=1)
   mark BOUNDS ok
 fi
 echo "✓ faixas definidas (dom 1, 56, 1399811149)"
