@@ -63,12 +63,38 @@ export function pdas(programId, domain, epoch) {
   return { config, domainPda, round };
 }
 
+/** Valor VIGENTE do IGP de produção: varre o account pelo domínio LE e valida
+ *  [domain u32][variante 0][rate u128][gas u128][decimals u8] (mesmo parser
+ *  do deploy/solana-init.mjs, testado contra o mainnet 18/08/2026). */
+export async function readOracle(chain, domain) {
+  const conn = new Connection(chain.rpc, "confirmed");
+  const info = await conn.getAccountInfo(new PublicKey(chain.igpAccount));
+  const d = info.data;
+  const needle = u32le(domain);
+  const rd = (p) => { let v = 0n; for (let i = 15; i >= 0; i--) v = (v << 8n) | BigInt(d[p + i]); return v; };
+  let idx = -1;
+  while ((idx = d.indexOf(needle, idx + 1)) !== -1) {
+    if (idx + 38 > d.length) break;
+    const rate = rd(idx + 5), gas = rd(idx + 21), dec = d[idx + 37];
+    if (d[idx + 4] === 0 && rate > 0n && gas > 0n && dec >= 1 && dec <= 18) return { rate, gas };
+  }
+  throw new Error(`domínio ${domain} não encontrado no Igp ${chain.igpAccount}`);
+}
+
 export async function makeSolanaSubmitter(chain, epochDurationSecs) {
-  const keypairPath = process.env[chain.keypairEnv];
-  if (!keypairPath) throw new Error(`env ${chain.keypairEnv} ausente`);
-  const keypair = Keypair.fromSecretKey(
-    Uint8Array.from(JSON.parse(fs.readFileSync(keypairPath, "utf8"))),
-  );
+  // chave HEX (privateKeyEnv, seed ed25519 de 32 bytes — formato do relayer
+  // Hyperlane) OU caminho de keypair JSON (keypairEnv)
+  let keypair;
+  const rawHex = chain.privateKeyEnv && process.env[chain.privateKeyEnv];
+  if (rawHex) {
+    keypair = Keypair.fromSeed(Uint8Array.from(Buffer.from(rawHex.replace(/^0x/, ""), "hex")));
+  } else {
+    const keypairPath = process.env[chain.keypairEnv];
+    if (!keypairPath) throw new Error(`env ${chain.privateKeyEnv ?? chain.keypairEnv} ausente`);
+    keypair = Keypair.fromSecretKey(
+      Uint8Array.from(JSON.parse(fs.readFileSync(keypairPath, "utf8"))),
+    );
+  }
   const connection = new Connection(chain.rpc, "confirmed");
   const governorId = new PublicKey(chain.governorProgram);
   const igpProgram = new PublicKey(chain.igpProgram);

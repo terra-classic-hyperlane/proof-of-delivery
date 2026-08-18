@@ -1,6 +1,5 @@
 {
   "$comment": "Copie para config.json. Cada entrada em `chains` é UMA chain local onde o agente atualiza o oracle (via governor); `remotes` são os domínios remotos cujo preço é cotado NA MOEDA local. ATENÇÃO: cada deployment tem convenção própria — TC usa rate=LUNC/NATIVO×1e12 (inversa!), EVM/SOL remotos têm calibração por alvo (WARP-GAS-CONFIG.md). As FAIXAS nos governors protegem contra submissão em convenção errada; TODO: formulas por chain no agente.",
-
   "intervalSeconds": 3600,
   "coingecko": {
     "baseUrl": "https://api.coingecko.com/api/v3",
@@ -11,45 +10,78 @@
       "solana": "solana"
     }
   },
-
   "chains": {
     "terraclassic": {
       "type": "cosmwasm",
       "enabled": true,
       "localCoin": "terraclassic",
-      "rpc": "https://terra-classic-rpc.publicnode.com",
+      "rpc": "https://rpc.terra-classic.hexxagon.io",
       "chainId": "columbus-5",
       "gasPrice": "28.325uluna",
       "prefix": "terra",
-      "governor": "terra1...ENDERECO_DO_ORACLE_GOVERNOR",
+      "governor": "terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj",
       "mnemonicEnv": "TC_MNEMONIC",
       "remotes": {
-        "56":         { "coin": "bsc",      "gasPriceSource": { "type": "evm-rpc", "url": "https://bsc-rpc.publicnode.com" } },
-        "1":          { "coin": "ethereum", "gasPriceSource": { "type": "evm-rpc", "url": "https://ethereum-rpc.publicnode.com" } },
-        "1399811149": { "coin": "solana",   "gasPriceSource": { "type": "fixed", "value": "1" } }
-      }
+        "56": {
+          "coin": "bsc",
+          "gasPriceSource": {
+            "type": "evm-rpc",
+            "url": "https://bsc-rpc.publicnode.com"
+          }
+        },
+        "1": {
+          "coin": "ethereum",
+          "gasPriceSource": {
+            "type": "evm-rpc",
+            "url": "https://ethereum-rpc.publicnode.com"
+          }
+        },
+        "1399811149": {
+          "coin": "solana",
+          "gasPriceSource": {
+            "type": "fixed",
+            "value": "1"
+          }
+        }
+      },
+      "privateKeyEnv": "TC_PRIVATE_KEY",
+      "oracle": "terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d"
     },
     "bsc": {
       "type": "evm",
       "enabled": true,
       "localCoin": "bsc",
-      "rpc": "https://bsc-rpc.publicnode.com",
-      "governor": "0x...ENDERECO_DO_GASORACLEGOVERNOR",
-      "privateKeyEnv": "EVM_PRIVATE_KEY",
+      "rpc": "https://bsc-dataseed.bnbchain.org",
+      "governor": "0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5",
+      "privateKeyEnv": "BSC_PRIVATE_KEY",
       "remotes": {
-        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }
-      }
+        "132556": {
+          "coin": "terraclassic",
+          "gasPriceSource": {
+            "type": "fixed",
+            "value": "29"
+          }
+        }
+      },
+      "oracle": "0x7dE950f8F0a037783989a6BE84B3620916552306"
     },
     "ethereum": {
       "type": "evm",
       "enabled": true,
       "localCoin": "ethereum",
       "rpc": "https://ethereum-rpc.publicnode.com",
-      "governor": "0x...ENDERECO_DO_GASORACLEGOVERNOR",
-      "privateKeyEnv": "EVM_PRIVATE_KEY",
+      "governor": "0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA",
+      "privateKeyEnv": "ETH_PRIVATE_KEY",
       "remotes": {
-        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }
-      }
+        "132556": {
+          "coin": "terraclassic",
+          "gasPriceSource": {
+            "type": "fixed",
+            "value": "29"
+          }
+        }
+      },
+      "oracle": "0x3987cCE8f08037EBF93Ef3a934753540A94196cE"
     },
     "solana": {
       "type": "solana",
@@ -61,7 +93,13 @@
       "igpAccount": "FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk",
       "keypairEnv": "SOLANA_KEYPAIR_PATH",
       "remotes": {
-        "132556": { "coin": "terraclassic", "gasPriceSource": { "type": "fixed", "value": "29" } }
+        "132556": {
+          "coin": "terraclassic",
+          "gasPriceSource": {
+            "type": "fixed",
+            "value": "29"
+          }
+        }
       }
     }
   }

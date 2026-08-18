@@ -31,43 +31,74 @@ if (!fs.existsSync(cfgPath)) {
 
 const log = (chain, msg) => console.log(`[${new Date().toISOString()}] [${chain}] ${msg}`);
 
+// ---------------------------------------------------------------------------
+// MODO ÂNCORA (produção é a verdade): em vez de calcular o rate do zero (cada
+// deployment tem calibração própria!), o agente ancora no valor ON-CHAIN
+// vigente na primeira rodada e, depois, só o AJUSTA pela variação RELATIVA do
+// preço (rate) e do gás observado (gas). Quórum/faixa/delta seguem on-chain.
+// Recalibrou manualmente o oracle? Apague a entrada no state.json → re-ancora.
+// ---------------------------------------------------------------------------
+const statePath = config.statePath ?? path.join(root, "state.json");
+const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, "utf8")) : {};
+const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+const MIN_CHANGE_BPS = config.minChangeBps ?? 300; // só submete se drift >= 3%
+
+const mods = {
+  cosmwasm: () => import("./chains/terraclassic.js"),
+  evm: () => import("./chains/evm.js"),
+  solana: () => import("./chains/solana.js"),
+};
+
 async function makeSubmitter(name, chain) {
-  if (DRY) {
-    return { sender: "(dry-run)", submit: async () => "(dry-run)" };
-  }
+  const mod = await mods[chain.type]?.();
+  if (!mod) throw new Error(`[${name}] type desconhecido: ${chain.type}`);
   switch (chain.type) {
-    case "cosmwasm": {
-      const { makeCosmwasmSubmitter } = await import("./chains/terraclassic.js");
-      return makeCosmwasmSubmitter(chain);
-    }
-    case "evm": {
-      const { makeEvmSubmitter } = await import("./chains/evm.js");
-      return makeEvmSubmitter(chain);
-    }
-    case "solana": {
-      const { makeSolanaSubmitter } = await import("./chains/solana.js");
-      return makeSolanaSubmitter(chain, config.epochDurationSecs ?? 21_600);
-    }
-    default:
-      throw new Error(`[${name}] type desconhecido: ${chain.type}`);
+    case "cosmwasm": return mod.makeCosmwasmSubmitter(chain);
+    case "evm": return mod.makeEvmSubmitter(chain);
+    case "solana": return mod.makeSolanaSubmitter(chain, config.epochDurationSecs ?? 21_600);
   }
 }
 
 async function runChain(name, chain, usd) {
-  const submitter = await makeSubmitter(name, chain);
+  const mod = await mods[chain.type]?.();
+  if (!mod) throw new Error(`[${name}] type desconhecido: ${chain.type}`);
+  let submitter = null; // criado só quando há algo a submeter (dry-run não exige chave)
   for (const [domain, remote] of Object.entries(chain.remotes)) {
     try {
-      const rate = exchangeRate(usd[remote.coin], usd[chain.localCoin], chain.type);
-      const gasPrice = await fetchRemoteGasPrice(remote.gasPriceSource);
-      log(
-        name,
-        `domínio ${domain} (${remote.coin}): exchange_rate=${rate} gas_price=${gasPrice}` +
-          (DRY ? " [dry-run: não submetido]" : ""),
-      );
-      if (!DRY) {
-        const tx = await submitter.submit(domain, rate, gasPrice);
-        log(name, `domínio ${domain}: submetido → ${tx}`);
+      const cur = await mod.readOracle(chain, domain); // VIGENTE on-chain
+      const ratioNow = usd[remote.coin] / usd[chain.localCoin];
+      const gasObs = BigInt(await fetchRemoteGasPrice(remote.gasPriceSource));
+      const key = `${name}:${domain}`;
+      const anchor = state[key];
+
+      if (!anchor) {
+        log(name, `domínio ${domain} (${remote.coin}): âncora ${DRY ? "seria criada" : "criada"} no vigente rate=${cur.rate} gas=${cur.gas} (ratio=${ratioNow.toExponential(4)}) — nada submetido`);
+        if (!DRY) {
+          state[key] = { rate: cur.rate.toString(), ratio: ratioNow, gas: cur.gas.toString(), gasObs: gasObs.toString(), ts: new Date().toISOString() };
+          saveState();
+        }
+        continue;
       }
+
+      const candRate = BigInt(Math.max(1, Math.round(Number(anchor.rate) * (ratioNow / anchor.ratio))));
+      const candGas = anchor.gasObs !== "0" && gasObs > 0n
+        ? BigInt(Math.max(1, Math.round(Number(anchor.gas) * (Number(gasObs) / Number(anchor.gasObs)))))
+        : BigInt(anchor.gas);
+      const drift = (a, b) => (b === 0n ? 10_000n : ((a > b ? a - b : b - a) * 10_000n) / b);
+      const driftBps = Math.max(Number(drift(candRate, cur.rate)), Number(drift(candGas, cur.gas)));
+
+      log(name, `domínio ${domain} (${remote.coin}): vigente rate=${cur.rate} gas=${cur.gas} · candidato rate=${candRate} gas=${candGas} · drift=${driftBps}bps`);
+      if (driftBps < MIN_CHANGE_BPS) {
+        log(name, `domínio ${domain}: estável (<${MIN_CHANGE_BPS}bps) — sem submissão`);
+        continue;
+      }
+      if (DRY) {
+        log(name, `domínio ${domain}: [dry-run] submeteria rate=${candRate} gas=${candGas}`);
+        continue;
+      }
+      submitter ??= await makeSubmitter(name, chain);
+      const tx = await submitter.submit(domain, candRate, candGas);
+      log(name, `domínio ${domain}: submetido → ${tx} (operador ${submitter.sender})`);
     } catch (err) {
       // erro num domínio não impede os demais
       log(name, `domínio ${domain}: ERRO — ${err.message}`);

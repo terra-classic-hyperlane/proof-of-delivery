@@ -88,6 +88,13 @@ qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
 
 Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 
+## Documentação de auditoria e operação
+
+- **`docs/REGISTRO-AUDITORIA.md`** — TODOS os endereços/operadores/parâmetros das 4 redes + verificação em 1 linha por invariante.
+- **`docs/OPERACAO-CONTRATOS.md`** — como executar cada contrato: trocar owner, operadores, quórum, faixas, preço, pausa, saques, handoff.
+- **`docs/ORACLE-AGENT.md`** — instalação/execução do agente de preços (modo âncora, chaves hex, systemd, logs).
+- **`docs/RELATORIO-INSTALACAO-ORACLE-AGENT.md`** — relatório da instalação em produção (18/08/2026).
+
 ## Implantação — Solana (Fase 4): ✅ ATIVA (18/08/2026, finalize incluso)
 
 Programa único `pod` (vault+governor fundidos) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
