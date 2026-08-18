@@ -88,6 +88,13 @@ qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
 
 Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 
+## Implantação — BSC (Fase 3): ✅ NO AR (18/08/2026)
+
+Vault `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` · Governor
+`0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` · oracle owner = governor ✓ ·
+IGP beneficiary = vault ✓ · quórum 1. **Pool ainda não semeado** (saldo).
+Registro completo: `docs/AUDITORIA-BSC.md`.
+
 ## Implantação — Terra Classic (Fases 1–2): ✅ NO AR (18/08/2026, columbus-5)
 
 | Peça | Valor |

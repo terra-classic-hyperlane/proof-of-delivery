@@ -11,7 +11,7 @@ description: >-
 
 > Passo a passo completo: `docs/INSTALACAO_E_EXECUCAO.md` §4–§6 · diagramas do processo: `docs/ARQUITETURA.md`.
 > A ordem das fases é LEI (spec §13): 0 ✅ → 1–2 ✅ NO AR (TC, 18/08/2026 — endereços no README:
-> governor terra1z7jmlky…9sv4hj / vault terra1gqkrh2…duzc2q) → 3 (EVM) → 4 (Solana).
+> governor terra1z7jmlky…9sv4hj / vault terra1gqkrh2…duzc2q) → 3 (EVM: BSC ✅ / ETH pendente) → 4 (Solana).
 
 ## Fase 0 — gates antes de QUALQUER deploy
 - [x] Raw query `DELIVERIES` validada em mainnet (README: 2 entregas decodificadas,
