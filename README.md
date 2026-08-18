@@ -1,7 +1,7 @@
 # tc-proof-of-delivery
 
 Remuneração de múltiplos relayers na ponte Hyperlane (Terra Classic · BSC · Ethereum · Solana).
-Especificação: `SPEC.html` (v3) · **Arquitetura com diagramas**: `docs/ARQUITETURA.md` · **Instalação/execução**: `docs/INSTALACAO_E_EXECUCAO.md` · Skills do repo em `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Cada rede tem um Vault beneficiary do IGP local; o operador
+Especificação: `SPEC.html` (v3) · **Mapa do warp IGORFAKE** (endereços/IGP/oracle/ISM/preços das 4 pernas): `docs/WARP-IGORFAKE.md` · **Arquitetura com diagramas**: `docs/ARQUITETURA.md` · **Instalação/execução**: `docs/INSTALACAO_E_EXECUCAO.md` · Skills do repo em `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Cada rede tem um Vault beneficiary do IGP local; o operador
 recebe pelo que ENTREGOU, provado pelo registro de execução da própria chain (TC via raw query
 do storage, EVM via processor(), Solana via quórum de épocas).
 
