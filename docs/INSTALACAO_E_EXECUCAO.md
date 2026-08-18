@@ -78,6 +78,8 @@ docker run --rm -v "$(pwd)":/code \
 
 ```bash
 cd evm
+# 1ª vez após o clone (forge-std não é versionado):
+git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
 forge test            # 32 testes
 forge build --sizes   # Vault ~2,5 KB · Governor ~6,5 KB (via_ir habilitado)
 ```
