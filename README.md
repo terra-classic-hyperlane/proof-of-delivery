@@ -103,4 +103,4 @@ Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 | Operadores / quórum | 1 (deployer) / 1 — expandir via `docs/OPERADORES.md` |
 | Owner (governor + vault) | deployer — handoff p/ governança: §8 de `docs/PARAMETROS_PROPOSTA.md` |
 
-Txs principais: store `657F893F…`/`2DE362BA…` · instantiate `31DB39EB…`/`6653EFCB…` · seed `B55FD50B…`.
+**Registro completo de auditoria** (todos os 11 tx hashes e sha256 na íntegra + comandos de verificação): `docs/AUDITORIA-TC.md`.
