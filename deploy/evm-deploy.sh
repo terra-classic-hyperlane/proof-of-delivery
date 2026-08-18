@@ -46,6 +46,8 @@ esac
 TC_DOMAIN=132556
 EPOCH_SECS=21600
 DELTA_BPS=2000
+# --legacy só na BSC (não suporta EIP-1559 bem); ETH usa dinâmico (evita underprice).
+LEGACY=""; [ "$CHAIN" = "bsc" ] && LEGACY="--legacy"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 STATE="$ROOT/deploy/evm-$CHAIN.state"
 touch "$STATE"
@@ -73,7 +75,7 @@ fc() {  # $1=contrato $2=step_key  ...resto = constructor-args
   local nonce predicted
   nonce=$(cast nonce --rpc-url "$RPC" "$SIGNER")
   predicted=$(cast compute-address "$SIGNER" --nonce "$nonce" --rpc-url "$RPC" | awk '{print $NF}')
-  forge create "$contract" --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast --legacy \
+  forge create "$contract" --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast $LEGACY \
     --constructor-args "$@" >/dev/null 2>&1 || true
   for _ in $(seq 1 30); do
     [ "$(cast code --rpc-url "$RPC" "$predicted" | wc -c)" -gt 3 ] && { mark "$key" "$predicted"; echo "$predicted"; return; }
@@ -106,7 +108,7 @@ if ! done_step BOUNDS; then
   MIN_RATE=$((CUR_RATE/3)); MAX_RATE=$((CUR_RATE*3))
   MIN_GAS=$((CUR_GAS/3));   MAX_GAS=$((CUR_GAS*3))
   echo "  vigente lido do oracle: rate=$CUR_RATE gas=$CUR_GAS → faixas [$MIN_RATE·$MAX_RATE] [$MIN_GAS·$MAX_GAS]"
-  cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$GOV" \
+  cast send $LEGACY --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$GOV" \
     "setBounds(uint32,(uint128,uint128,uint128,uint128,bool))" \
     "$TC_DOMAIN" "($MIN_RATE,$MAX_RATE,$MIN_GAS,$MAX_GAS,true)" >/dev/null
   mark BOUNDS ok
@@ -116,7 +118,7 @@ echo "✓ faixas definidas"
 if ! done_step ORACLE_OWNER; then
   say "4/6 oracle.transferOwnership(governor)  ⚠️ passo ÚNICO — endereço conferido 3×"
   [ "$(cast call --rpc-url "$RPC" "$GOV" "oracle()(address)")" = "$ORACLE" ] || { echo "❌ governor não aponta p/ este oracle"; exit 1; }
-  cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$ORACLE" \
+  cast send $LEGACY --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$ORACLE" \
     "transferOwnership(address)" "$GOV" >/dev/null
   mark ORACLE_OWNER ok
 fi
@@ -124,7 +126,7 @@ echo "✓ oracle sob o governor: $(cast call --rpc-url "$RPC" "$ORACLE" 'owner()
 
 if ! done_step BENEFICIARY; then
   say "5/6 igp.setBeneficiary(vault)"
-  cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$IGP" \
+  cast send $LEGACY --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$IGP" \
     "setBeneficiary(address)" "$VAULT" >/dev/null
   mark BENEFICIARY ok
 fi
@@ -136,7 +138,7 @@ if ! done_step SEED && [ "${SEED_WEI:-0}" != "0" ]; then
   BAL=$(cast balance --rpc-url "$RPC" "$SIGNER")
   if python3 -c "import sys; sys.exit(0 if int('$BAL') > int('$SEED_WEI')*3 else 1)"; then
     say "6/6 semente do pool ($SEED_WEI wei)"
-    cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$VAULT" --value "$SEED_WEI" >/dev/null
+    cast send $LEGACY --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$VAULT" --value "$SEED_WEI" >/dev/null
     mark SEED ok
   else
     echo "⚠️ 6/6 semente PULADA — saldo ($BAL wei) baixo p/ semear $SEED_WEI + gás."
