@@ -136,7 +136,7 @@ terrad tx wasm instantiate <code_id> '{
 
 # 4. store + instantiate do relayer-reward-vault
 terrad tx wasm instantiate <code_id> '{
-  "owner": "<gov>", "mailbox": "terra1fwg35n...jpx3p9",
+  "owner": "<gov>", "mailbox": "terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9",
   "igp": "<hpl-igp>", "denom": "uluna",
   "reward_per_delivery": "<ex.: 1000000>",
   "claim_window_blocks": <ex.: 100000>
