@@ -94,12 +94,21 @@ do oracle-agent para a convenção por alvo (hoje ele calcula na convenção can
 - Épocas de entrega (Solana): 6h + folga de finalidade de **32 slots (~13s)**
   antes de fechar o relatório; janela de slots no relatório = a época em slots.
 
-## 6. Multisig e ISM (remotas)
+## 6. Multisig e ISM (remotas) — MODELO APROVADO PELA GOVERNANÇA
 
-- Multisig **3-de-5**: 2 operadores + **3 signatários que NÃO validam
-  Hyperlane** (regra dura da spec §04/§12 — o ISM do Warp remoto dá acesso
-  indireto ao colateral).
-- ISM **3-de-4** com 4 validators (tolera 1 offline; forjar exige 3).
+- **Composição aprovada**: multisig dos validadores Hyperlane — **3 validadores
+  que validam o TC + 1 signatário que NÃO valida** (4 membros). É essa conta
+  multiassinatura que recebe o owner do Vault/Governor/IGP/ISM nas remotas ao
+  fim da implantação (até lá, owner = deployer).
+- **Sobre o threshold** (decisão em aberto dentro do modelo aprovado):
+  - `3-de-4`: tolera 1 ausente, MAS os 3 validadores sozinhos atingem o
+    threshold — o alerta da spec §12 (quem valida checkpoints controlando o ISM
+    tem acesso indireto ao colateral) fica mitigado só parcialmente;
+  - `4-de-4`: exige o não-validador sempre (neutraliza conluio), porém sem
+    tolerância a falha — 1 chave perdida trava tudo;
+  - Evolução recomendada: adicionar um **2º não-validador** (3 val + 2 ext,
+    threshold **4-de-5**) — validadores sozinhos não agem E tolera 1 ausente.
+- ISM **3-de-4** com os 4 validators (tolera 1 offline; forjar exige 3).
 - Timelock de **48h** para troca de ISM (executável no texto da proposta).
 
 ## 7. Semente dos pools
@@ -121,7 +130,7 @@ Hoje `terra1run9wz…26mawp` é owner E admin de tudo (verificado on-chain em
       (o admin é o que permite migrate silencioso — não esquecer!)
 - [ ] posse do StorageGasOracle já deve estar no oracle-governor (Fase 1)
 
-### BSC / Ethereum → multisig (3-de-5, ≥3 signatários não-validadores)
+### BSC / Ethereum → multisig dos validadores (3 val do TC + 1 não-validador — modelo aprovado; threshold: ver §6)
 - [ ] `owner` do Vault e do GasOracleGovernor (2 passos: transferOwnership + acceptOwnership)
 - [ ] `owner` do IGP, do ISM e do StorageGasOracle→governor
 - [ ] proxy admin / upgrade rights dos contratos Hyperlane, se upgradeable

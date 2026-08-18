@@ -76,11 +76,14 @@ if ! done_step VAULT; then
 fi
 VAULT=$(get_state VAULT); echo "✓ vault: $VAULT"
 
+# operadores: signer + (opcional) OPERATOR2 via env; quórum acompanha (docs/OPERADORES.md)
+OPS_ARG="[$SIGNER]"; Q=1
+if [ -n "${OPERATOR2:-}" ]; then OPS_ARG="[$SIGNER,$OPERATOR2]"; Q=${QUORUM:-2}; fi
 if ! done_step GOV; then
-  say "2/6 deploy GasOracleGovernor (1 operador/quórum 1 · época 6h · delta 20%)"
+  say "2/6 deploy GasOracleGovernor (operadores: $OPS_ARG · quórum $Q · época 6h · delta 20%)"
   out=$(forge create src/GasOracleGovernor.sol:GasOracleGovernor \
         --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast \
-        --constructor-args "$ORACLE" "$SIGNER" "[$SIGNER]" 1 "$EPOCH_SECS" "$DELTA_BPS")
+        --constructor-args "$ORACLE" "$SIGNER" "$OPS_ARG" "$Q" "$EPOCH_SECS" "$DELTA_BPS")
   addr=$(echo "$out" | grep -oE "Deployed to: 0x[0-9a-fA-F]{40}" | cut -d' ' -f3)
   mark GOV "$addr"
 fi

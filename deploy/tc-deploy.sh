@@ -111,8 +111,11 @@ done
 
 if ! done_step GOV_ADDR; then
   say "3/9 instantiate oracle-governor"
+  # operadores: deployer + (opcional) OPERATOR2 via env; quórum acompanha (docs/OPERADORES.md)
+  OPS="\"$DEPLOYER\""; Q=1
+  if [ -n "${OPERATOR2:-}" ]; then OPS="$OPS,\"$OPERATOR2\""; Q=${QUORUM:-2}; fi
   init_gov=$(cat <<JSON
-{"owner":"$DEPLOYER","oracle":"$IGP_ORACLE","operators":["$DEPLOYER"],"quorum":1,"epoch_duration_secs":21600,"max_delta_bps":2000}
+{"owner":"$DEPLOYER","oracle":"$IGP_ORACLE","operators":[$OPS],"quorum":$Q,"epoch_duration_secs":21600,"max_delta_bps":2000}
 JSON
 )
   out=$(tx wasm instantiate "$CODE_GOV" "$init_gov" --label "hpl-oracle-governor" --admin "$DEPLOYER")

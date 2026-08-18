@@ -31,6 +31,11 @@ const DO_TRANSFER = process.argv.includes("--transfer-igp");
 const DO_BENEFICIARY = process.argv.includes("--set-beneficiary");
 const DO_SEED = process.argv.includes("--seed");
 
+// operadores: signer + (opcional) OPERATOR2 via env; quórum acompanha (docs/OPERADORES.md)
+const OPERATOR2 = process.env.OPERATOR2 ? new PublicKey(process.env.OPERATOR2) : null;
+const OPS = (me) => (OPERATOR2 ? [me, OPERATOR2] : [me]);
+const QUORUM = OPERATOR2 ? 2 : 1;
+
 const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(KEYPAIR, "utf8"))));
 const conn = new Connection(RPC, "confirmed");
 console.log("signer:", kp.publicKey.toBase58());
@@ -68,7 +73,7 @@ else await send("rrv Init", new TransactionInstruction({
     { pubkey: rrvConfig, isSigner: false, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ],
-  data: Buffer.concat([u8(0), vecPk([kp.publicKey]), u8(1), u64(REWARD_LAMPORTS), u64(EPOCH_SECS)]),
+  data: Buffer.concat([u8(0), vecPk(OPS(kp.publicKey)), u8(QUORUM), u64(REWARD_LAMPORTS), u64(EPOCH_SECS)]),
 }));
 
 // ---- 2. governor Init ----
@@ -81,7 +86,7 @@ else await send("governor Init", new TransactionInstruction({
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ],
   data: Buffer.concat([
-    u8(0), pk(kp.publicKey), vecPk([kp.publicKey]), u8(1),
+    u8(0), pk(kp.publicKey), vecPk(OPS(kp.publicKey)), u8(QUORUM),
     u64(EPOCH_SECS), u64(DELTA_BPS), pk(IGP_PROGRAM), pk(IGP_INNER),
   ]),
 }));

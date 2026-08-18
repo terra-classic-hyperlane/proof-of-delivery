@@ -35,8 +35,11 @@ IGP à config PDA do governor → **upgrade authority dos 2 programas → multis
 
 ## Papéis (matriz §11 da spec — resumo)
 - **Governança TC**: tudo dentro do TC (IGP, ISM, vault, oracle, tarifa, faixa).
-- **Multisig** (remotas): IGP, ISM, faixa — NUNCA composto só por validadores
-  Hyperlane (risco nº1: ISM do Warp remoto = acesso indireto ao colateral).
+- **Multisig** (remotas): IGP, ISM, faixa, Vault/Governor. Modelo APROVADO pela
+  governança: 3 validadores do TC + 1 não-validador (4 membros). Threshold em
+  aberto: 3-de-4 permite os validadores agirem sozinhos (mitigação PARCIAL do
+  risco nº1 — ISM remoto = acesso indireto ao colateral); evolução: +1
+  não-validador → 4-de-5. Owner fica no deployer até o fim da implantação.
 - **Operadores**: preço dentro da faixa (quórum), relatórios de época (SOL),
   parâmetros do vault remoto por proposta.
 - **Qualquer um**: entregar mensagens e sacar a PRÓPRIA recompensa.
