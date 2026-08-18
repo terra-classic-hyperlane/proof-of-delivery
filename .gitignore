@@ -9,3 +9,4 @@ evm/lib/forge-std/
 oracle-agent/config.json
 .env
 *.keypair.json
+deploy/tc-deploy.state
