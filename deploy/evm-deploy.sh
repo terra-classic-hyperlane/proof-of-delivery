@@ -62,13 +62,27 @@ echo "✓ signer é owner do oracle"
 
 cd "$ROOT/evm"
 
+# forge create na BSC frequentemente NÃO confirma a tempo mesmo com a tx incluída.
+# fc(): calcula o endereço via nonce ANTES de enviar, envia com --legacy, e
+# confirma lendo o code no endereço previsto (idempotente e à prova de timeout).
+fc() {  # $1=contrato $2=step_key  ...resto = constructor-args
+  local contract="$1" key="$2"; shift 2
+  if done_step "$key"; then echo "$(get_state "$key")"; return; fi
+  local nonce predicted
+  nonce=$(cast nonce --rpc-url "$RPC" "$SIGNER")
+  predicted=$(cast compute-address "$SIGNER" --nonce "$nonce" --rpc-url "$RPC" | awk '{print $NF}')
+  forge create "$contract" --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast --legacy \
+    --constructor-args "$@" >/dev/null 2>&1 || true
+  for _ in $(seq 1 30); do
+    [ "$(cast code --rpc-url "$RPC" "$predicted" | wc -c)" -gt 3 ] && { mark "$key" "$predicted"; echo "$predicted"; return; }
+    sleep 4
+  done
+  echo "❌ $contract não confirmou em $predicted (nonce $nonce)"; exit 1
+}
+
 if ! done_step VAULT; then
   say "1/6 deploy RelayerRewardVault (reward=$REWARD_WEI wei · janela=$WINDOW_BLOCKS blocos)"
-  out=$(forge create src/RelayerRewardVault.sol:RelayerRewardVault \
-        --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast \
-        --constructor-args "$MAILBOX" "$SIGNER" "$REWARD_WEI" "$WINDOW_BLOCKS")
-  addr=$(echo "$out" | grep -oE "Deployed to: 0x[0-9a-fA-F]{40}" | cut -d' ' -f3)
-  mark VAULT "$addr"
+  fc "src/RelayerRewardVault.sol:RelayerRewardVault" VAULT "$MAILBOX" "$SIGNER" "$REWARD_WEI" "$WINDOW_BLOCKS" >/dev/null
 fi
 VAULT=$(get_state VAULT); echo "✓ vault: $VAULT"
 
@@ -77,11 +91,7 @@ OPS_ARG="[$SIGNER]"; Q=1
 if [ -n "${OPERATOR2:-}" ]; then OPS_ARG="[$SIGNER,$OPERATOR2]"; Q=${QUORUM:-2}; fi
 if ! done_step GOV; then
   say "2/6 deploy GasOracleGovernor (operadores: $OPS_ARG · quórum $Q · época 6h · delta 20%)"
-  out=$(forge create src/GasOracleGovernor.sol:GasOracleGovernor \
-        --rpc-url "$RPC" --private-key "$PRIVATE_KEY" --broadcast \
-        --constructor-args "$ORACLE" "$SIGNER" "$OPS_ARG" "$Q" "$EPOCH_SECS" "$DELTA_BPS")
-  addr=$(echo "$out" | grep -oE "Deployed to: 0x[0-9a-fA-F]{40}" | cut -d' ' -f3)
-  mark GOV "$addr"
+  fc "src/GasOracleGovernor.sol:GasOracleGovernor" GOV "$ORACLE" "$SIGNER" "$OPS_ARG" "$Q" "$EPOCH_SECS" "$DELTA_BPS" >/dev/null
 fi
 GOV=$(get_state GOV); echo "✓ governor: $GOV"
 
@@ -94,7 +104,7 @@ if ! done_step BOUNDS; then
   MIN_RATE=$((CUR_RATE/3)); MAX_RATE=$((CUR_RATE*3))
   MIN_GAS=$((CUR_GAS/3));   MAX_GAS=$((CUR_GAS*3))
   echo "  vigente lido do oracle: rate=$CUR_RATE gas=$CUR_GAS → faixas [$MIN_RATE·$MAX_RATE] [$MIN_GAS·$MAX_GAS]"
-  cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$GOV" \
+  cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$GOV" \
     "setBounds(uint32,(uint128,uint128,uint128,uint128,bool))" \
     "$TC_DOMAIN" "($MIN_RATE,$MAX_RATE,$MIN_GAS,$MAX_GAS,true)" >/dev/null
   mark BOUNDS ok
@@ -104,7 +114,7 @@ echo "✓ faixas definidas"
 if ! done_step ORACLE_OWNER; then
   say "4/6 oracle.transferOwnership(governor)  ⚠️ passo ÚNICO — endereço conferido 3×"
   [ "$(cast call --rpc-url "$RPC" "$GOV" "oracle()(address)")" = "$ORACLE" ] || { echo "❌ governor não aponta p/ este oracle"; exit 1; }
-  cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$ORACLE" \
+  cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$ORACLE" \
     "transferOwnership(address)" "$GOV" >/dev/null
   mark ORACLE_OWNER ok
 fi
@@ -112,16 +122,24 @@ echo "✓ oracle sob o governor: $(cast call --rpc-url "$RPC" "$ORACLE" 'owner()
 
 if ! done_step BENEFICIARY; then
   say "5/6 igp.setBeneficiary(vault)"
-  cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$IGP" \
+  cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$IGP" \
     "setBeneficiary(address)" "$VAULT" >/dev/null
   mark BENEFICIARY ok
 fi
 echo "✓ beneficiary: $(cast call --rpc-url "$RPC" "$IGP" 'beneficiary()(address)')"
 
-if ! done_step SEED; then
-  say "6/6 semente do pool ($SEED_WEI wei)"
-  cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$VAULT" --value "$SEED_WEI" >/dev/null
-  mark SEED ok
+# Semente: só se houver saldo folgado (deixa margem p/ gás). SEED_WEI=0 pula.
+# Pode semear depois com: cast send --legacy $VAULT --value <wei> --private-key ...
+if ! done_step SEED && [ "${SEED_WEI:-0}" != "0" ]; then
+  BAL=$(cast balance --rpc-url "$RPC" "$SIGNER")
+  if python3 -c "import sys; sys.exit(0 if int('$BAL') > int('$SEED_WEI')*3 else 1)"; then
+    say "6/6 semente do pool ($SEED_WEI wei)"
+    cast send --legacy --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$VAULT" --value "$SEED_WEI" >/dev/null
+    mark SEED ok
+  else
+    echo "⚠️ 6/6 semente PULADA — saldo ($BAL wei) baixo p/ semear $SEED_WEI + gás."
+    echo "   semeie depois: cast send --legacy $VAULT --value $SEED_WEI --private-key <PK> --rpc-url $RPC"
+  fi
 fi
 
 say "VERIFICAÇÃO"
