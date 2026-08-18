@@ -20,8 +20,9 @@ const TC_DOMAIN = 132556;
 const REWARD_LAMPORTS = 3_000_000n;      // 0,003 SOL
 const EPOCH_SECS = 21_600n;
 const DELTA_BPS = 2_000n;
-// oracle vigente: rate 2,94e10 · gas 28325 (recalibrado 09/07) → faixa ÷3/×3
-const BOUNDS = { minRate: 9_800_000_000n, maxRate: 88_200_000_000n, minGas: 9_442n, maxGas: 84_975n };
+// FALLBACK apenas (retrato de 09/07: rate 2,94e10 · gas 28325) — o valor REAL é
+// lido do Igp de PRODUÇÃO em readCurrentGasData(); a doc envelhece, a chain não.
+const FALLBACK = { rate: 29_400_000_000n, gas: 28_325n };
 const TOKEN_DECIMALS = 6;
 const SEED_LAMPORTS = 300_000_000n;      // 0,3 SOL (100× tarifa)
 
@@ -55,6 +56,35 @@ const govConfig = pda(govId, [Buffer.from("gov"), sep, Buffer.from("config")]);
 const govDomain = pda(govId, [Buffer.from("gov"), sep, Buffer.from("domain"), sep, u32(TC_DOMAIN)]);
 console.log("rrv config PDA (o POOL / beneficiary):", rrvConfig.toBase58());
 console.log("gov config PDA (futuro owner do IGP):", govConfig.toBase58());
+
+/** Lê o RemoteGasData VIGENTE do domínio 132556 direto do Igp de produção
+ *  (borsh: disc[8] + bump u8 + salt[32] + Option<owner>(1[+32]) + beneficiary[32]
+ *   + HashMap<u32,GasOracle>{len u32, [domain u32, variante u8=0, rate u128,
+ *   gas u128, decimals u8]...}). Fallback avisado se o layout mudar. */
+async function readCurrentGasData() {
+  try {
+    const info = await conn.getAccountInfo(IGP_INNER);
+    const d = info.data;
+    let o = 8 + 1 + 32;                    // discriminator + bump + salt
+    o += d[o] === 1 ? 33 : 1;              // Option<owner>
+    o += 32;                               // beneficiary
+    const len = d.readUInt32LE(o); o += 4; // HashMap len
+    const readU128 = (p) => { let v = 0n; for (let i = 15; i >= 0; i--) v = (v << 8n) | BigInt(d[p + i]); return v; };
+    for (let i = 0; i < len; i++) {
+      const domain = d.readUInt32LE(o); o += 4;
+      const variant = d[o]; o += 1;
+      if (variant !== 0) throw new Error("GasOracle variante desconhecida");
+      const rate = readU128(o); o += 16;
+      const gas = readU128(o); o += 16;
+      const decimals = d[o]; o += 1;
+      if (domain === TC_DOMAIN) return { rate, gas, decimals };
+    }
+    throw new Error(`domínio ${TC_DOMAIN} não encontrado no Igp`);
+  } catch (e) {
+    console.warn(`⚠️ leitura do Igp de produção falhou (${e.message}) — usando FALLBACK de 09/07. CONFIRA!`);
+    return { rate: FALLBACK.rate, gas: FALLBACK.gas, decimals: TOKEN_DECIMALS };
+  }
+}
 
 async function send(label, ix) {
   const tx = new Transaction().add(ix);
@@ -91,22 +121,30 @@ else await send("governor Init", new TransactionInstruction({
   ]),
 }));
 
-// ---- 3. SetDomainConfig(132556) ----
+// ---- 3. SetDomainConfig(132556) — faixas derivadas do Igp de PRODUÇÃO agora ----
 if (await exists(govDomain)) console.log("· domínio já configurado");
-else await send("governor SetDomainConfig(132556)", new TransactionInstruction({
-  programId: govId,
-  keys: [
-    { pubkey: kp.publicKey, isSigner: true, isWritable: true },
-    { pubkey: govConfig, isSigner: false, isWritable: false },
-    { pubkey: govDomain, isSigner: false, isWritable: true },
-    { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-  ],
-  data: Buffer.concat([
-    u8(2), u32(TC_DOMAIN),
-    u128(BOUNDS.minRate), u128(BOUNDS.maxRate), u128(BOUNDS.minGas), u128(BOUNDS.maxGas),
-    u8(TOKEN_DECIMALS),
-  ]),
-}));
+else {
+  const cur = await readCurrentGasData();
+  const b = {
+    minRate: cur.rate / 3n > 0n ? cur.rate / 3n : 1n, maxRate: cur.rate * 3n,
+    minGas: cur.gas / 3n > 0n ? cur.gas / 3n : 1n, maxGas: cur.gas * 3n,
+  };
+  console.log(`vigente no Igp: rate=${cur.rate} gas=${cur.gas} decimals=${cur.decimals} → faixas [${b.minRate}·${b.maxRate}] [${b.minGas}·${b.maxGas}]`);
+  await send("governor SetDomainConfig(132556)", new TransactionInstruction({
+    programId: govId,
+    keys: [
+      { pubkey: kp.publicKey, isSigner: true, isWritable: true },
+      { pubkey: govConfig, isSigner: false, isWritable: false },
+      { pubkey: govDomain, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    data: Buffer.concat([
+      u8(2), u32(TC_DOMAIN),
+      u128(b.minRate), u128(b.maxRate), u128(b.minGas), u128(b.maxGas),
+      u8(cur.decimals),
+    ]),
+  }));
+}
 
 // ---- 4. lamports p/ a config PDA do governor (realloc do IGP cobra do owner) ----
 const govBal = await conn.getBalance(govConfig);

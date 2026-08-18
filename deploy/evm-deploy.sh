@@ -26,8 +26,6 @@ case "$CHAIN" in
     ORACLE="0x7dE950f8F0a037783989a6BE84B3620916552306"
     REWARD_WEI="50000000000000"        # 0,00005 BNB (§2 da proposta)
     WINDOW_BLOCKS="1600000"            # ~14d (block ~0,75s — confirmar)
-    MIN_RATE="3015730";  MAX_RATE="27141570"    # atual 9.047.190 ÷3/×3
-    MIN_GAS="3333333333"; MAX_GAS="30000000000" # atual 1e10 ÷3/×3
     SEED_WEI="5000000000000000"        # 0,005 BNB (100× tarifa)
     ;;
   ethereum)
@@ -38,8 +36,6 @@ case "$CHAIN" in
     ORACLE="0x3987cCE8f08037EBF93Ef3a934753540A94196cE"
     REWARD_WEI="400000000000000"       # 0,0004 ETH
     WINDOW_BLOCKS="100800"             # ~14d @12s
-    MIN_RATE="8861692";  MAX_RATE="79755234"    # atual 26.585.078 ÷3/×3
-    MIN_GAS="3333333333"; MAX_GAS="30000000000"
     SEED_WEI="40000000000000000"       # 0,04 ETH (100× tarifa)
     ;;
   *) echo "chain desconhecida: $CHAIN"; exit 1;;
@@ -90,7 +86,14 @@ fi
 GOV=$(get_state GOV); echo "✓ governor: $GOV"
 
 if ! done_step BOUNDS; then
-  say "3/6 setBounds(dom $TC_DOMAIN) — faixa ancorada nos valores vigentes"
+  say "3/6 setBounds(dom $TC_DOMAIN) — faixa DERIVADA do oracle em produção AGORA (vigente ÷3 · ×3)"
+  vals=$(cast call --rpc-url "$RPC" "$ORACLE" "getExchangeRateAndGasPrice(uint32)(uint128,uint128)" "$TC_DOMAIN" \
+    | tr -d '[]' | awk '{print $1}' | paste -sd' ' -)
+  read -r CUR_RATE CUR_GAS <<< "$vals"
+  [ -n "$CUR_RATE" ] && [ "$CUR_RATE" != "0" ] || { echo "❌ oracle sem valor vigente p/ $TC_DOMAIN"; exit 1; }
+  MIN_RATE=$((CUR_RATE/3)); MAX_RATE=$((CUR_RATE*3))
+  MIN_GAS=$((CUR_GAS/3));   MAX_GAS=$((CUR_GAS*3))
+  echo "  vigente lido do oracle: rate=$CUR_RATE gas=$CUR_GAS → faixas [$MIN_RATE·$MAX_RATE] [$MIN_GAS·$MAX_GAS]"
   cast send --rpc-url "$RPC" --private-key "$PRIVATE_KEY" "$GOV" \
     "setBounds(uint32,(uint128,uint128,uint128,uint128,bool))" \
     "$TC_DOMAIN" "($MIN_RATE,$MAX_RATE,$MIN_GAS,$MAX_GAS,true)" >/dev/null

@@ -56,9 +56,10 @@ governança/quórum se o pool drenar.
 ## 4. Oracle — época, delta e faixas por domínio
 
 - `epoch_duration_secs` = **21.600** (6h) · `max_delta_bps` = **2.000** (20%)
-- Faixas: centro = valor atual observado; **min = atual ÷ 3 · max = atual × 3**
-  (larga p/ volatilidade real, estreita o bastante p/ conter manipulação — e o
-  delta de 20%/época limita a velocidade de qualquer deriva).
+- Faixas: **min = vigente ÷ 3 · max = vigente × 3** — e o "vigente" é LIDO DO
+  ORACLE EM PRODUÇÃO pelo próprio script NO MOMENTO do deploy (nada de valor
+  fixo: doc envelhece, a chain não). As tabelas abaixo são apenas o RETRATO de
+  18/08/2026 para referência/auditoria. Delta de 20%/época limita a deriva.
 
 ### No Terra Classic — CONVENÇÃO REAL do cw-hyperlane (medida on-chain 18/08)
 

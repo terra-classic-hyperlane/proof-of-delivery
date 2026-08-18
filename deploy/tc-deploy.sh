@@ -137,12 +137,22 @@ fi
 echo "✓ governor é owner do oracle"
 
 if ! done_step BOUNDS; then
-  say "6/9 faixas por domínio — CONVENÇÃO REAL do cw-hyperlane TC (rate = LUNC_USD/NATIVO_USD × 1e12)"
-  # ancoradas nos valores VIGENTES on-chain (18/08/2026): ETH 376·1e10 / BSC 1098·3e9 / SOL 383001553014·1
+  say "6/9 faixas por domínio — DERIVADAS DO ORACLE EM PRODUÇÃO neste momento (vigente ÷3 · ×3)"
+  # Nada de valor fixo: a doc envelhece; a fonte é o que está NO ORACLE agora.
   set_bounds() { tx wasm execute "$GOV_ADDR" "{\"set_bounds\":{\"domain\":$1,\"bounds\":{\"min_exchange_rate\":\"$2\",\"max_exchange_rate\":\"$3\",\"min_gas_price\":\"$4\",\"max_gas_price\":\"$5\"}}}" >/dev/null; }
-  set_bounds 1          "125"          "1128"          "3333333333" "30000000000"  # Ethereum (gas em wei)
-  set_bounds 56         "366"          "3294"          "1000000000" "9000000000"   # BSC (gas em wei)
-  set_bounds 1399811149 "127667184338" "1149004659042" "1"          "10"           # Solana (modelo lamport, gas=1)
+  for dom in 1 56 1399811149; do
+    vals=$(terrad q wasm contract-state smart "$IGP_ORACLE" \
+      "{\"oracle\":{\"get_exchange_rate_and_gas_price\":{\"dest_domain\":$dom}}}" \
+      --node "$NODE" --output json | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["data"]
+rate, gas = int(d["exchange_rate"]), int(d["gas_price"])
+assert rate > 0 and gas > 0, "oracle sem valor para o domínio — configure-o antes"
+print(max(1, rate // 3), rate * 3, max(1, gas // 3), gas * 3)')
+    read -r MIN_R MAX_R MIN_G MAX_G <<< "$vals"
+    echo "  dom $dom: vigente lido do oracle → faixa rate [$MIN_R · $MAX_R] · gas [$MIN_G · $MAX_G]"
+    set_bounds "$dom" "$MIN_R" "$MAX_R" "$MIN_G" "$MAX_G"
+  done
   mark BOUNDS ok
 fi
 echo "✓ faixas definidas (dom 1, 56, 1399811149)"
