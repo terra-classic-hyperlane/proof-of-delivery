@@ -23,9 +23,12 @@ solana-sdk = "=1.18.26"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [profile.release]
-overflow-checks = true
+overflow-checks = true   # mantém segurança aritmética mesmo otimizando p/ tamanho
+opt-level = "z"          # otimiza p/ TAMANHO → menos rent no deploy (Solana cobra por byte)
 lto = "fat"
 codegen-units = 1
+strip = true
+panic = "abort"
 
 # O entrypoint! do solana-program 1.18 emite cfgs que o check-cfg do rustc >=1.80
 # não conhece (target_os="solana", custom-heap/custom-panic) — falso positivo padrão.

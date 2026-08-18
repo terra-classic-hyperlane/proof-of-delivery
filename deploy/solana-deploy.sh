@@ -44,18 +44,20 @@ say "1/3 build-sbf (usa os .so já buildados se presentes)"
 [ -f "$ROOT/svm/target/deploy/rrv.so" ] || (cd "$ROOT/svm" && cargo build-sbf)
 ls -la "$ROOT"/svm/target/deploy/*.so | grep -v mock
 
-if ! done_step RRV_ID; then
-  say "2/3 deploy rrv.so"
-  out=$(solana program deploy "$ROOT/svm/target/deploy/rrv.so" -k "$KEYPAIR" -u "$RPC" --output json)
-  mark RRV_ID "$(echo "$out" | python3 -c 'import sys,json;print(json.load(sys.stdin)["programId"])')"
-fi
+# --max-len = tamanho EXATO do .so → rent pela METADE (sem os 2x de headroom de
+# upgrade). Trade-off: upgrade só p/ binário <= tamanho atual; upgrade maior exige
+# close+redeploy. Como a upgrade authority vai p/ multisig, é aceitável.
+deploy_prog() {  # $1=arquivo.so $2=state_key $3=passo
+  local so="$ROOT/svm/target/deploy/$1" key="$2"
+  done_step "$key" && { echo "$(get_state "$key")"; return; }
+  say "$3 deploy $1 (--max-len $(stat -c%s "$so"))"
+  local out
+  out=$(solana program deploy "$so" --max-len "$(stat -c%s "$so")" -k "$KEYPAIR" -u "$RPC" --output json)
+  mark "$key" "$(echo "$out" | python3 -c 'import sys,json;print(json.load(sys.stdin)["programId"])')"
+}
+deploy_prog rrv.so RRV_ID "2/3" >/dev/null
 echo "✓ rrv program: $(get_state RRV_ID)"
-
-if ! done_step GOV_ID; then
-  say "3/3 deploy igp_oracle_governor.so"
-  out=$(solana program deploy "$ROOT/svm/target/deploy/igp_oracle_governor.so" -k "$KEYPAIR" -u "$RPC" --output json)
-  mark GOV_ID "$(echo "$out" | python3 -c 'import sys,json;print(json.load(sys.stdin)["programId"])')"
-fi
+deploy_prog igp_oracle_governor.so GOV_ID "3/3" >/dev/null
 echo "✓ governor program: $(get_state GOV_ID)"
 
 say "init (rrv + governor + domínio 132556 + top-up da config PDA)"
