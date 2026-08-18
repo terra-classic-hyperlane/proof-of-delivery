@@ -17,8 +17,8 @@ description: >-
 - [x] Raw query `DELIVERIES` validada em mainnet (README: 2 entregas decodificadas,
       Mailbox `terra1fwg35n...jpx3p9`, code_id 11371, relayer terra1run9wz…26mawp)
 - [x] `data_hash` de TODOS os 12 contratos TC == wasms staged do tc-cw-hyperlane (README)
-- [ ] Build reproduzível dos NOSSOS contratos: `cosmwasm/optimizer` (CW) · `cargo build-sbf` (SOL)
-- [ ] 91 testes verdes + clippy limpo nos 2 workspaces + forge
+- [x] Build reproduzível dos NOSSOS contratos: optimizer 0.17.0 (checksums no README) · build-sbf ok
+- [x] 91 testes verdes + clippy limpo nos 2 workspaces + forge
 
 ## Sequência por rede (resumo dos pontos que quebram se inverter)
 **TC:** governor → posse do oracle em 2 PASSOS (gov `init_ownership_transfer` no
