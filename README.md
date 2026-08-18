@@ -88,6 +88,12 @@ qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
 
 Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 
+## Implantação — Ethereum (Fase 3): ✅ NO AR (18/08/2026)
+
+Vault `0xDf90d3b7FF98466E148B334128374807b3e89EbD` · Governor
+`0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` · oracle owner = governor ✓ ·
+IGP beneficiary = vault ✓ · quórum 1. Pool pendente de semente. Registro: `docs/AUDITORIA-ETH.md`.
+
 ## Implantação — BSC (Fase 3): ✅ NO AR (18/08/2026)
 
 Vault `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` · Governor
