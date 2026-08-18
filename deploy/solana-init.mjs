@@ -26,8 +26,14 @@ const FALLBACK = { rate: 29_400_000_000n, gas: 28_325n };
 const TOKEN_DECIMALS = 6;
 const SEED_LAMPORTS = 300_000_000n;      // 0,3 SOL (100× tarifa)
 
-const [rrvId, govId] = process.argv.slice(2).filter((a) => !a.startsWith("--")).map((a) => new PublicKey(a));
-if (!rrvId || !govId) { console.error("uso: solana-init.mjs <RRV_ID> <GOV_ID> [--transfer-igp] [--set-beneficiary] [--seed]"); process.exit(1); }
+const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+const VAULT_ONLY = process.argv.includes("--vault-only");
+const rrvId = positional[0] ? new PublicKey(positional[0]) : null;
+const govId = positional[1] ? new PublicKey(positional[1]) : null;
+if (!rrvId || (!VAULT_ONLY && !govId)) {
+  console.error("uso: solana-init.mjs <RRV_ID> [<GOV_ID>] [--vault-only] [--transfer-igp] [--set-beneficiary] [--seed]");
+  process.exit(1);
+}
 const DO_TRANSFER = process.argv.includes("--transfer-igp");
 const DO_BENEFICIARY = process.argv.includes("--set-beneficiary");
 const DO_SEED = process.argv.includes("--seed");
@@ -52,10 +58,10 @@ const sep = Buffer.from("-");
 
 const pda = (programId, seeds) => PublicKey.findProgramAddressSync(seeds, programId)[0];
 const rrvConfig = pda(rrvId, [Buffer.from("rrv"), sep, Buffer.from("config")]);
-const govConfig = pda(govId, [Buffer.from("gov"), sep, Buffer.from("config")]);
-const govDomain = pda(govId, [Buffer.from("gov"), sep, Buffer.from("domain"), sep, u32(TC_DOMAIN)]);
+const govConfig = govId ? pda(govId, [Buffer.from("gov"), sep, Buffer.from("config")]) : null;
+const govDomain = govId ? pda(govId, [Buffer.from("gov"), sep, Buffer.from("domain"), sep, u32(TC_DOMAIN)]) : null;
 console.log("rrv config PDA (o POOL / beneficiary):", rrvConfig.toBase58());
-console.log("gov config PDA (futuro owner do IGP):", govConfig.toBase58());
+if (govConfig) console.log("gov config PDA (futuro owner do IGP):", govConfig.toBase58());
 
 /** Lê o RemoteGasData VIGENTE do domínio 132556 direto do Igp de produção
  *  (borsh: disc[8] + bump u8 + salt[32] + Option<owner>(1[+32]) + beneficiary[32]
@@ -105,6 +111,29 @@ else await send("rrv Init", new TransactionInstruction({
   ],
   data: Buffer.concat([u8(0), vecPk(OPS(kp.publicKey)), u8(QUORUM), u64(REWARD_LAMPORTS), u64(EPOCH_SECS)]),
 }));
+
+// ---- VAULT_ONLY: aponta o beneficiary do IGP direto p/ o pool do rrv e encerra.
+//      (o owner atual do IGP, este keypair, assina SetIgpBeneficiary=variante 9;
+//       contas [system, igp w, owner signer].) Sem governor.
+if (VAULT_ONLY) {
+  // IgpInstruction::SetIgpBeneficiary(Pubkey) = variante 7 · contas [igp w, owner signer]
+  await send("IGP SetIgpBeneficiary → rrv pool (direto pelo owner)", new TransactionInstruction({
+    programId: IGP_PROGRAM,
+    keys: [
+      { pubkey: IGP_INNER, isSigner: false, isWritable: true },
+      { pubkey: kp.publicKey, isSigner: true, isWritable: false },
+    ],
+    data: Buffer.concat([u8(7), pk(rrvConfig)]),
+  }));
+  if (DO_SEED) {
+    await send("seed 0,3 SOL → rrv pool", SystemProgram.transfer({
+      fromPubkey: kp.publicKey, toPubkey: rrvConfig, lamports: Number(SEED_LAMPORTS),
+    }));
+  }
+  console.log("\n✓ VAULT-ONLY pronto: rrv inicializado + IGP.beneficiary = pool.");
+  console.log("  O preço/oracle segue com o owner atual do IGP; o governor entra na Fase 4b.");
+  process.exit(0);
+}
 
 // ---- 2. governor Init ----
 if (await exists(govConfig)) console.log("· governor já inicializado");

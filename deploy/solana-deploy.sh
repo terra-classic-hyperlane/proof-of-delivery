@@ -57,6 +57,17 @@ deploy_prog() {  # $1=arquivo.so $2=state_key $3=passo
 }
 deploy_prog rrv.so RRV_ID "2/3" >/dev/null
 echo "✓ rrv program: $(get_state RRV_ID)"
+
+# VAULT_ONLY=1 → deploya SÓ o vault (~0,85 SOL). O governor (preço/oracle) é
+# adiado p/ a Fase 4b: com 1 operador (quórum 1) ele só repassa o valor — o owner
+# do IGP já atualiza o preço direto. Vale a pena qdo houver VÁRIOS operadores.
+if [ "${VAULT_ONLY:-0}" = "1" ]; then
+  say "init (SÓ vault — VAULT_ONLY): rrv + beneficiary do IGP direto"
+  SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state RRV_ID)" --vault-only ${VAULT_ONLY_FLAGS:-}
+  echo; echo "governor adiado (Fase 4b). Rode sem VAULT_ONLY quando quiser deployá-lo."
+  exit 0
+fi
+
 deploy_prog igp_oracle_governor.so GOV_ID "3/3" >/dev/null
 echo "✓ governor program: $(get_state GOV_ID)"
 
