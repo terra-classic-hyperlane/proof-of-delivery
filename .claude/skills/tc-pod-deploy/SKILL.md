@@ -29,7 +29,8 @@ vault → gov aponta `IGP.set_beneficiary = vault` → semear pool → monitorar
 (OZ, passo ÚNICO — conferir endereço 3×) → `IGP.setBeneficiary(vault)`. Sem Sweep:
 o `claim()` do IGP é permissionless e o vault tem `receive()`.
 
-**Solana:** deploy rrv + governor → Init dos dois → `SetDomainConfig` (faixa + token_decimals,
+**Solana:** deploy do `pod.so` ÚNICO (vault+governor fundidos, 1º byte roteia
+0=rrv/1=gov — rent 1,29 SOL, uma só upgrade authority) → Init dos 2 módulos → `SetDomainConfig` (faixa + token_decimals,
 escala 1e19!) → **TESTAR `TransferIgpOwnership` EM DEVNET** → transferir posse do
 IGP à config PDA do governor → **upgrade authority dos 2 programas → multisig**
 (senão tudo é contornável por redeploy) → manter lamports na config PDA (realloc do IGP).
