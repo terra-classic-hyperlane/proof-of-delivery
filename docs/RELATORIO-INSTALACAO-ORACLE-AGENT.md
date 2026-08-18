@@ -48,17 +48,24 @@
 | Terra Classic | `terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp` | ✅ (deploy Fase 1-2) |
 | BSC | `0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291` | ✅ (deploy Fase 3) |
 | Ethereum | `0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae` | ✅ (deploy Fase 3) |
-| Solana | `PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS` | ⏳ `node deploy/register-solana-operator.mjs` (multisig assina) |
+| Solana | `PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS` | ✅ tx `284meW1GYxVrjc4KGbrFU5kBccL4hVpda1DVwZRmLZLHZ1xmuDL2NWGxrdyLvAt25AhbL7ExC2LSmpzcNhfQ3xdW` (verificado no gov config) |
 
-## Passos finais executados PELO OPERADOR (bloqueio deliberado de segurança)
+## Ativação (18/08 20:12 UTC, autorizada explicitamente pelo operador)
 
-A criação do `.env` (chaves privadas) e a ativação foram deixadas para o operador:
+`.env` criado (chmod 600) · operador Solana registrado · `systemctl enable --now
+oracle-agent` → serviço **active**. Primeira rodada REAL (log de produção):
 
-```bash
-ssh root@31.97.91.4 'bash /root/oracle-agent/setup-env.sh'                # .env (uma vez)
-node deploy/register-solana-operator.mjs                                  # operador Solana (local)
-ssh root@31.97.91.4 'systemctl enable --now oracle-agent'                 # ativar o loop de 1h
+```
+[agent] oracle-agent iniciando · chains: terraclassic, bsc, ethereum, solana
+[ethereum]     132556: âncora criada no vigente rate=26585078     — nada submetido
+[bsc]          132556: âncora criada no vigente rate=9047190      — nada submetido
+[terraclassic] 1:      âncora criada no vigente rate=376          — nada submetido
+[terraclassic] 56:     âncora criada no vigente rate=1098         — nada submetido
+[terraclassic] 1399811149: âncora criada no vigente rate=383001553014 — nada submetido
+[solana]       132556: âncora criada no vigente rate=29400000000  — nada submetido
+[agent] próxima rodada em 3600s (loop)
 ```
 
-Primeira rodada real: cria as 6 âncoras (nenhuma submissão) — comportamento
-esperado e verificável em `/root/oracle-agent/logs/agent.log` e `state.json`.
+✅ As 6 âncoras criadas exatamente nos valores de produção; nenhuma submissão na
+estreia (comportamento projetado). A partir da próxima rodada (1 h), submete
+apenas se o drift ≥ 3%, sempre dentro de faixa/delta/quórum on-chain.
