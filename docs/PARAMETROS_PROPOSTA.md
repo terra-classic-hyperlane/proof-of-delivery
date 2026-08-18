@@ -98,3 +98,30 @@ governança/quórum se o pool drenar.
 Pool inicial = **100× a tarifa** por rede (cobre o primeiro ciclo antes de o
 Sweep/claim do IGP alimentar): TC 5.000 LUNC (~$0,24) · BSC 0,005 BNB (~$3) ·
 ETH 0,04 ETH (~$77) · SOL 0,3 SOL (~$23).
+
+## 8. Checklist de HANDOFF (fim da implantação — nada pode ficar de fora)
+
+Hoje `terra1run9wz…26mawp` é owner E admin de tudo (verificado on-chain em
+18/08/2026). Ao final da implantação, transferir:
+
+### Terra Classic → módulo de governança (`terra10d07y265gmmuvt4z0w9aw880jnsr700juxf95n`*)
+- [ ] `owner` do Mailbox, ISM multisig, IGP e IGP-oracle (Ownable, 2 passos:
+      init pelo deployer + claim via proposta)
+- [ ] `owner` do relayer-reward-vault e do oracle-governor (UpdateConfig/SetOwner)
+- [ ] **`admin` (migrate) de TODOS os contratos** → gov ou `--no-admin`
+      (o admin é o que permite migrate silencioso — não esquecer!)
+- [ ] posse do StorageGasOracle já deve estar no oracle-governor (Fase 1)
+
+### BSC / Ethereum → multisig (3-de-5, ≥3 signatários não-validadores)
+- [ ] `owner` do Vault e do GasOracleGovernor (2 passos: transferOwnership + acceptOwnership)
+- [ ] `owner` do IGP, do ISM e do StorageGasOracle→governor
+- [ ] proxy admin / upgrade rights dos contratos Hyperlane, se upgradeable
+
+### Solana → multisig
+- [ ] `TransferIgpOwnership` → config PDA do governor (com teste em devnet antes)
+- [ ] **upgrade authority dos programas** rrv e igp-oracle-governor → multisig
+- [ ] multisig do governor (`SetMultisig`) apontando para a conta multiassinatura real
+
+\* conferir o endereço do módulo gov do columbus-5 antes de usar.
+
+A proposta de governança final = este handoff + os parâmetros das seções 2–7.
