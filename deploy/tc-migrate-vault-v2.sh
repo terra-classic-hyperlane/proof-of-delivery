@@ -14,7 +14,7 @@ set -euo pipefail
 KEY="${KEY:-hyperlane-deploy}"   # mesma chave do tc-deploy.sh (keyring file)
 KEYRING="file"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NODE=https://rpc.terra-classic.hexxagon.io
+NODE=https://rpc.terra-classic.hexxagon.io:443
 VAULT=terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q
 OPERADOR=terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp
 WASM="$ROOT/artifacts/relayer_reward_vault.wasm"
