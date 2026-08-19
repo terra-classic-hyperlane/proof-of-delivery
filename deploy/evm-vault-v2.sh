@@ -21,7 +21,7 @@ case "$CHAIN" in
     EXPECTED_OWNER="0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291"
     MAILBOX="0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4"
     IGP="0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923"
-    WARP="0x3605D8946FC6F5A75d89d92173100F59743B5318"
+    ORACLE="0x7dE950f8F0a037783989a6BE84B3620916552306"
     REWARD_WEI="50000000000000"   # tarifa por entrega LOCAL (igual à v1)
     WINDOW_BLOCKS="1600000"
     ;;
@@ -31,7 +31,7 @@ case "$CHAIN" in
     EXPECTED_OWNER="0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae"
     MAILBOX="0xc005dc82818d67AF737725bD4bf75435d065D239"
     IGP="0x9650F1f8DB492750323172145e67Df4e89E964Aa"
-    WARP="0xA687a4C4CA49795999b36fDC8A18d1DDd63eDFB5"
+    ORACLE="0x3987cCE8f08037EBF93Ef3a934753540A94196cE"
     REWARD_WEI="400000000000000"
     WINDOW_BLOCKS="100800"
     ;;
@@ -86,12 +86,14 @@ fi
 echo "✓ config remota"
 
 if ! done_step REMOTE_REWARD; then
-  say "4/5 recompensa remota = cotação REAL do IGP (taxa de origem de um transfer p/ o TC)"
-  G=$(cast call --rpc-url "$RPC" "$WARP" "destinationGas(uint32)(uint256)" "$TC_DOMAIN" | awk '{print $1}')
-  [ -z "$G" ] || [ "$G" = "0" ] && G=300000
-  Q=$(cast call --rpc-url "$RPC" "$IGP" "quoteGasPayment(uint32,uint256)(uint256)" "$TC_DOMAIN" "$G" | awk '{print $1}')
-  echo "  destinationGas=$G · quote=$Q wei"
-  [ -n "$Q" ] && [ "$Q" != "0" ] || { echo "❌ cotação zero — confira IGP/WARP"; exit 1; }
+  say "4/5 recompensa remota = taxa REAL de origem (fórmula do TerraClassicIGPStandalone)"
+  # o IGP custom não expõe quote público: taxa = (50k default + gasOverhead) × gasPrice × rate / 1e10
+  OVERHEAD=$(cast call --rpc-url "$RPC" "$IGP" "gasOverhead()(uint96)" | awk '{print $1}')
+  vals=$(cast call --rpc-url "$RPC" "$ORACLE" "getExchangeRateAndGasPrice(uint32)(uint128,uint128)" "$TC_DOMAIN" | awk '{print $1}' | paste -sd' ' -)
+  read -r RATE GASP <<< "$vals"
+  Q=$(python3 -c "print((50000 + int('$OVERHEAD')) * int('$GASP') * int('$RATE') // 10**10)")
+  echo "  overhead=$OVERHEAD · rate=$RATE · gasPrice=$GASP → taxa=$Q wei"
+  [ -n "$Q" ] && [ "$Q" != "0" ] || { echo "❌ cotação zero — confira IGP/ORACLE"; exit 1; }
   SEND "$V2" "setRemoteReward(uint32,uint256)" "$TC_DOMAIN" "$Q" >/dev/null
   mark REMOTE_REWARD "$Q"
 fi
