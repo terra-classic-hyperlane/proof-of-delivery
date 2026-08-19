@@ -13,9 +13,9 @@ para o endereço do operador **naquela chain** — **não** na chain de destino.
 |---|---|---|---|
 | **TC → BSC** (entregou no BSC) | **TC** | **LUNC** | §1 |
 | **BSC → TC** (entregou no TC) | **BSC** | **BNB** | §2 |
-| **Solana → TC** (entregou no TC) | **Solana** | **SOL** | §3 |
+| **Solana → TC** (entregou no TC) | **Solana** | **SOL** | §3 ✅ **funciona** |
 | **TC → ETH / ETH → TC** | — | — | §4 (vault ETH não deployado) |
-| **TC → Solana** | — | — | §4 (não suportado sem keeper) |
+| **TC → Solana** (sentido OPOSTO ao de cima) | — | — | §4 (não suportado — não confundir com o Solana→TC, que funciona) |
 
 Se você entregou uma mensagem **TC→BSC** e foi procurar o pagamento **no BSC**, não ia
 achar: ele está **no TC, em LUNC**. E vice-versa. É a causa mais provável da confusão.
@@ -144,9 +144,12 @@ recibo `5f67d0f7eec906e72bf724f1333b1657b6c924773ee88a6e33a62706a421158a` entreg
 - **TC ↔ ETH** — o vault de recibo do ETH **ainda não foi deployado** (aguardando gás
   baixo). Sem vault, não há recibo nem pagamento. **Nenhuma comissão de ETH existe** —
   não é bug, é etapa pendente. (ISM do warp ETH: `0xDe8edEC7207e2dEf9D347Eaa1f6Ee50420bc070b`.)
-- **TC → Solana** — **não suportado**: a Solana não grava quem entregou, exigiria
-  relayer customizado (keeper), que foi descartado. Só **Solana→TC** paga. Ver
-  `RECIBO-TRUSTLESS.md` §G.
+- **TC → Solana** — **não suportado**. ⚠️ **Atenção ao sentido:** este é o **OPOSTO**
+  do §3. O que **funciona e foi provado é o Solana→TC** (a Solana como ORIGEM, §3). O
+  **TC→Solana** (a Solana como DESTINO) é que fica de fora — porque, para pagar, o
+  destino teria de provar quem entregou, e a Solana **não grava o executor**; provar
+  só daria na mesma tx (keeper), que foi descartado. Resumindo: **o corredor da Solana
+  funciona no sentido em que ela é a origem.** Ver `RECIBO-TRUSTLESS.md` §G.
 
 ---
 
