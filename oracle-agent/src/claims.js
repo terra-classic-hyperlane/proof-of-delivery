@@ -12,6 +12,15 @@
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 
 const log = (chain, msg) => console.log(`[${new Date().toISOString()}] [${chain}] [claims] ${msg}`);
+
+/** enfileira ids p/ atestação remota no vault do TC (ClaimRemote v2) */
+function queueRemoteAttest(state, domain, ids) {
+  if (!ids.length) return;
+  state.remoteAttest = state.remoteAttest ?? {};
+  const q = new Set(state.remoteAttest[domain] ?? []);
+  for (const id of ids) q.add(id.replace(/^0x/, ""));
+  state.remoteAttest[domain] = [...q];
+}
 const MAX_BATCH = 25;
 
 // ---------------------------------------------------------------------------
@@ -71,8 +80,45 @@ async function tcAutoSweep(chain, DRY) {
   log("terraclassic", `✓ Sweep → pool: ${res.transactionHash}`);
 }
 
-async function runTcClaims(chain, st, DRY) {
+/** Atesta no vault do TC (v2 ClaimRemote) as entregas remotas confirmadas dos
+ *  nossos relayers — a fila é alimentada pelos scanners de BSC/ETH/Solana. */
+async function tcAttestRemote(chain, state, DRY) {
+  const q = state.remoteAttest ?? {};
+  const domains = Object.keys(q).filter((d) => (q[d] ?? []).length);
+  if (!domains.length) return;
+  const { CosmWasmClient, SigningCosmWasmClient } = await import("@cosmjs/cosmwasm-stargate");
+  const ro = await CosmWasmClient.connect(chain.rpc);
+  for (const d of domains) {
+    // remove os já pagos (idempotência entre rodadas)
+    const ids = [];
+    for (const id of q[d]) {
+      const r = await ro.queryContractSmart(chain.claims.vault, { remote_claimed: { message_id: id } })
+        .catch(() => null); // v1 ainda no ar → query inexistente
+      if (r === null) { log("terraclassic", "vault ainda sem v2 (ClaimRemote) — fila mantida"); return; }
+      if (!r.claimed) ids.push(id);
+    }
+    if (!ids.length) { q[d] = []; continue; }
+    if (DRY) { log("terraclassic", `[dry-run] atestaria ${ids.length} entrega(s) do domínio ${d}`); continue; }
+    const { DirectSecp256k1Wallet } = await import("@cosmjs/proto-signing");
+    const { GasPrice } = await import("@cosmjs/stargate");
+    const key = process.env[chain.privateKeyEnv].replace(/^0x/, "");
+    const wallet = await DirectSecp256k1Wallet.fromKey(Uint8Array.from(Buffer.from(key, "hex")), chain.prefix);
+    const [acc] = await wallet.getAccounts();
+    const client = await SigningCosmWasmClient.connectWithSigner(chain.rpc, wallet, { gasPrice: GasPrice.fromString(chain.gasPrice) });
+    try {
+      const res = await client.execute(acc.address, chain.claims.vault,
+        { attest_remote_delivery: { domain: Number(d), message_ids: ids.slice(0, MAX_BATCH), executor: null } }, "auto");
+      q[d] = q[d].filter((i) => !ids.slice(0, MAX_BATCH).includes(i));
+      log("terraclassic", `✓ atestado ${ids.length} entrega(s) remota(s) do domínio ${d} → ${res.transactionHash}`);
+    } catch (e) {
+      log("terraclassic", `atestação dom ${d} ERRO — ${String(e.message).slice(0, 90)} (fila mantida)`);
+    }
+  }
+}
+
+async function runTcClaims(chain, st, DRY, state) {
   await tcAutoSweep(chain, DRY).catch((e) => log("terraclassic", `sweep ERRO — ${e.message}`));
+  await tcAttestRemote(chain, state, DRY).catch((e) => log("terraclassic", `attest ERRO — ${e.message}`));
   const height = await tcCurrentHeight(chain.rpc);
   if (st.cursor == null) {
     st.cursor = height;
@@ -116,7 +162,7 @@ async function runTcClaims(chain, st, DRY) {
 // ---------------------------------------------------------------------------
 // EVM (BSC / Ethereum)
 // ---------------------------------------------------------------------------
-async function runEvmClaims(name, chain, st, DRY) {
+async function runEvmClaims(name, chain, st, DRY, state) {
   const { Contract, JsonRpcProvider, Wallet, id } = await import("ethers");
   // RPC próprio p/ claims (getLogs): batch DESLIGADO (dataseed da BSC rejeita
   // eth_getLogs em batch) e endpoint alternativo onde o principal bloqueia logs.
@@ -164,9 +210,14 @@ async function runEvmClaims(name, chain, st, DRY) {
   if (from <= current) log(name, `varredura parcial (até bloco ${st.cursor}; continua na próxima rodada)`);
 
   const pend = new Set(st.pending ?? []);
+  const nossos = [];
   for (const mid of novos) {
-    if ((await mailbox.processor(mid)).toLowerCase() === chain.claims.relayer.toLowerCase()) pend.add(mid);
+    if ((await mailbox.processor(mid)).toLowerCase() === chain.claims.relayer.toLowerCase()) {
+      pend.add(mid);
+      nossos.push(mid);
+    }
   }
+  if (chain.claims.domain) queueRemoteAttest(state, chain.claims.domain, nossos);
   if (novos.length) log(name, `${novos.length} process() no Mailbox · ${pend.size} do nosso relayer no total pendente`);
 
   const claimables = [];
@@ -196,7 +247,7 @@ const u32le = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(Number(n)); re
 const u64le = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
 const rrvPda = (pod, seeds) => PublicKey.findProgramAddressSync([Buffer.from("rrv"), sep, ...seeds], pod)[0];
 
-async function runSolanaClaims(chain, st, DRY, epochSecs) {
+async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
   const conn = new Connection(chain.rpc, "confirmed");
   const pod = new PublicKey(chain.governorProgram); // mesmo programa (pod)
   const mailbox = new PublicKey(chain.claims.mailboxProgram);
@@ -218,6 +269,8 @@ async function runSolanaClaims(chain, st, DRY, epochSecs) {
     if (!tx || tx.meta.err) continue;
     const keys = tx.transaction.message.staticAccountKeys ?? tx.transaction.message.accountKeys;
     if (!keys[0].equals(relayer)) continue; // fee payer = executor
+    const mid = (tx.meta.logMessages || []).join(" ").match(/processed message (0x[0-9a-f]{64})/)?.[1];
+    if (mid && chain.claims.domain) queueRemoteAttest(state, chain.claims.domain, [mid]);
     const epoch = Math.floor(tx.blockTime / epochSecs);
     const e = (st.epochs[epoch] = st.epochs[epoch] ?? { count: 0, minSlot: tx.slot, maxSlot: tx.slot, reported: false });
     e.count += 1;
@@ -292,9 +345,9 @@ export async function runClaims(name, chain, state, DRY, epochSecs) {
   const key = `claims:${name}`;
   const st = (state[key] = state[key] ?? {});
   try {
-    if (chain.type === "cosmwasm") await runTcClaims(chain, st, DRY);
-    else if (chain.type === "evm") await runEvmClaims(name, chain, st, DRY);
-    else if (chain.type === "solana") await runSolanaClaims(chain, st, DRY, epochSecs);
+    if (chain.type === "cosmwasm") await runTcClaims(chain, st, DRY, state);
+    else if (chain.type === "evm") await runEvmClaims(name, chain, st, DRY, state);
+    else if (chain.type === "solana") await runSolanaClaims(chain, st, DRY, epochSecs, state);
   } catch (err) {
     log(name, `ERRO — ${err.message}`);
   }

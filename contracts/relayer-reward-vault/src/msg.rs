@@ -41,6 +41,33 @@ pub enum ExecuteMsg {
 
     /// Só o owner (governança): retira excedente do pool.
     WithdrawSurplus { to: String, amount: Uint128 },
+
+    // ---- v2 ClaimRemote: taxa de origem paga por entrega REMOTA atestada ----
+    /// Só o owner: define os atestadores de entregas remotas e o quórum de
+    /// atestações concordantes (com 1 operador o quórum é 1 = auto-atestação;
+    /// subir p/ >= 2 quando houver operadores independentes).
+    SetRemoteOperators { attestors: Vec<String>, quorum: u32 },
+
+    /// Só o owner: vincula o endereço REMOTO do operador num domínio
+    /// (`None` remove). É o elo de identidade TC ↔ chain remota.
+    SetRemoteBinding {
+        operator: String,
+        domain: u32,
+        remote_address: Option<String>,
+    },
+
+    /// Só o owner: recompensa fixa por entrega remota no domínio (0 desativa).
+    SetRemoteReward { domain: u32, reward: Uint128 },
+
+    /// Atestador: afirma que as mensagens (despachadas DESTE mailbox p/ `domain`
+    /// — o message_id é o MESMO nas duas chains) foram entregues lá pelo endereço
+    /// vinculado ao `executor` (default: o próprio atestador). Ao atingir o
+    /// quórum de atestações CONCORDANTES paga a recompensa — UMA vez por id.
+    AttestRemoteDelivery {
+        domain: u32,
+        message_ids: Vec<HexBinary>,
+        executor: Option<String>,
+    },
 }
 
 #[cw_serde]
@@ -64,6 +91,24 @@ pub enum QueryMsg {
 
     #[returns(SolvencyResponse)]
     Solvency {},
+
+    // ---- v2 ClaimRemote ----
+    #[returns(RemoteConfigResponse)]
+    RemoteConfig {},
+
+    #[returns(RemoteBindingResponse)]
+    RemoteBinding { operator: String, domain: u32 },
+
+    #[returns(RemoteRewardResponse)]
+    RemoteReward { domain: u32 },
+
+    /// Status do pagamento remoto de uma mensagem.
+    #[returns(RemoteClaimedResponse)]
+    RemoteClaimed { message_id: HexBinary },
+
+    /// Atestações pendentes de uma mensagem (auditoria pública).
+    #[returns(RemoteAttestationsResponse)]
+    RemoteAttestations { message_id: HexBinary },
 }
 
 #[cw_serde]
@@ -111,4 +156,37 @@ pub struct SolvencyResponse {
     pub reward_per_delivery: Uint128,
     /// Quantas entregas o pool atual consegue pagar.
     pub claims_payable: Uint128,
+}
+
+// ---- v2 ClaimRemote ----
+#[cw_serde]
+pub struct RemoteConfigResponse {
+    pub attestors: Vec<Addr>,
+    pub quorum: u32,
+    pub total_remote_paid: Uint128,
+}
+
+#[cw_serde]
+pub struct RemoteBindingResponse {
+    pub remote_address: Option<String>,
+}
+
+#[cw_serde]
+pub struct RemoteRewardResponse {
+    pub reward: Option<Uint128>,
+}
+
+#[cw_serde]
+pub struct RemoteClaimedResponse {
+    pub claimed: bool,
+    pub executor: Option<Addr>,
+    pub domain: Option<u32>,
+    pub amount: Option<Uint128>,
+    pub claimed_at_block: Option<u64>,
+}
+
+#[cw_serde]
+pub struct RemoteAttestationsResponse {
+    /// (atestador, executor apontado)
+    pub attestations: Vec<(Addr, Addr)>,
 }

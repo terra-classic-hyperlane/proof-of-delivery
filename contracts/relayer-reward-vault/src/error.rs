@@ -59,4 +59,23 @@ pub enum ContractError {
 
     #[error("withdraw amount must be greater than zero")]
     ZeroWithdraw {},
+
+    // ---- v2 ClaimRemote ----
+    #[error("sender is not a registered remote attestor")]
+    NotAttestor {},
+
+    #[error("no remote binding for operator {operator} on domain {domain}")]
+    NoBinding { operator: String, domain: u32 },
+
+    #[error("no remote reward configured for domain {domain}")]
+    NoRemoteReward { domain: u32 },
+
+    #[error("remote delivery already paid: {id} (to {executor})")]
+    RemoteAlreadyClaimed { id: String, executor: String },
+
+    #[error("attestor already attested message {id}")]
+    AlreadyAttested { id: String },
+
+    #[error("remote quorum must be >= 1 and <= number of attestors")]
+    BadRemoteQuorum {},
 }

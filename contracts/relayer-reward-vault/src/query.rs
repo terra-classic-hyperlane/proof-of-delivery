@@ -101,3 +101,75 @@ pub fn solvency(deps: Deps, env: Env) -> Result<SolvencyResponse, ContractError>
         claims_payable,
     })
 }
+
+// ---------------------------------------------------------------------------
+// v2 — ClaimRemote
+// ---------------------------------------------------------------------------
+use crate::msg::{
+    RemoteAttestationsResponse, RemoteBindingResponse, RemoteClaimedResponse,
+    RemoteConfigResponse, RemoteRewardResponse,
+};
+use crate::state::{
+    REMOTE_ATTESTS, REMOTE_BINDINGS, REMOTE_CLAIMED, REMOTE_CONFIG, REMOTE_REWARDS,
+    TOTAL_REMOTE_PAID,
+};
+
+pub fn remote_config(deps: Deps) -> Result<RemoteConfigResponse, ContractError> {
+    let rc = REMOTE_CONFIG.may_load(deps.storage)?.unwrap_or_default();
+    Ok(RemoteConfigResponse {
+        attestors: rc.attestors,
+        quorum: rc.quorum,
+        total_remote_paid: TOTAL_REMOTE_PAID.may_load(deps.storage)?.unwrap_or_default(),
+    })
+}
+
+pub fn remote_binding(
+    deps: Deps,
+    operator: String,
+    domain: u32,
+) -> Result<RemoteBindingResponse, ContractError> {
+    let operator = deps.api.addr_validate(&operator)?;
+    Ok(RemoteBindingResponse {
+        remote_address: REMOTE_BINDINGS.may_load(deps.storage, (&operator, domain))?,
+    })
+}
+
+pub fn remote_reward(deps: Deps, domain: u32) -> Result<RemoteRewardResponse, ContractError> {
+    Ok(RemoteRewardResponse {
+        reward: REMOTE_REWARDS.may_load(deps.storage, domain)?,
+    })
+}
+
+pub fn remote_claimed(
+    deps: Deps,
+    message_id: cosmwasm_std::HexBinary,
+) -> Result<RemoteClaimedResponse, ContractError> {
+    let rec = REMOTE_CLAIMED.may_load(deps.storage, message_id.to_vec())?;
+    Ok(match rec {
+        Some(r) => RemoteClaimedResponse {
+            claimed: true,
+            executor: Some(r.executor),
+            domain: Some(r.domain),
+            amount: Some(r.amount),
+            claimed_at_block: Some(r.claimed_at_block),
+        },
+        None => RemoteClaimedResponse {
+            claimed: false,
+            executor: None,
+            domain: None,
+            amount: None,
+            claimed_at_block: None,
+        },
+    })
+}
+
+pub fn remote_attestations(
+    deps: Deps,
+    message_id: cosmwasm_std::HexBinary,
+) -> Result<RemoteAttestationsResponse, ContractError> {
+    Ok(RemoteAttestationsResponse {
+        attestations: REMOTE_ATTESTS
+            .may_load(deps.storage, message_id.to_vec())?
+            .unwrap_or_default(),
+    })
+}

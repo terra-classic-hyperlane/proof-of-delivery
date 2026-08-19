@@ -8,7 +8,11 @@ use cosmwasm_std::{
 use crate::error::ContractError;
 use crate::mailbox::{hex, load_delivery};
 use crate::msg::InstantiateMsg;
-use crate::state::{ClaimRecord, Config, CLAIMED, CONFIG, TOTAL_CLAIMS, TOTAL_PAID};
+use crate::state::{
+    ClaimRecord, Config, RemoteClaimRecord, RemoteConfig, CLAIMED, CONFIG, REMOTE_ATTESTS,
+    REMOTE_BINDINGS, REMOTE_CLAIMED, REMOTE_CONFIG, REMOTE_REWARDS, TOTAL_CLAIMS, TOTAL_PAID,
+    TOTAL_REMOTE_PAID,
+};
 
 pub fn instantiate(
     deps: DepsMut,
@@ -248,4 +252,197 @@ pub fn withdraw_surplus(
         .add_attribute("action", "withdraw_surplus")
         .add_attribute("to", to)
         .add_attribute("amount", amount))
+}
+
+// ---------------------------------------------------------------------------
+// v2 — ClaimRemote (taxa de origem por entrega remota atestada)
+// ---------------------------------------------------------------------------
+
+pub fn set_remote_operators(
+    deps: DepsMut,
+    info: MessageInfo,
+    attestors: Vec<String>,
+    quorum: u32,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(info.sender == config.owner, ContractError::Unauthorized {});
+    let attestors: Vec<_> = attestors
+        .iter()
+        .map(|a| deps.api.addr_validate(a))
+        .collect::<Result<_, _>>()?;
+    ensure!(
+        quorum >= 1 && (quorum as usize) <= attestors.len(),
+        ContractError::BadRemoteQuorum {}
+    );
+    REMOTE_CONFIG.save(deps.storage, &RemoteConfig { attestors, quorum })?;
+    Ok(Response::new()
+        .add_attribute("action", "set_remote_operators")
+        .add_attribute("quorum", quorum.to_string()))
+}
+
+pub fn set_remote_binding(
+    deps: DepsMut,
+    info: MessageInfo,
+    operator: String,
+    domain: u32,
+    remote_address: Option<String>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(info.sender == config.owner, ContractError::Unauthorized {});
+    let operator = deps.api.addr_validate(&operator)?;
+    match &remote_address {
+        Some(addr) => {
+            ensure!(
+                !addr.is_empty() && addr.len() <= 100,
+                ContractError::Std(cosmwasm_std::StdError::generic_err("invalid remote address"))
+            );
+            // EVM: normaliza p/ minúsculo; base58 (Solana) é case-sensitive
+            let normalized = if addr.starts_with("0x") { addr.to_lowercase() } else { addr.clone() };
+            REMOTE_BINDINGS.save(deps.storage, (&operator, domain), &normalized)?;
+        }
+        None => REMOTE_BINDINGS.remove(deps.storage, (&operator, domain)),
+    }
+    Ok(Response::new()
+        .add_attribute("action", "set_remote_binding")
+        .add_attribute("operator", operator)
+        .add_attribute("domain", domain.to_string())
+        .add_attribute("remote_address", remote_address.unwrap_or_else(|| "(removed)".into())))
+}
+
+pub fn set_remote_reward(
+    deps: DepsMut,
+    info: MessageInfo,
+    domain: u32,
+    reward: Uint128,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(info.sender == config.owner, ContractError::Unauthorized {});
+    if reward.is_zero() {
+        REMOTE_REWARDS.remove(deps.storage, domain);
+    } else {
+        REMOTE_REWARDS.save(deps.storage, domain, &reward)?;
+    }
+    Ok(Response::new()
+        .add_attribute("action", "set_remote_reward")
+        .add_attribute("domain", domain.to_string())
+        .add_attribute("reward", reward))
+}
+
+/// Atesta entregas remotas e paga quando o quórum concorda. ATÔMICO como o
+/// `Claim`: id inválido/duplicado/já pago reverte o lote inteiro.
+pub fn attest_remote_delivery(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    domain: u32,
+    message_ids: Vec<HexBinary>,
+    executor: Option<String>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(!config.paused, ContractError::Paused {});
+    ensure!(!message_ids.is_empty(), ContractError::EmptyBatch {});
+
+    let rc = REMOTE_CONFIG.may_load(deps.storage)?.unwrap_or_default();
+    ensure!(rc.attestors.contains(&info.sender), ContractError::NotAttestor {});
+
+    let executor = match executor {
+        Some(a) => deps.api.addr_validate(&a)?,
+        None => info.sender.clone(),
+    };
+    // o executor precisa de vínculo p/ o domínio — é o elo de identidade
+    REMOTE_BINDINGS
+        .may_load(deps.storage, (&executor, domain))?
+        .ok_or_else(|| ContractError::NoBinding {
+            operator: executor.to_string(),
+            domain,
+        })?;
+    let reward = REMOTE_REWARDS
+        .may_load(deps.storage, domain)?
+        .filter(|r| !r.is_zero())
+        .ok_or(ContractError::NoRemoteReward { domain })?;
+
+    let mut seen: BTreeSet<Vec<u8>> = BTreeSet::new();
+    let mut paid: Vec<String> = vec![];
+    let mut pending: Vec<String> = vec![];
+    for raw_id in &message_ids {
+        let id = raw_id.as_slice();
+        ensure!(id.len() == 32, ContractError::InvalidMessageId { len: id.len() });
+        ensure!(seen.insert(id.to_vec()), ContractError::DuplicatedId { id: hex(id) });
+
+        if let Some(prev) = REMOTE_CLAIMED.may_load(deps.storage, id.to_vec())? {
+            return Err(ContractError::RemoteAlreadyClaimed {
+                id: hex(id),
+                executor: prev.executor.to_string(),
+            });
+        }
+        let mut atts = REMOTE_ATTESTS
+            .may_load(deps.storage, id.to_vec())?
+            .unwrap_or_default();
+        ensure!(
+            !atts.iter().any(|(a, _)| *a == info.sender),
+            ContractError::AlreadyAttested { id: hex(id) }
+        );
+        atts.push((info.sender.clone(), executor.clone()));
+
+        let agree = atts.iter().filter(|(_, e)| *e == executor).count() as u32;
+        if agree >= rc.quorum {
+            // effects-first: marca pago ANTES do BankMsg
+            REMOTE_CLAIMED.save(
+                deps.storage,
+                id.to_vec(),
+                &RemoteClaimRecord {
+                    executor: executor.clone(),
+                    domain,
+                    amount: reward,
+                    claimed_at_block: env.block.height,
+                },
+            )?;
+            REMOTE_ATTESTS.remove(deps.storage, id.to_vec());
+            paid.push(hex(id));
+        } else {
+            REMOTE_ATTESTS.save(deps.storage, id.to_vec(), &atts)?;
+            pending.push(hex(id));
+        }
+    }
+
+    let mut resp = Response::new()
+        .add_attribute("action", "attest_remote_delivery")
+        .add_attribute("domain", domain.to_string())
+        .add_attribute("attestor", info.sender.clone())
+        .add_attribute("executor", executor.clone())
+        .add_attribute("paid", paid.len().to_string())
+        .add_attribute("pending_quorum", pending.len().to_string());
+    if !pending.is_empty() {
+        resp = resp.add_attribute("pending_ids", pending.join(","));
+    }
+
+    if !paid.is_empty() {
+        let total = reward
+            .checked_mul(Uint128::from(paid.len() as u128))
+            .map_err(cosmwasm_std::StdError::overflow)?;
+        let pool = deps
+            .querier
+            .query_balance(&env.contract.address, &config.denom)?;
+        ensure!(
+            pool.amount >= total,
+            ContractError::InsufficientPool {
+                needed: total.to_string(),
+                available: pool.amount.to_string(),
+                denom: config.denom.clone(),
+            }
+        );
+        let cur = TOTAL_REMOTE_PAID.may_load(deps.storage)?.unwrap_or_default();
+        TOTAL_REMOTE_PAID.save(
+            deps.storage,
+            &cur.checked_add(total).map_err(cosmwasm_std::StdError::overflow)?,
+        )?;
+        resp = resp
+            .add_message(BankMsg::Send {
+                to_address: executor.to_string(),
+                amount: vec![Coin { denom: config.denom, amount: total }],
+            })
+            .add_attribute("total", total)
+            .add_attribute("paid_ids", paid.join(","));
+    }
+    Ok(resp)
 }

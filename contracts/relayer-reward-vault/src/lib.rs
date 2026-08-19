@@ -77,6 +77,18 @@ pub mod entry {
             ExecuteMsg::WithdrawSurplus { to, amount } => {
                 crate::execute::withdraw_surplus(deps, env, info, to, amount)
             }
+            ExecuteMsg::SetRemoteOperators { attestors, quorum } => {
+                crate::execute::set_remote_operators(deps, info, attestors, quorum)
+            }
+            ExecuteMsg::SetRemoteBinding { operator, domain, remote_address } => {
+                crate::execute::set_remote_binding(deps, info, operator, domain, remote_address)
+            }
+            ExecuteMsg::SetRemoteReward { domain, reward } => {
+                crate::execute::set_remote_reward(deps, info, domain, reward)
+            }
+            ExecuteMsg::AttestRemoteDelivery { domain, message_ids, executor } => {
+                crate::execute::attest_remote_delivery(deps, env, info, domain, message_ids, executor)
+            }
         }
     }
 
@@ -94,6 +106,19 @@ pub mod entry {
                 to_json_binary(&crate::query::layout_check(deps, message_id)?)
             }
             QueryMsg::Solvency {} => to_json_binary(&crate::query::solvency(deps, env)?),
+            QueryMsg::RemoteConfig {} => to_json_binary(&crate::query::remote_config(deps)?),
+            QueryMsg::RemoteBinding { operator, domain } => {
+                to_json_binary(&crate::query::remote_binding(deps, operator, domain)?)
+            }
+            QueryMsg::RemoteReward { domain } => {
+                to_json_binary(&crate::query::remote_reward(deps, domain)?)
+            }
+            QueryMsg::RemoteClaimed { message_id } => {
+                to_json_binary(&crate::query::remote_claimed(deps, message_id)?)
+            }
+            QueryMsg::RemoteAttestations { message_id } => {
+                to_json_binary(&crate::query::remote_attestations(deps, message_id)?)
+            }
         };
         Ok(res?)
     }

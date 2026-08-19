@@ -90,6 +90,8 @@ Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 
 ## Documentação de auditoria e operação
 
+- **`docs/CLAIM-REMOTO.md`** — Vault v2: como as 4 chains se amarram (vínculos de endereço, atestação com quórum, taxa de origem paga ao operador).
+
 - **`docs/REGISTRO-AUDITORIA.md`** — TODOS os endereços/operadores/parâmetros das 4 redes + verificação em 1 linha por invariante.
 - **`docs/OPERACAO-CONTRATOS.md`** — como executar cada contrato: trocar owner, operadores, quórum, faixas, preço, pausa, saques, handoff.
 - **`docs/ORACLE-AGENT.md`** — instalação/execução do agente de preços (modo âncora, chaves hex, systemd, logs).

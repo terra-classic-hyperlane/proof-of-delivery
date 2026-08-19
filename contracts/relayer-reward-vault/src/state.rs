@@ -35,3 +35,37 @@ pub const CLAIMED: Map<Vec<u8>, ClaimRecord> = Map::new("claimed");
 /// Métricas agregadas (auditoria barata sem varrer o Map).
 pub const TOTAL_PAID: Item<Uint128> = Item::new("total_paid");
 pub const TOTAL_CLAIMS: Item<u64> = Item::new("total_claims");
+
+// ---------------------------------------------------------------------------
+// v2 — ClaimRemote: pagamento da taxa de ORIGEM por entregas em chains remotas,
+// via atestação com quórum (o TC não enxerga outras chains; a confiança fica
+// no conjunto de atestadores + vínculos, ambos definidos pelo owner/governança).
+// ---------------------------------------------------------------------------
+
+#[cw_serde]
+#[derive(Default)]
+pub struct RemoteConfig {
+    /// Operadores autorizados a atestar entregas remotas.
+    pub attestors: Vec<Addr>,
+    /// Atestações CONCORDANTES (mesmo executor) necessárias p/ pagar.
+    pub quorum: u32,
+}
+
+#[cw_serde]
+pub struct RemoteClaimRecord {
+    pub executor: Addr,
+    pub domain: u32,
+    pub amount: Uint128,
+    pub claimed_at_block: u64,
+}
+
+pub const REMOTE_CONFIG: Item<RemoteConfig> = Item::new("remote_config");
+/// (operador TC, domain) → endereço remoto vinculado (hex 0x… minúsculo ou base58).
+pub const REMOTE_BINDINGS: Map<(&Addr, u32), String> = Map::new("remote_bindings");
+/// domain → recompensa fixa por entrega remota (0/ausente = domínio desativado).
+pub const REMOTE_REWARDS: Map<u32, Uint128> = Map::new("remote_rewards");
+/// message_id → pagamento remoto efetuado (existência = anti-duplo, effects-first).
+pub const REMOTE_CLAIMED: Map<Vec<u8>, RemoteClaimRecord> = Map::new("remote_claimed");
+/// message_id → atestações acumuladas (atestador, executor apontado).
+pub const REMOTE_ATTESTS: Map<Vec<u8>, Vec<(Addr, Addr)>> = Map::new("remote_attests");
+pub const TOTAL_REMOTE_PAID: Item<Uint128> = Item::new("total_remote_paid");

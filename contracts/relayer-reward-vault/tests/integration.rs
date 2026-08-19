@@ -1015,3 +1015,197 @@ fn solvency_reports_capacity() {
     assert_eq!(sol.pool, coin(5 * REWARD + 123, DENOM));
     assert_eq!(sol.claims_payable.u128(), 5);
 }
+
+// ===========================================================================
+// v2 — ClaimRemote: atestação de entregas remotas
+// ===========================================================================
+use relayer_reward_vault::msg::{RemoteClaimedResponse, RemoteConfigResponse};
+
+const DOM_SOL: u32 = 1_399_811_149;
+const REMOTE_REWARD: u128 = 33_000_000; // 33 LUNC
+
+/// habilita o modo remoto: owner registra atestadores/quórum, vínculo e recompensa
+fn setup_remote(s: &mut Setup, attestors: &[&Addr], quorum: u32) {
+    let owner = s.gov.clone();
+    s.app
+        .execute_contract(
+            owner.clone(),
+            s.vault.clone(),
+            &ExecuteMsg::SetRemoteOperators {
+                attestors: attestors.iter().map(|a| a.to_string()).collect(),
+                quorum,
+            },
+            &[],
+        )
+        .unwrap();
+    for a in attestors {
+        s.app
+            .execute_contract(
+                owner.clone(),
+                s.vault.clone(),
+                &ExecuteMsg::SetRemoteBinding {
+                    operator: a.to_string(),
+                    domain: DOM_SOL,
+                    remote_address: Some(format!("PbEo{}", a)),
+                },
+                &[],
+            )
+            .unwrap();
+    }
+    s.app
+        .execute_contract(
+            owner,
+            s.vault.clone(),
+            &ExecuteMsg::SetRemoteReward {
+                domain: DOM_SOL,
+                reward: Uint128::from(REMOTE_REWARD),
+            },
+            &[],
+        )
+        .unwrap();
+}
+
+#[test]
+fn remote_quorum_1_paga_na_hora() {
+    let mut s = setup(1_000_000_000);
+    let att = s.relayer_a.clone();
+    setup_remote(&mut s, &[&att], 1);
+    let before = balance(&s.app, &att);
+    s.app
+        .execute_contract(
+            att.clone(),
+            s.vault.clone(),
+            &ExecuteMsg::AttestRemoteDelivery {
+                domain: DOM_SOL,
+                message_ids: vec![msg_id(0xA1), msg_id(0xA2)],
+                executor: None,
+            },
+            &[],
+        )
+        .unwrap();
+    assert_eq!(balance(&s.app, &att), before + 2 * REMOTE_REWARD);
+    let r: RemoteClaimedResponse = s
+        .app
+        .wrap()
+        .query_wasm_smart(&s.vault, &QueryMsg::RemoteClaimed { message_id: msg_id(0xA1) })
+        .unwrap();
+    assert!(r.claimed);
+    assert_eq!(r.executor.unwrap(), att);
+}
+
+#[test]
+fn remote_id_nao_paga_duas_vezes() {
+    let mut s = setup(1_000_000_000);
+    let att = s.relayer_a.clone();
+    setup_remote(&mut s, &[&att], 1);
+    let msg = ExecuteMsg::AttestRemoteDelivery {
+        domain: DOM_SOL,
+        message_ids: vec![msg_id(0xB1)],
+        executor: None,
+    };
+    s.app.execute_contract(att.clone(), s.vault.clone(), &msg, &[]).unwrap();
+    let err = s.app.execute_contract(att.clone(), s.vault.clone(), &msg, &[]).unwrap_err();
+    assert!(err.root_cause().to_string().contains("already paid"));
+}
+
+#[test]
+fn remote_quorum_2_espera_segunda_atestacao_concordante() {
+    let mut s = setup(1_000_000_000);
+    let a1 = s.relayer_a.clone();
+    let a2 = Addr::unchecked("operador2");
+    setup_remote(&mut s, &[&a1, &a2], 2);
+    let before = balance(&s.app, &a1);
+    // a1 atesta a própria entrega — ainda sem quórum, nada pago
+    s.app
+        .execute_contract(
+            a1.clone(),
+            s.vault.clone(),
+            &ExecuteMsg::AttestRemoteDelivery {
+                domain: DOM_SOL,
+                message_ids: vec![msg_id(0xC1)],
+                executor: None,
+            },
+            &[],
+        )
+        .unwrap();
+    assert_eq!(balance(&s.app, &a1), before);
+    // a2 CONCORDA (executor = a1) — fecha o quórum e paga a1
+    s.app
+        .execute_contract(
+            a2,
+            s.vault.clone(),
+            &ExecuteMsg::AttestRemoteDelivery {
+                domain: DOM_SOL,
+                message_ids: vec![msg_id(0xC1)],
+                executor: Some(a1.to_string()),
+            },
+            &[],
+        )
+        .unwrap();
+    assert_eq!(balance(&s.app, &a1), before + REMOTE_REWARD);
+}
+
+#[test]
+fn remote_rejeita_nao_atestador_sem_vinculo_e_dominio_sem_recompensa() {
+    let mut s = setup(1_000_000_000);
+    let att = s.relayer_a.clone();
+    setup_remote(&mut s, &[&att], 1);
+    // não-atestador
+    let err = s
+        .app
+        .execute_contract(
+            Addr::unchecked("intruso"),
+            s.vault.clone(),
+            &ExecuteMsg::AttestRemoteDelivery {
+                domain: DOM_SOL,
+                message_ids: vec![msg_id(0xD1)],
+                executor: None,
+            },
+            &[],
+        )
+        .unwrap_err();
+    assert!(err.root_cause().to_string().contains("not a registered remote attestor"));
+    // domínio sem recompensa
+    let err = s
+        .app
+        .execute_contract(
+            att.clone(),
+            s.vault.clone(),
+            &ExecuteMsg::AttestRemoteDelivery {
+                domain: 56,
+                message_ids: vec![msg_id(0xD2)],
+                executor: None,
+            },
+            &[],
+        )
+        .unwrap_err();
+    let texto = err.root_cause().to_string();
+    assert!(texto.contains("no remote binding") || texto.contains("no remote reward"), "{texto}");
+}
+
+#[test]
+fn remote_config_e_total_pago_consultaveis() {
+    let mut s = setup(1_000_000_000);
+    let att = s.relayer_a.clone();
+    setup_remote(&mut s, &[&att], 1);
+    s.app
+        .execute_contract(
+            att.clone(),
+            s.vault.clone(),
+            &ExecuteMsg::AttestRemoteDelivery {
+                domain: DOM_SOL,
+                message_ids: vec![msg_id(0xE1)],
+                executor: None,
+            },
+            &[],
+        )
+        .unwrap();
+    let rc: RemoteConfigResponse = s
+        .app
+        .wrap()
+        .query_wasm_smart(&s.vault, &QueryMsg::RemoteConfig {})
+        .unwrap();
+    assert_eq!(rc.quorum, 1);
+    assert_eq!(rc.attestors, vec![att]);
+    assert_eq!(rc.total_remote_paid, Uint128::from(REMOTE_REWARD));
+}
