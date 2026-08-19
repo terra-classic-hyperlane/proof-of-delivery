@@ -45,6 +45,27 @@ Domínios: TC `132556` · BSC `56` · ETH `1` · Solana `1399811149`.
 
 ---
 
+## A0. Deploy + config do corredor TC↔BSC (scripts prontos)
+
+Ordem de execução (LOCAL — nunca na VPS):
+```bash
+# 1) deploy do vault-recibo da BSC + config do lado BSC (usa o TC vault como constante)
+PRIVATE_KEY=0x<chave_bsc> bash deploy/evm-vault-receipt.sh bsc
+#    → imprime BSC_VAULT=0x…  (novo endereço)
+
+# 2) migrate do vault do TC (mesmo endereço, pool preservado) + config do lado TC
+BSC_VAULT=0x<do_passo_1> bash deploy/tc-migrate-vault-receipt.sh
+#    → pede a senha do keyring (chave hyperlane-deploy)
+
+# 3) semear o pool da BSC (o do TC já tem 5.000 LUNC); qualquer valor:
+cast send --legacy 0x<BSC_VAULT> --value 5000000000000000 --private-key 0x<bsc> --rpc-url https://bsc-dataseed.bnbchain.org
+```
+Cada script é idempotente (retoma pelo `.state`) e termina com a verificação
+on-chain dos routers/rewards/registro. A rota Hyperlane do recibo usa o ISM
+default (o corredor TC↔BSC já é validado nos 2 sentidos pelo warp).
+
+Config manual equivalente (referência) abaixo.
+
 ## A. Setup único (owner) — por corredor
 
 Para o corredor X→Y (origem X paga; entrega em Y; recibo Y→X):
