@@ -1,4 +1,3 @@
-#![allow(unused_imports)] // send_receipt_atomic (introspection+CPI) usa estes; a ser adicionado
 //! Recibo trustless na Solana (espelho do TC↔BSC).
 //!
 //! DOIS papéis, como nos vaults EVM/CW:
@@ -14,16 +13,16 @@ use solana_program::{
     account_info::{next_account_info, AccountInfo},
     hash::hashv,
     instruction::{AccountMeta, Instruction as SolInstruction},
-    program::{invoke, invoke_signed},
+    program::invoke_signed,
     entrypoint::ProgramResult,
     program_error::ProgramError,
     pubkey::Pubkey,
     rent::Rent,
-    system_instruction, system_program,
+    system_program,
     sysvar::{instructions as sysvar_instructions, Sysvar},
 };
 
-use crate::{custom, ensure, load_streaming, store, create_pda, SEED_PREFIX, SEED_SEP};
+use crate::{create_pda, custom, ensure, load_streaming, SEED_PREFIX, SEED_SEP};
 
 // ---- endereços de produção (Solana mainnet) ----
 /// Mailbox Sealevel em produção.
@@ -170,7 +169,7 @@ pub fn handle(
     ensure(!body.is_empty() && body.len() % 36 == 0, custom(ERR_MALFORMED_RECEIPT))?;
     let rent_floor = Rent::get()?.minimum_balance(config_info.data_len());
     for chunk in body.chunks(36) {
-        let index = u32::from_le_bytes([chunk[32], chunk[33], chunk[34], chunk[35]]);
+        let index = u32::from_be_bytes([chunk[32], chunk[33], chunk[34], chunk[35]]);
         // resolve o pubkey de pagamento do operador N
         let opsol_info = next_account_info(iter)?;
         let (exp_opsol, _) = operator_sol_pda(program_id, index);
@@ -201,4 +200,202 @@ pub fn empty_metas() -> ProgramResult {
     // Vec<SerializableAccountMeta> vazio = 4 bytes de length 0
     solana_program::program::set_return_data(&0u32.to_le_bytes());
     Ok(())
+}
+
+// ===========================================================================
+// PAPEL DESTINO — send_receipt_atomic (na MESMA tx da entrega TC→Solana)
+// ===========================================================================
+// Prova, por INTROSPECTION, que a instrução IRMÃ `InboxProcess` do Mailbox
+// entregou a mensagem (executor = conta 0 dela) e despacha o recibo de volta.
+//
+// Contas:
+//  0 keeper (signer, payer)
+//  1 instructions sysvar
+//  2 receipted PDA (w) — anti-duplo por message_id (keeper paga o rent)
+//  3 system program
+//  4 router PDA do `origin` (ro) — dá o recipient (vault de origem, 32B)
+//  5 operator_of_local PDA do executor (ro) — dá o índice do operador
+//  --- contas do OutboxDispatch (CPI no Mailbox) ---
+//  6 mailbox program
+//  7 outbox PDA (w)
+//  8 dispatch authority PDA do pod (assina via invoke_signed)
+//  9 spl_noop program
+// 10 unique message account (signer, fresh)
+// 11 dispatched message PDA (w)
+pub fn send_receipt_atomic(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let keeper = next_account_info(iter)?;
+    ensure(keeper.is_signer, ProgramError::MissingRequiredSignature)?;
+    let ix_sysvar = next_account_info(iter)?;
+    ensure(*ix_sysvar.key == sysvar_instructions::id(), custom(ERR_NO_INBOX_PROCESS))?;
+
+    // ---- introspection: acha a InboxProcess irmã e extrai msg + executor ----
+    let (message, executor) = find_inbox_process(ix_sysvar)?;
+    let message_id = hashv(&[&message]).to_bytes();
+    let origin = origin_of(&message)?;
+
+    // anti-duplo: cria a PDA receipted[id] (falha se já existe = já enviado)
+    let receipted_info = next_account_info(iter)?;
+    let system_info_a = next_account_info(iter)?;
+    let (exp_receipted, rc_bump) = remote_claimed_pda(program_id, &message_id);
+    ensure(*receipted_info.key == exp_receipted, ProgramError::InvalidSeeds)?;
+    ensure(receipted_info.data_is_empty(), custom(ERR_ALREADY_PAID))?;
+    create_pda(
+        keeper, receipted_info, system_info_a, program_id, 8,
+        &[SEED_PREFIX, SEED_SEP, b"rclm", SEED_SEP, &message_id, &[rc_bump]],
+    )?;
+
+    // router do origin → recipient (o vault de origem, 32B)
+    let router_info = next_account_info(iter)?;
+    let (exp_router, _) = remote_router_pda(program_id, origin);
+    ensure(*router_info.key == exp_router && router_info.owner == program_id, custom(ERR_NO_ROUTER))?;
+    let router: Bytes32Val = load_streaming(router_info)?;
+
+    // executor → índice do operador (reverse-lookup)
+    let oploc_info = next_account_info(iter)?;
+    let (exp_oploc, _) = operator_of_local_pda(program_id, &executor);
+    ensure(*oploc_info.key == exp_oploc && oploc_info.owner == program_id, custom(ERR_UNKNOWN_EXECUTOR))?;
+    let idx: U32Val = load_streaming(oploc_info)?;
+
+    // corpo do recibo: message_id(32) + índice(4 BE) — igual EVM/CW
+    let mut body = message_id.to_vec();
+    body.extend_from_slice(&idx.value.to_be_bytes());
+
+    // ---- CPI OutboxDispatch (recibo → origin) assinando com a dispatch authority ----
+    let mailbox_prog = next_account_info(iter)?;
+    ensure(*mailbox_prog.key == MAILBOX_PROGRAM, custom(ERR_BAD_MAILBOX))?;
+    let outbox_info = next_account_info(iter)?;
+    let dispatch_auth_info = next_account_info(iter)?;
+    let spl_noop_info = next_account_info(iter)?;
+    let unique_info = next_account_info(iter)?;
+    let dispatched_info = next_account_info(iter)?;
+
+    let (exp_auth, auth_bump) = dispatch_authority_pda(program_id);
+    ensure(*dispatch_auth_info.key == exp_auth, ProgramError::InvalidSeeds)?;
+
+    // dados: [4u8 = variante OutboxDispatch][borsh(OutboxDispatch)]
+    #[derive(BorshSerialize)]
+    struct OutboxDispatch {
+        sender: Pubkey,
+        destination_domain: u32,
+        recipient: [u8; 32],
+        message_body: Vec<u8>,
+    }
+    let dispatch = OutboxDispatch {
+        sender: *program_id,
+        destination_domain: origin,
+        recipient: router.value,
+        message_body: body,
+    };
+    let mut data = vec![4u8];
+    data.extend_from_slice(&borsh::to_vec(&dispatch).map_err(|_| ProgramError::InvalidInstructionData)?);
+
+    let metas = vec![
+        AccountMeta::new(*outbox_info.key, false),
+        AccountMeta::new_readonly(*dispatch_auth_info.key, true),
+        AccountMeta::new_readonly(system_program::id(), false),
+        AccountMeta::new_readonly(*spl_noop_info.key, false),
+        AccountMeta::new(*keeper.key, true),
+        AccountMeta::new(*unique_info.key, true),
+        AccountMeta::new(*dispatched_info.key, false),
+    ];
+    let ix = SolInstruction { program_id: MAILBOX_PROGRAM, accounts: metas, data };
+    invoke_signed(
+        &ix,
+        &[
+            outbox_info.clone(),
+            dispatch_auth_info.clone(),
+            system_info_a.clone(),
+            spl_noop_info.clone(),
+            keeper.clone(),
+            unique_info.clone(),
+            dispatched_info.clone(),
+        ],
+        &[&[b"hyperlane_dispatcher", b"-", b"dispatch_authority", &[auth_bump]]],
+    )?;
+    Ok(())
+}
+
+/// Percorre as instruções da tx e retorna (message, executor) da InboxProcess do
+/// Mailbox real. Falha se não houver — garante que a entrega ocorreu NESTA tx.
+fn find_inbox_process(ix_sysvar: &AccountInfo) -> Result<(Vec<u8>, Pubkey), ProgramError> {
+    let mut i = 0usize;
+    while let Ok(ix) = sysvar_instructions::load_instruction_at_checked(i, ix_sysvar) {
+        // Mailbox + variante InboxProcess (=1 no enum borsh) — conta 0 = payer/executor
+        if ix.program_id == MAILBOX_PROGRAM && ix.data.first() == Some(&1u8) && !ix.accounts.is_empty() {
+            let message = parse_inbox_message(&ix.data)?;
+            let executor = ix.accounts[0].pubkey;
+            return Ok((message, executor));
+        }
+        i += 1;
+    }
+    Err(custom(ERR_NO_INBOX_PROCESS))
+}
+
+/// dados da InboxProcess: [1][metadata: len u32 LE + bytes][message: len u32 LE + bytes]
+fn parse_inbox_message(data: &[u8]) -> Result<Vec<u8>, ProgramError> {
+    ensure(data.len() >= 5, ProgramError::InvalidInstructionData)?;
+    let mut o = 1usize;
+    let mlen = u32::from_le_bytes(data[o..o + 4].try_into().unwrap()) as usize;
+    o += 4 + mlen; // pula metadata
+    ensure(data.len() >= o + 4, ProgramError::InvalidInstructionData)?;
+    let msglen = u32::from_le_bytes(data[o..o + 4].try_into().unwrap()) as usize;
+    o += 4;
+    ensure(data.len() >= o + msglen, ProgramError::InvalidInstructionData)?;
+    Ok(data[o..o + msglen].to_vec())
+}
+
+// ===========================================================================
+// Admin (registry) — gated por operador (config)
+// ===========================================================================
+use crate::Config;
+
+fn require_operator(config_info: &AccountInfo, signer: &AccountInfo, program_id: &Pubkey) -> ProgramResult {
+    ensure(signer.is_signer, ProgramError::MissingRequiredSignature)?;
+    ensure(config_info.owner == program_id, ProgramError::IncorrectProgramId)?;
+    let config: Config = load_streaming(config_info)?;
+    ensure(config.operators.iter().any(|o| o == signer.key), custom(crate::ERR_NOT_OPERATOR))?;
+    Ok(())
+}
+
+/// [operator signer w(payer), config, router PDA w, system]
+pub fn set_remote_router(program_id: &Pubkey, accounts: &[AccountInfo], domain: u32, router: [u8; 32]) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let signer = next_account_info(iter)?;
+    let config_info = next_account_info(iter)?;
+    require_operator(config_info, signer, program_id)?;
+    let router_info = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let (exp, bump) = remote_router_pda(program_id, domain);
+    ensure(*router_info.key == exp, ProgramError::InvalidSeeds)?;
+    if router_info.data_is_empty() {
+        create_pda(signer, router_info, system, program_id, 32,
+            &[SEED_PREFIX, SEED_SEP, b"rrout", SEED_SEP, &domain.to_le_bytes(), &[bump]])?;
+    }
+    crate::store(router_info, &Bytes32Val { value: router })
+}
+
+/// [operator signer w(payer), config, opsol PDA w, oploc PDA w, system]
+pub fn set_operator_sol(program_id: &Pubkey, accounts: &[AccountInfo], index: u32, operator: Pubkey) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let signer = next_account_info(iter)?;
+    let config_info = next_account_info(iter)?;
+    require_operator(config_info, signer, program_id)?;
+    let opsol_info = next_account_info(iter)?;
+    let oploc_info = next_account_info(iter)?;
+    let system = next_account_info(iter)?;
+    let (exp_sol, sol_bump) = operator_sol_pda(program_id, index);
+    ensure(*opsol_info.key == exp_sol, ProgramError::InvalidSeeds)?;
+    if opsol_info.data_is_empty() {
+        create_pda(signer, opsol_info, system, program_id, 32,
+            &[SEED_PREFIX, SEED_SEP, b"opsol", SEED_SEP, &index.to_le_bytes(), &[sol_bump]])?;
+    }
+    crate::store(opsol_info, &PubkeyVal { value: operator })?;
+    let (exp_loc, loc_bump) = operator_of_local_pda(program_id, &operator);
+    ensure(*oploc_info.key == exp_loc, ProgramError::InvalidSeeds)?;
+    if oploc_info.data_is_empty() {
+        create_pda(signer, oploc_info, system, program_id, 4,
+            &[SEED_PREFIX, SEED_SEP, b"oploc", SEED_SEP, operator.as_ref(), &[loc_bump]])?;
+    }
+    crate::store(oploc_info, &U32Val { value: index })
 }

@@ -26,6 +26,35 @@ pub fn process_instruction(
     accounts: &[AccountInfo],
     data: &[u8],
 ) -> ProgramResult {
+    use rrv::receipt;
+    // O Mailbox chama o recipient (nós) com um discriminador de 8 bytes da
+    // interface MessageRecipient — tratamos ANTES do roteamento por módulo.
+    if let Some(disc) = receipt::recipient_discriminator(data) {
+        if disc == receipt::HANDLE_DISC {
+            // borsh HandleInstruction { origin u32, sender H256(32), message Vec }
+            let rest = &data[8..];
+            let origin = u32::from_le_bytes(
+                rest.get(0..4).ok_or(ProgramError::InvalidInstructionData)?.try_into().unwrap(),
+            );
+            let sender: [u8; 32] = rest
+                .get(4..36)
+                .ok_or(ProgramError::InvalidInstructionData)?
+                .try_into()
+                .unwrap();
+            let mlen = u32::from_le_bytes(
+                rest.get(36..40).ok_or(ProgramError::InvalidInstructionData)?.try_into().unwrap(),
+            ) as usize;
+            let message = rest
+                .get(40..40 + mlen)
+                .ok_or(ProgramError::InvalidInstructionData)?;
+            return receipt::handle(program_id, accounts, origin, sender, message);
+        }
+        if disc == receipt::ISM_DISC {
+            return receipt::ism_response();
+        }
+        // HandleAccountMetas / IsmAccountMetas → metas vazias (o keeper monta)
+        return receipt::empty_metas();
+    }
     let (module, rest) = data
         .split_first()
         .ok_or(ProgramError::InvalidInstructionData)?;

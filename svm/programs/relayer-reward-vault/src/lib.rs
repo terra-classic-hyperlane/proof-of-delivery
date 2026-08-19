@@ -205,6 +205,14 @@ pub enum Instruction {
     /// [operator signer w (payer), config w, proposal w, system,
     ///  (WithdrawSurplus: + destino w)]
     SubmitAdminAction { envelope: AdminEnvelope },
+
+    // ---- recibo trustless (registry + destino) ----
+    /// [operator s w, config, router PDA w, system]
+    SetRemoteRouter { domain: u32, router: [u8; 32] },
+    /// [operator s w, config, opsol PDA w, oploc PDA w, system]
+    SetOperatorSol { index: u32, operator: Pubkey },
+    /// PAPEL DESTINO (keeper, MESMA tx da entrega). Contas: ver receipt::send_receipt_atomic.
+    SendReceiptAtomic {},
 }
 
 // ---------------------------------------------------------------------------
@@ -299,6 +307,13 @@ pub fn process_instruction(
         Instruction::SubmitAdminAction { envelope } => {
             submit_admin_action(program_id, accounts, envelope)
         }
+        Instruction::SetRemoteRouter { domain, router } => {
+            receipt::set_remote_router(program_id, accounts, domain, router)
+        }
+        Instruction::SetOperatorSol { index, operator } => {
+            receipt::set_operator_sol(program_id, accounts, index, operator)
+        }
+        Instruction::SendReceiptAtomic {} => receipt::send_receipt_atomic(program_id, accounts),
     }
 }
 
