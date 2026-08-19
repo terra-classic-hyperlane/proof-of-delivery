@@ -118,7 +118,9 @@ async function runTcClaims(chain, st, DRY) {
 // ---------------------------------------------------------------------------
 async function runEvmClaims(name, chain, st, DRY) {
   const { Contract, JsonRpcProvider, Wallet, id } = await import("ethers");
-  const provider = new JsonRpcProvider(chain.rpc);
+  // RPC próprio p/ claims (getLogs): batch DESLIGADO (dataseed da BSC rejeita
+  // eth_getLogs em batch) e endpoint alternativo onde o principal bloqueia logs.
+  const provider = new JsonRpcProvider(chain.claims.rpc ?? chain.rpc, undefined, { batchMaxCount: 1 });
   const current = await provider.getBlockNumber();
   if (st.cursor == null) {
     st.cursor = current;
@@ -138,16 +140,26 @@ async function runEvmClaims(name, chain, st, DRY) {
   const mailbox = new Contract(chain.claims.mailbox, MAILBOX_ABI, provider);
   const vault = new Contract(chain.claims.vault, VAULT_ABI, provider);
 
-  // varre em blocos de 2000 (limite de RPC público), no máx. 30 janelas/rodada
+  // varredura em janelas configuráveis (RPCs públicos variam MUITO no limite
+  // de eth_getLogs: 1rpc/BSC = 50 blocos; mevblocker/ETH aceita centenas)
+  const chunk = Number(chain.claims.chunkBlocks ?? 2000);
+  const maxWindows = Number(chain.claims.maxWindows ?? 30);
   const topic = id("ProcessId(bytes32)");
   let from = st.cursor + 1;
   const novos = [];
-  for (let n = 0; n < 30 && from <= current; n++) {
-    const to = Math.min(from + 1999, current);
-    const logs = await provider.getLogs({ address: chain.claims.mailbox, topics: [topic], fromBlock: from, toBlock: to });
-    for (const l of logs) novos.push(l.topics[1]);
-    st.cursor = to;
-    from = to + 1;
+  for (let n = 0; n < maxWindows && from <= current; n++) {
+    const to = Math.min(from + chunk - 1, current);
+    try {
+      const logs = await provider.getLogs({ address: chain.claims.mailbox, topics: [topic], fromBlock: from, toBlock: to });
+      for (const l of logs) novos.push(l.topics[1]);
+      st.cursor = to;
+      from = to + 1;
+    } catch (e) {
+      // RPC público intermitente: mantém o cursor e continua na PRÓXIMA rodada
+      log(name, `varredura interrompida no bloco ${from} (${String(e.message).slice(0, 60)}…) — retoma na próxima rodada`);
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 150)); // pacing p/ rate limit
   }
   if (from <= current) log(name, `varredura parcial (até bloco ${st.cursor}; continua na próxima rodada)`);
 

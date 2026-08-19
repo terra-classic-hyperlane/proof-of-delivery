@@ -77,7 +77,10 @@
         "enabled": true,
         "mailbox": "0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4",
         "vault": "0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D",
-        "relayer": "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291"
+        "relayer": "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291",
+        "rpc": "https://1rpc.io/bnb",
+        "chunkBlocks": 50,
+        "maxWindows": 300
       }
     },
     "ethereum": {
@@ -101,7 +104,10 @@
         "enabled": true,
         "mailbox": "0xc005dc82818d67AF737725bD4bf75435d065D239",
         "vault": "0xDf90d3b7FF98466E148B334128374807b3e89EbD",
-        "relayer": "0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae"
+        "relayer": "0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae",
+        "rpc": "https://rpc.mevblocker.io",
+        "chunkBlocks": 500,
+        "maxWindows": 60
       }
     },
     "solana": {
