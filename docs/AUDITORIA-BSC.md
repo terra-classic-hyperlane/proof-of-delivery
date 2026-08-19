@@ -51,3 +51,12 @@ cast call --rpc-url $RPC 0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923 "beneficiary
 cast call --rpc-url $RPC 0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5 "bounds(uint32)(uint128,uint128,uint128,uint128,bool)" 132556
 cast code --rpc-url $RPC 0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D   # bytecode do vault (comparar com forge build)
 ```
+
+## Vault v2 (ClaimRemote) — 19/08/2026
+
+Vaults EVM não são migráveis → **deploy novo** `0x1A41144ccbA0797BB0e9e448Aa3C330Eb68347D1`
+(v1 `0x8b3A9eEB…145D` deprecado, pool 0). `igp.setBeneficiary(v2)` ✓ ·
+atestador `0x8f08…5291` quórum 1 · vínculo dom 132556 → `terra1run9wz…` ·
+recompensa remota **2.259.538.750.000 wei** (= taxa real: (50k+200k overhead) ×
+gasPrice 1e10 × rate 9038155 / 1e10). Fluxo: msg despachada DA BSC + entregue
+no TC pelo operador → claim-agent atesta aqui → taxa em BNB volta ao operador.

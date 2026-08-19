@@ -76,7 +76,7 @@
       "claims": {
         "enabled": true,
         "mailbox": "0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4",
-        "vault": "0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D",
+        "vault": "0x1A41144ccbA0797BB0e9e448Aa3C330Eb68347D1",
         "relayer": "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291",
         "rpc": "https://1rpc.io/bnb",
         "chunkBlocks": 50,
