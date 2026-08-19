@@ -47,8 +47,9 @@ async function tcScan(chain, fromHeight, toHeight) {
       const sender = evs.find((e) => e.type === "message" && e.attributes.some((a) => a.key === "action"))
         ?.attributes.find((a) => a.key === "sender")?.value;
       if (sender !== chain.claims.relayer) continue;
-      const origin = evs.find((e) => e.type === "wasm-mailbox_process")
-        ?.attributes.find((a) => a.key === "origin")?.value;
+      const routerSender = evs.find((e) => e.type === "wasm-mailbox_process")
+        ?.attributes.find((a) => a.key === "sender")?.value ?? "";
+      const origin = Number((chain.claims.originSenders ?? {})[routerSender.toLowerCase()] ?? 0);
       for (const e of evs) {
         if (e.type !== "wasm-mailbox_process_id") continue;
         const id = e.attributes.find((a) => a.key === "message_id")?.value;
@@ -160,6 +161,7 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
   st.pending = claimables;
   if (!claimables.length) return;
 
+  if (chain.claims.localClaim === false) { return; }
   const sol = await ro.queryContractSmart(chain.claims.vault, { solvency: {} });
   const payable = Number(sol.claims_payable ?? sol.claimsPayable ?? 0);
   const lote = claimables.slice(0, Math.min(MAX_BATCH, payable));
@@ -182,9 +184,10 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
 // ---------------------------------------------------------------------------
 async function runEvmClaims(name, chain, st, DRY, state) {
   const { Contract, JsonRpcProvider, Wallet, id } = await import("ethers");
-  // RPC próprio p/ claims (getLogs): batch DESLIGADO (dataseed da BSC rejeita
-  // eth_getLogs em batch) e endpoint alternativo onde o principal bloqueia logs.
-  const provider = new JsonRpcProvider(chain.claims.rpc ?? chain.rpc, undefined, { batchMaxCount: 1 });
+  // DOIS providers: claims.rpc SÓ para getLogs (RPCs com suporte a logs têm
+  // cotas apertadas); chain.rpc p/ calls e TRANSAÇÕES (claim/atestação/igp).
+  const providerLogs = new JsonRpcProvider(chain.claims.rpc ?? chain.rpc, undefined, { batchMaxCount: 1 });
+  const provider = new JsonRpcProvider(chain.rpc, undefined, { batchMaxCount: 1 });
   const current = await provider.getBlockNumber();
   if (st.cursor == null) {
     st.cursor = current;
@@ -196,6 +199,7 @@ async function runEvmClaims(name, chain, st, DRY, state) {
     "function processor(bytes32) view returns (address)",
     "function processedAt(bytes32) view returns (uint48)",
   ];
+  const IGP_ABI = ["function claim()"];
   const VAULT_ABI = [
     "function claim(bytes32[] ids)",
     "function claimedBy(bytes32) view returns (address)",
@@ -206,6 +210,23 @@ async function runEvmClaims(name, chain, st, DRY, state) {
   ];
   const mailbox = new Contract(chain.claims.mailbox, MAILBOX_ABI, provider);
   const vault = new Contract(chain.claims.vault, VAULT_ABI, provider);
+
+  // ---- auto-sweep: igp.claim() é permissionless e empurra a arrecadação p/ o
+  //      vault (beneficiary). Chama quando houver saldo relevante no IGP.
+  if (chain.claims.igp) {
+    try {
+      const igpBal = await provider.getBalance(chain.claims.igp);
+      if (igpBal > 0n && !DRY) {
+        const wallet = new Wallet(process.env[chain.privateKeyEnv], provider);
+        const igp = new Contract(chain.claims.igp, IGP_ABI, wallet);
+        const tx = await igp.claim();
+        const rc = await tx.wait();
+        log(name, `✓ igp.claim(): ${igpBal} wei → pool do vault (${rc.hash})`);
+      }
+    } catch (e) {
+      log(name, `igp.claim() ERRO — ${String(e.message).slice(0, 70)}`);
+    }
+  }
 
   // ---- v2: atesta AQUI as entregas (feitas no TC) de msgs ORIGINADAS aqui ----
   const attQ = (state.remoteAttestEvm ?? {})[chain.claims.domain] ?? [];
@@ -243,7 +264,7 @@ async function runEvmClaims(name, chain, st, DRY, state) {
   for (let n = 0; n < maxWindows && from <= current; n++) {
     const to = Math.min(from + chunk - 1, current);
     try {
-      const logs = await provider.getLogs({ address: chain.claims.mailbox, topics: [topic], fromBlock: from, toBlock: to });
+      const logs = await providerLogs.getLogs({ address: chain.claims.mailbox, topics: [topic], fromBlock: from, toBlock: to });
       for (const l of logs) novos.push(l.topics[1]);
       st.cursor = to;
       from = to + 1;
@@ -267,6 +288,7 @@ async function runEvmClaims(name, chain, st, DRY, state) {
   if (chain.claims.domain) queueRemoteAttest(state, chain.claims.domain, nossos);
   if (novos.length) log(name, `${novos.length} process() no Mailbox · ${pend.size} do nosso relayer no total pendente`);
 
+  if (chain.claims.localClaim === false) { st.pending = []; return; }
   const claimables = [];
   for (const mid of pend) {
     if ((await vault.claimedBy(mid)) === "0x0000000000000000000000000000000000000000") claimables.push(mid);

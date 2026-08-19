@@ -41,15 +41,26 @@ guarda esse mapa (`SetRemoteBinding`, editável só pelo owner — depois, gover
 O mesmo vale para ETH e Solana — só muda o domínio e o endereço vinculado.
 (E a entrega NO PRÓPRIO TC continua com o `Claim` clássico, por prova direta.)
 
-## 3. As duas fontes de renda do operador, lado a lado
+## 3. A economia final: UM pagamento por entrega, na chain de ORIGEM
 
-| Entrega feita em | Quem paga | Quanto | Prova |
-|---|---|---|---|
-| TC (rota de entrada) | pool TC via `Claim` | 50 LUNC | **direta** (raw query DELIVERIES) |
-| BSC | pool BSC via `claim()` | 0,00005 BNB | direta (processedAt) |
-| ETH | pool ETH via `claim()` | 0,0004 ETH | direta (processedAt) |
-| Solana | pool SOL via época | 0,003 SOL | quórum de operadores |
-| **BSC/ETH/SOL (v2)** | **pool TC via `AttestRemoteDelivery`** | **33 LUNC/entrega (por domínio, owner define)** | **atestação com quórum + vínculo** |
+**Decisão de 19/08 (owner):** a recompensa de DESTINO era a compensação da
+arquitetura antiga (quando a taxa de origem não alcançava o executor). Com a
+v2, pagar nas duas pontas era pagamento DUPLO — então as recompensas de destino
+foram reduzidas a 1 unidade simbólica (1 uluna / 1 wei / 1 lamport; os
+contratos não aceitam zero) e o claim-agent não gasta mais gás com elas
+(`localClaim: false`). O pagamento REAL é único:
+
+| Origem da mensagem | Executor recebe | Mecanismo |
+|---|---|---|
+| TC | 33 LUNC | por id (`AttestRemoteDelivery`) |
+| BSC | ≈ taxa real em BNB | por id (`attestRemoteDelivery`) |
+| ETH | ≈ taxa real em ETH | por id (`attestRemoteDelivery`) |
+| Solana | 499.000 lamports | por época (`EpochReport.remote`) |
+
+Nota: com recompensa de destino simbólica, relayers de TERCEIROS (sem vínculo)
+não têm mais incentivo — decisão consciente da fase atual (1 operador). Para
+reabrir a competição, a governança repõe as recompensas de destino
+(`update_config`/`setParams`/`SetRewardLamports`).
 
 E, simetricamente, cada chain de ORIGEM paga a taxa ao executor — **por id**
 (registro individual por mensagem) nas chains onde armazenar é barato, e

@@ -53,7 +53,13 @@
         "relayer": "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp",
         "igp": "terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz",
         "lcd": "https://lcd.terra-classic.hexxagon.io",
-        "sweepMinUluna": "100000000"
+        "sweepMinUluna": "100000000",
+        "originSenders": {
+          "0000000000000000000000003605d8946fc6f5a75d89d92173100f59743b5318": 56,
+          "000000000000000000000000a687a4c4ca49795999b36fdc8a18d1ddd63edfb5": 1,
+          "c6de5b1fd8d285c06fa3967440530edfec35e907464599e3b485c5f273437f95": 1399811149
+        },
+        "localClaim": false
       }
     },
     "bsc": {
@@ -81,7 +87,9 @@
         "rpc": "https://1rpc.io/bnb",
         "chunkBlocks": 50,
         "maxWindows": 300,
-        "domain": 56
+        "domain": 56,
+        "igp": "0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923",
+        "localClaim": false
       }
     },
     "ethereum": {
@@ -109,7 +117,9 @@
         "rpc": "https://rpc.mevblocker.io",
         "chunkBlocks": 500,
         "maxWindows": 60,
-        "domain": 1
+        "domain": 1,
+        "igp": "0x9650F1f8DB492750323172145e67Df4e89E964Aa",
+        "localClaim": false
       }
     },
     "solana": {

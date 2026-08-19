@@ -50,14 +50,16 @@ cast send $VAULT "setRemoteBinding(address,uint32,string)" <operador_local> <dom
 | **Por época** | Solana | As entregas são AGREGADAS por janela de 6 h e entram no `EpochReport.remote` (contagem × recompensa), sob o mesmo hash/quórum do relatório; saque via `Withdraw`. | Na Solana, 1 conta por id custaria ~0,0015 SOL de rent — MAIS que a taxa (0,0005). Agregar por época zera o custo extra. |
 
 O resultado econômico é o mesmo (taxa real da origem → executor); muda só a
-granularidade do registro. A tabela vigente:
+granularidade do registro. **Desde 19/08 este é o ÚNICO pagamento real** — as
+recompensas de destino foram reduzidas a 1 unidade simbólica (fim do pagamento
+duplo; ver CLAIM-REMOTO §3). A tabela vigente:
 
 | Origem | Mecanismo | Valor por entrega |
 |---|---|---|
 | TC | por id (`AttestRemoteDelivery`) | 33 LUNC |
-| BSC | por id (`attestRemoteDelivery`) | 0,0000023 BNB (taxa real) |
-| ETH | por id (`attestRemoteDelivery`) | 0,0000093 ETH (taxa real) |
-| Solana | por época (`EpochReport.remote`) | 0,000499 SOL (taxa real) |
+| BSC | por id (`attestRemoteDelivery`) | ≈1,81e12 wei (taxa real, recalibrável) |
+| ETH | por id (`attestRemoteDelivery`) | ≈9,29e12 wei (taxa real) |
+| Solana | por época (`EpochReport.remote`) | 499.000 lamports (taxa real) |
 
 ---
 

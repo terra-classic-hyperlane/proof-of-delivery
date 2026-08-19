@@ -97,8 +97,10 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
 | ETH (`0x04096dCB…`) | por id | 9.294.377.050.000 wei | dom 132556 → `terra1run9wz…` |
 | Solana (pod, upgrade 19/08) | por época | 499.000 lamports | dom 132556 → `terra1run9wz…` (PDAs `8N3sq5Xg…`/`GTeqFxoQ…`) |
 
-Atestadores = owner de cada chain · quórum 1 (teste). Expansão (chains,
-operadores, vínculos): `MANUAL-EXPANSAO.md`.
+Atestadores = owner de cada chain · quórum 1 (teste). **Economia (19/08): o
+pagamento por entrega é ÚNICO, na origem** — recompensas de destino reduzidas a
+1 unidade simbólica (TC tx `965542B7…` · BSC `0x2ce94a7a…` · ETH `0xa0d516d3…`
+· SOL `5Q7C34EP…`). Expansão: `MANUAL-EXPANSAO.md`.
 
 ## 5. Relayer em operação (1 operador nesta fase)
 
