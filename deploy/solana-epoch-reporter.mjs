@@ -177,9 +177,36 @@ async function main() {
   }
 }
 
+// saca automaticamente o crédito acumulado do operador (Withdraw do pod → SOL na carteira)
+async function withdrawOwn() {
+  if (!SUBMIT) return;
+  let kp; try { kp = loadSolanaKp(); } catch { return; }
+  const [creditPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("rrv"), sep, Buffer.from("credit"), sep, kp.publicKey.toBuffer()], POD);
+  const info = await conn.getAccountInfo(creditPda);
+  if (!info) return;
+  const avail = info.data.readBigUInt64LE(1 + 32) - info.data.readBigUInt64LE(1 + 32 + 8); // credited - withdrawn
+  if (avail <= 0n) return;
+  const data = Buffer.concat([Buffer.from([0, 2]), u64(avail)]); // Withdraw{amount}=variante 2
+  const keys = [
+    { pubkey: kp.publicKey, isSigner: true, isWritable: true },
+    { pubkey: CONFIG, isSigner: false, isWritable: true },
+    { pubkey: creditPda, isSigner: false, isWritable: true },
+  ];
+  try {
+    const sig = await conn.sendTransaction(new Transaction().add(new TransactionInstruction({ programId: POD, keys, data })), [kp]);
+    await conn.confirmTransaction(sig, "confirmed");
+    console.log(`✓ saque ${avail} lamports p/ ${kp.publicKey.toBase58()}:`, sig);
+  } catch (e) { console.log("saque erro:", String(e.message ?? e).slice(0, 120)); }
+}
+
+async function tick() {
+  await main().catch((e) => console.error("ERRO:", e.message));
+  await withdrawOwn().catch((e) => console.error("saque ERRO:", e.message));
+}
 if (LOOP_SECS > 0) {
-  console.log(`reporter em loop a cada ${LOOP_SECS}s`);
-  for (;;) { await main().catch((e) => console.error("ERRO:", e.message)); await new Promise((r) => setTimeout(r, LOOP_SECS * 1000)); }
+  console.log(`reporter+saque em loop a cada ${LOOP_SECS}s`);
+  for (;;) { await tick(); await new Promise((r) => setTimeout(r, LOOP_SECS * 1000)); }
 } else {
-  main().catch((e) => { console.error("ERRO:", e.message); process.exit(1); });
+  await tick();
 }
