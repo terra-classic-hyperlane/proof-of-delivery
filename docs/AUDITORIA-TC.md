@@ -65,3 +65,28 @@ beneficiary = vault ✓ · solvency = 5.000 LUNC / 100 claims ✓ · layout_chec
 
 > Deploys futuros (BSC/Ethereum/Solana — Fases 3–4) devem ganhar registros
 > equivalentes: `AUDITORIA-BSC.md`, `AUDITORIA-ETH.md`, `AUDITORIA-SOL.md`.
+
+## Vault v2 (ClaimRemote) — migração 19/08/2026
+
+**Migração NO MESMO endereço** (`terra1gqkrh2…duzc2q`), assinada pelo admin
+`terra1run9wz…`. Pool e beneficiary preservados. Build reproduzível
+`cosmwasm/optimizer:0.17.0` → sha256 `e24a5e66ab4a503c6acf369710b717310362d2ae5fa7b9800542c8272b2fc801`.
+
+| Passo | Tx |
+|---|---|
+| store (code_id **11589**) | `A9866AEE5A37F76BDFDF4A2FDE15B2AB3319715550954EDFACE0E75A9D61E76B` |
+| migrate | `C4075BA84D9545EBD912B84A693968DFB2A4123391362930A0F3E2B663F03DAD` |
+| set_remote_operators (atestador terra1run9wz…, quórum 1) | `322620CAB36F631B76AE2FB5A711CE8F7CADB8EEB86E45D563AD9CEE0BA6F821` |
+| vínculo Solana → `PbEo7Fn2…cwwrkS` | `3526970A18F1A1C66565E42D7ABEB9ED95D991B1BB815ED462613790D40212BE` |
+| vínculo BSC → `0x8f085bad…5291` | `51763033E7BE6166C881F45BB60D4A4FBBB6F522CAC214BBAECDE20EB6C07F05` |
+| vínculo ETH → `0xef818120…00ae` | `04174C7EB2608C66AF0303B93B49573E499199369B5A485C4B38291498159908` |
+| recompensa 33 LUNC dom SOL / BSC / ETH | `E7D9F83A…11DBC8` · `AFF7068C…6A2DA8` · `0CCF3BC3…3EAE9B` |
+| **atesta entrega SOL** `1e070a74…` (+33 LUNC) | `844240A4154A672580A58F78EE5F33BEA751F5895DD52C2333851C3C2080CA95` |
+| **atesta entrega BSC** `72f1099d…` (+33 LUNC) | `4F687166BB2A155F34A4558BFA034455BBD57D4B028EB7043B76CE784AC1921B` |
+| **atesta entrega ETH** `6c6518b0…` (+33 LUNC) | `44E0B62DA58CF8ADCC87137AE6CAD3881127056C755AFD7A2DECE8731D9DF6FA` |
+
+Verificação independente pós-migração (LCD, 19/08): code_id **11589** ✓ ·
+`remote_claimed(1e070a74…)` = pago 33 LUNC ao executor `terra1run9wz…` no bloco
+30011260 ✓ · vínculos ativos ✓ · `total_remote_paid` = 99 LUNC ✓ · pool
+4.901 LUNC (5.000 − 99, pagamentos saíram do pool como projetado) ✓.
+Modelo completo: `CLAIM-REMOTO.md`.

@@ -98,8 +98,10 @@ horária — log: `✓ atestado dom <n> → <tx>`. Nenhuma ação manual.
 
 Build reproduzível `cosmwasm/optimizer:0.17.0` → `relayer_reward_vault.wasm`
 sha256 `e24a5e66ab4a503c6acf369710b717310362d2ae5fa7b9800542c8272b2fc801`.
-Migração **no mesmo endereço** (admin = deployer): store + migrate + config +
-atestação das entregas do dia — script `migrate-vault-v2.sh` (servidor).
+Migração **no mesmo endereço** EXECUTADA em 19/08/2026 (code_id **11589**,
+store `A9866AEE…`, migrate `C4075BA8…`) via `deploy/tc-migrate-vault-v2.sh`
+(LOCAL — regra do projeto: nada de wasm/deploy na VPS). Primeiros pagamentos:
+99 LUNC pelas 3 entregas do dia (txs em `AUDITORIA-TC.md`).
 30 testes verdes (5 novos da v2: quórum 1 paga, anti-duplo, quórum 2 espera
 concordância, rejeições, totais). Registro de execução: `AUDITORIA-TC.md`.
 

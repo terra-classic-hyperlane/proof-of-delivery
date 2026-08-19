@@ -10,7 +10,7 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
 
 | Contrato | Endereço | code_id | SHA-256 (= data_hash on-chain) |
 |---|---|---|---|
-| **relayer-reward-vault** | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` | 11588 | `c9699711a661607bebe30819ee1dc0035ff5276523dbb08b80a108fb03721d82` |
+| **relayer-reward-vault v2** (ClaimRemote) | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` | **11589** | `e24a5e66ab4a503c6acf369710b717310362d2ae5fa7b9800542c8272b2fc801` |
 | **oracle-governor** | `terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj` | 11587 | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
 
 ### Infra Hyperlane (pré-existente, verificada byte a byte na Fase 0)
@@ -29,7 +29,9 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
 - **Owner (vault + governor):** `terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp`
   (deployer/relayer — TEMPORÁRIO até o handoff → governança).
 - **Operador de preço:** `terra1run9wz…26mawp` · quórum **1**.
-- Tarifa 50 LUNC/entrega · pool semeado 5.000 LUNC (100 claims) · época 6 h · delta 20%.
+- Tarifa 50 LUNC/entrega local · **v2 ClaimRemote**: 33 LUNC/entrega remota
+  (vínculos: SOL `PbEo7Fn2…` · BSC `0x8f08…5291` · ETH `0xef81…00ae`; atestador
+  `terra1run9wz…`, quórum 1) · época 6 h · delta 20%.
 - ISMs de ENTRADA (validadores oficiais Hyperlane): ETH **6-de-9** · BSC **4-de-6** · SOL **3-de-5**.
 
 ## 2. BSC (domain 56) — sintético
