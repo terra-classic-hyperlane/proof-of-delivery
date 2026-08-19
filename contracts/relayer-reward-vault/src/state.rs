@@ -69,3 +69,27 @@ pub const REMOTE_CLAIMED: Map<Vec<u8>, RemoteClaimRecord> = Map::new("remote_cla
 /// message_id → atestações acumuladas (atestador, executor apontado).
 pub const REMOTE_ATTESTS: Map<Vec<u8>, Vec<(Addr, Addr)>> = Map::new("remote_attests");
 pub const TOTAL_REMOTE_PAID: Item<Uint128> = Item::new("total_remote_paid");
+
+// ---------------------------------------------------------------------------
+// Fase 1 (recibo trustless) — REGISTRO DE/PARA GLOBAL de operadores.
+// Um operador é UMA identidade com um endereço por domínio. Este registro é a
+// espinha dorsal: o recibo carrega o ÍNDICE do operador (u32), e cada chain
+// resolve o endereço de pagamento no SEU próprio registro (definido pelo owner).
+// ---------------------------------------------------------------------------
+
+/// índice do operador → (domínio → endereço naquele domínio, como string).
+/// Endereço no formato nativo da chain do domínio (terra1…/0x…/base58).
+pub const OPERATOR_ADDR: Map<(u32, u32), String> = Map::new("op_addr");
+
+/// reverse-lookup: endereço LOCAL (minúsculo p/ 0x…) → índice do operador.
+/// Preenchido pelo owner ao gravar o endereço do operador NESTE domínio; é como
+/// o papel DESTINO descobre "o executor processor(id) é o operador N".
+pub const OPERATOR_OF_LOCAL: Map<String, u32> = Map::new("op_of_local");
+
+/// maior índice de operador já registrado (+1 = próximo livre). Informativo.
+pub const OPERATOR_COUNT: Item<u32> = Item::new("op_count");
+
+/// router confiável por domínio: o endereço do NOSSO vault naquela chain
+/// (hex de 32 bytes, convenção Hyperlane). Papel ORIGEM só aceita `handle` de um
+/// router registrado; papel DESTINO despacha o recibo para ele.
+pub const REMOTE_ROUTER: Map<u32, String> = Map::new("remote_router");

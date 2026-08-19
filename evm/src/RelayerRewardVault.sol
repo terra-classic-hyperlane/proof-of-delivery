@@ -61,6 +61,8 @@ contract RelayerRewardVault {
     event RemoteRewardSet(uint32 indexed domain, uint256 reward);
     event RemoteAttested(bytes32 indexed id, address indexed attestor, address indexed executor);
     event RemotePaid(bytes32 indexed id, address indexed executor, uint32 domain, uint256 amount);
+    event OperatorAddressSet(uint32 indexed index, uint32 indexed domain, string addr);
+    event RemoteRouterSet(uint32 indexed domain, bytes32 router);
 
     // ============ Storage ============
     IMailboxDelivery public immutable mailbox;
@@ -108,6 +110,17 @@ contract RelayerRewardVault {
     mapping(bytes32 id => mapping(address executor => uint256)) public remoteVoteCount;
     uint256 public totalRemotePaid;
 
+    // ---- Fase 1 (recibo trustless): registro de/para global + routers ----
+    /// domínio DESTE vault (imutável, setado no constructor)
+    uint32 public immutable localDomain;
+    /// índice do operador → domínio → endereço naquele domínio (string, multi-VM)
+    mapping(uint32 index => mapping(uint32 domain => string)) public operatorAddress;
+    /// reverse-lookup: executor LOCAL → índice do operador (+1; 0 = ausente)
+    mapping(address local => uint256 indexPlus1) internal _operatorOfLocalPlus1;
+    /// router confiável (nosso vault) por domínio, em bytes32 (convenção Hyperlane)
+    mapping(uint32 domain => bytes32 router) public remoteRouter;
+    uint32 public operatorCount;
+
     // ============ Modifiers ============
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -126,12 +139,14 @@ contract RelayerRewardVault {
         address _mailbox,
         address _owner,
         uint256 _rewardPerDelivery,
-        uint256 _claimWindowBlocks
+        uint256 _claimWindowBlocks,
+        uint32 _localDomain
     ) {
         if (_mailbox == address(0) || _owner == address(0)) revert ZeroAddress();
         if (_rewardPerDelivery == 0) revert ZeroReward();
         if (_claimWindowBlocks == 0) revert ZeroWindow();
         mailbox = IMailboxDelivery(_mailbox);
+        localDomain = _localDomain;
         owner = _owner;
         rewardPerDelivery = _rewardPerDelivery;
         claimWindowBlocks = _claimWindowBlocks;
@@ -276,6 +291,50 @@ contract RelayerRewardVault {
 
     function remoteAttestorCount() external view returns (uint256) {
         return remoteAttestors.length;
+    }
+
+    // ---- Fase 1: registro de/para global + routers (só owner) ----
+
+    /// @notice Grava o endereço do operador `index` no `domain` ("" remove). Se
+    ///         `domain` == localDomain, mantém o reverse-lookup (executor→índice).
+    function setOperatorAddress(uint32 index, uint32 domain, string calldata addr) external onlyOwner {
+        if (domain == localDomain) {
+            string memory old = operatorAddress[index][domain];
+            if (bytes(old).length != 0) {
+                _operatorOfLocalPlus1[_parseAddr(old)] = 0;
+            }
+            if (bytes(addr).length != 0) {
+                _operatorOfLocalPlus1[_parseAddr(addr)] = uint256(index) + 1;
+            }
+        }
+        operatorAddress[index][domain] = addr;
+        if (bytes(addr).length != 0 && index + 1 > operatorCount) operatorCount = index + 1;
+        emit OperatorAddressSet(index, domain, addr);
+    }
+
+    /// @notice Índice do operador dono de um executor LOCAL (0 = não registrado).
+    function operatorOfLocal(address local) external view returns (bool found, uint32 index) {
+        uint256 p = _operatorOfLocalPlus1[local];
+        return (p != 0, uint32(p == 0 ? 0 : p - 1));
+    }
+
+    /// @notice Router (nosso vault) confiável de um domínio (bytes32(0) remove).
+    function setRemoteRouter(uint32 domain, bytes32 router) external onlyOwner {
+        remoteRouter[domain] = router;
+        emit RemoteRouterSet(domain, router);
+    }
+
+    /// @dev converte a string "0x…40hex" no address (para o reverse-lookup local).
+    function _parseAddr(string memory s) internal pure returns (address a) {
+        bytes memory b = bytes(s);
+        require(b.length == 42 && b[0] == "0" && (b[1] == "x" || b[1] == "X"), "addr");
+        uint160 r;
+        for (uint256 i = 2; i < 42; ++i) {
+            uint8 c = uint8(b[i]);
+            uint8 v = c >= 48 && c <= 57 ? c - 48 : (c >= 97 && c <= 102 ? c - 87 : c - 55);
+            r = r * 16 + v;
+        }
+        a = address(r);
     }
 
     /// @notice Quanto estes ids PAGARIAM se confirmados (ainda não pagos) — para

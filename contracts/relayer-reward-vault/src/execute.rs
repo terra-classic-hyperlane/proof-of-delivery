@@ -9,9 +9,9 @@ use crate::error::ContractError;
 use crate::mailbox::{hex, load_delivery};
 use crate::msg::InstantiateMsg;
 use crate::state::{
-    ClaimRecord, Config, RemoteClaimRecord, RemoteConfig, CLAIMED, CONFIG, REMOTE_ATTESTS,
-    REMOTE_BINDINGS, REMOTE_CLAIMED, REMOTE_CONFIG, REMOTE_REWARDS, TOTAL_CLAIMS, TOTAL_PAID,
-    TOTAL_REMOTE_PAID,
+    ClaimRecord, Config, RemoteClaimRecord, RemoteConfig, CLAIMED, CONFIG, OPERATOR_ADDR,
+    OPERATOR_COUNT, OPERATOR_OF_LOCAL, REMOTE_ATTESTS, REMOTE_BINDINGS, REMOTE_CLAIMED,
+    REMOTE_CONFIG, REMOTE_REWARDS, REMOTE_ROUTER, TOTAL_CLAIMS, TOTAL_PAID, TOTAL_REMOTE_PAID,
 };
 
 pub fn instantiate(
@@ -450,4 +450,77 @@ pub fn attest_remote_delivery(
             .add_attribute("paid_ids", paid.join(","));
     }
     Ok(resp)
+}
+
+// ---------------------------------------------------------------------------
+// Fase 1 (recibo trustless) — registro de/para global de operadores + routers
+// ---------------------------------------------------------------------------
+
+/// Domínio DESTE vault (chain local). TC = 132556.
+pub const LOCAL_DOMAIN: u32 = 132556;
+
+pub fn set_operator_address(
+    deps: DepsMut,
+    info: MessageInfo,
+    index: u32,
+    domain: u32,
+    address: Option<String>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(info.sender == config.owner, ContractError::Unauthorized {});
+
+    // normaliza EVM p/ minúsculo; endereços de outras VMs são case-sensitive
+    let norm = |a: &String| if a.starts_with("0x") { a.to_lowercase() } else { a.clone() };
+
+    // remove o reverse-lookup antigo (se este é o domínio local e havia valor)
+    if domain == LOCAL_DOMAIN {
+        if let Some(old) = OPERATOR_ADDR.may_load(deps.storage, (index, domain))? {
+            OPERATOR_OF_LOCAL.remove(deps.storage, norm(&old));
+        }
+    }
+    match &address {
+        Some(a) => {
+            ensure!(
+                !a.is_empty() && a.len() <= 100,
+                ContractError::Std(cosmwasm_std::StdError::generic_err("invalid address"))
+            );
+            let a = norm(a);
+            OPERATOR_ADDR.save(deps.storage, (index, domain), &a)?;
+            if domain == LOCAL_DOMAIN {
+                OPERATOR_OF_LOCAL.save(deps.storage, a.clone(), &index)?;
+            }
+            let cur = OPERATOR_COUNT.may_load(deps.storage)?.unwrap_or(0);
+            if index + 1 > cur {
+                OPERATOR_COUNT.save(deps.storage, &(index + 1))?;
+            }
+        }
+        None => OPERATOR_ADDR.remove(deps.storage, (index, domain)),
+    }
+    Ok(Response::new()
+        .add_attribute("action", "set_operator_address")
+        .add_attribute("index", index.to_string())
+        .add_attribute("domain", domain.to_string()))
+}
+
+pub fn set_remote_router(
+    deps: DepsMut,
+    info: MessageInfo,
+    domain: u32,
+    address: Option<String>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(info.sender == config.owner, ContractError::Unauthorized {});
+    match &address {
+        Some(a) => {
+            ensure!(
+                !a.is_empty() && a.len() <= 100,
+                ContractError::Std(cosmwasm_std::StdError::generic_err("invalid router"))
+            );
+            REMOTE_ROUTER.save(deps.storage, domain, &a.to_lowercase())?;
+        }
+        None => REMOTE_ROUTER.remove(deps.storage, domain),
+    }
+    Ok(Response::new()
+        .add_attribute("action", "set_remote_router")
+        .add_attribute("domain", domain.to_string()))
 }

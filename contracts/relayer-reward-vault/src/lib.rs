@@ -86,6 +86,12 @@ pub mod entry {
             ExecuteMsg::SetRemoteReward { domain, reward } => {
                 crate::execute::set_remote_reward(deps, info, domain, reward)
             }
+            ExecuteMsg::SetOperatorAddress { index, domain, address } => {
+                crate::execute::set_operator_address(deps, info, index, domain, address)
+            }
+            ExecuteMsg::SetRemoteRouter { domain, address } => {
+                crate::execute::set_remote_router(deps, info, domain, address)
+            }
             ExecuteMsg::AttestRemoteDelivery { domain, message_ids, executor } => {
                 crate::execute::attest_remote_delivery(deps, env, info, domain, message_ids, executor)
             }
@@ -121,6 +127,15 @@ pub mod entry {
             }
             QueryMsg::QuoteRemote { domain, message_ids } => {
                 to_json_binary(&crate::query::quote_remote(deps, domain, message_ids)?)
+            }
+            QueryMsg::OperatorAddress { index, domain } => {
+                to_json_binary(&crate::query::operator_address(deps, index, domain)?)
+            }
+            QueryMsg::OperatorOfLocal { address } => {
+                to_json_binary(&crate::query::operator_of_local(deps, address)?)
+            }
+            QueryMsg::RemoteRouter { domain } => {
+                to_json_binary(&crate::query::remote_router(deps, domain)?)
             }
         };
         Ok(res?)

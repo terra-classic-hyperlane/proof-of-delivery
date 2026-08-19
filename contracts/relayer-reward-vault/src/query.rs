@@ -109,9 +109,10 @@ use crate::msg::{
     QuoteRemoteResponse, RemoteAttestationsResponse, RemoteBindingResponse, RemoteClaimedResponse,
     RemoteConfigResponse, RemoteRewardResponse,
 };
+use crate::msg::{OperatorAddressResponse, OperatorOfLocalResponse, RemoteRouterResponse};
 use crate::state::{
-    REMOTE_ATTESTS, REMOTE_BINDINGS, REMOTE_CLAIMED, REMOTE_CONFIG, REMOTE_REWARDS,
-    TOTAL_REMOTE_PAID,
+    OPERATOR_ADDR, OPERATOR_OF_LOCAL, REMOTE_ATTESTS, REMOTE_BINDINGS, REMOTE_CLAIMED,
+    REMOTE_CONFIG, REMOTE_REWARDS, REMOTE_ROUTER, TOTAL_REMOTE_PAID,
 };
 
 pub fn remote_config(deps: Deps) -> Result<RemoteConfigResponse, ContractError> {
@@ -189,5 +190,31 @@ pub fn quote_remote(
     Ok(QuoteRemoteResponse {
         amount: reward.checked_mul(cosmwasm_std::Uint128::from(payable_count)).unwrap_or_default(),
         payable_count,
+    })
+}
+
+pub fn operator_address(
+    deps: Deps,
+    index: u32,
+    domain: u32,
+) -> Result<OperatorAddressResponse, ContractError> {
+    Ok(OperatorAddressResponse {
+        address: OPERATOR_ADDR.may_load(deps.storage, (index, domain))?,
+    })
+}
+
+pub fn operator_of_local(
+    deps: Deps,
+    address: String,
+) -> Result<OperatorOfLocalResponse, ContractError> {
+    let key = if address.starts_with("0x") { address.to_lowercase() } else { address };
+    Ok(OperatorOfLocalResponse {
+        index: OPERATOR_OF_LOCAL.may_load(deps.storage, key)?,
+    })
+}
+
+pub fn remote_router(deps: Deps, domain: u32) -> Result<RemoteRouterResponse, ContractError> {
+    Ok(RemoteRouterResponse {
+        address: REMOTE_ROUTER.may_load(deps.storage, domain)?,
     })
 }

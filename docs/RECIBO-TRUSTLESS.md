@@ -7,6 +7,30 @@ Nenhum atestador, nenhum agente com poder de decisão — imune a relayer malici
 > **Status:** interface-alvo (contratos em construção). As assinaturas abaixo são
 > o contrato que está sendo implementado; este doc e o código nascem alinhados.
 
+## Plano de implementação (fases)
+
+1. **Registro de/para global** (Fase 1, EM ANDAMENTO) — cada vault guarda
+   `operador N → {endereço por domínio}` (só o owner grava) + reverse-lookup
+   `endereço → N`. Consolida os vínculos por-corredor num só registro de identidade.
+2. **`send_receipt`** (papel DESTINO) — prova a entrega (`processor(id)`), lê o
+   domínio de origem da MENSAGEM (comprometido pelo `message_id`), resolve o
+   operador N do executor e despacha o recibo pelo Mailbox. Operador paga o gás.
+3. **`handle`** (papel ORIGEM) — aceita SÓ do Mailbox + router registrado; para
+   cada `(id, N)` paga o endereço de N no PRÓPRIO registro local (nunca um
+   endereço vindo no recibo); 1× por id.
+4. **Roteamento Hyperlane** do corredor TC↔BSC (config de infra, sem tocar em
+   contrato nativo).
+5. **Teste TC→BSC** ponta a ponta → depois **BSC→TC**.
+6. **Replicar** ETH e Solana (mesmo contrato/programa — sem deploy novo na Solana).
+
+### Por que "recibo por ÍNDICE do operador" (não por endereço)
+
+O `message_id` identifica a MENSAGEM, não o executor — quem entregou só é
+registrado no DESTINO (`processor(id)`). O recibo carrega **(message_id, N)**;
+a origem paga o **endereço de N no seu próprio registro** (definido pelo owner),
+então nem um recibo malformado desvia o pagamento. O de/para é a espinha dorsal
+de identidade, replicada em cada chain.
+
 ## Conceitos
 
 - **Mesmo contrato vault** em cada chain exerce DOIS papéis conforme a direção:

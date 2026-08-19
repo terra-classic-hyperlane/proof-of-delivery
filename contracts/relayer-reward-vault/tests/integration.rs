@@ -1196,3 +1196,67 @@ fn remote_config_e_total_pago_consultaveis() {
     assert_eq!(rc.attestors, vec![att]);
     assert_eq!(rc.total_remote_paid, Uint128::from(REMOTE_REWARD));
 }
+
+// ===========================================================================
+// Fase 1 — registro de/para global de operadores + routers
+// ===========================================================================
+use relayer_reward_vault::msg::{
+    OperatorAddressResponse, OperatorOfLocalResponse, RemoteRouterResponse,
+};
+
+const DOM_TC: u32 = 132_556;
+const DOM_BSC: u32 = 56;
+
+#[test]
+fn registro_de_para_e_reverse_lookup() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    // operador 0: endereço no TC (local) e na BSC
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC,
+            address: Some("terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into()) }, &[]).unwrap();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_BSC,
+            address: Some("0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291".into()) }, &[]).unwrap();
+
+    // de/para: lê endereço por (índice, domínio)
+    let r: OperatorAddressResponse = s.app.wrap().query_wasm_smart(&s.vault,
+        &QueryMsg::OperatorAddress { index: 0, domain: DOM_BSC }).unwrap();
+    assert_eq!(r.address.unwrap(), "0x8f085bad1a15ee9ceee58c83efffa72518975291"); // minúsculo
+
+    // reverse-lookup SÓ para o domínio local (TC): executor terra1… → operador 0
+    let rl: OperatorOfLocalResponse = s.app.wrap().query_wasm_smart(&s.vault,
+        &QueryMsg::OperatorOfLocal { address: "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into() }).unwrap();
+    assert_eq!(rl.index, Some(0));
+    // endereço remoto (BSC) NÃO entra no reverse-lookup local
+    let rl2: OperatorOfLocalResponse = s.app.wrap().query_wasm_smart(&s.vault,
+        &QueryMsg::OperatorOfLocal { address: "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291".into() }).unwrap();
+    assert_eq!(rl2.index, None);
+}
+
+#[test]
+fn remover_operador_limpa_reverse_lookup() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    let set = |s: &mut Setup, a: Option<String>| s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: a }, &[]).unwrap();
+    set(&mut s, Some("terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into()));
+    set(&mut s, None);
+    let rl: OperatorOfLocalResponse = s.app.wrap().query_wasm_smart(&s.vault,
+        &QueryMsg::OperatorOfLocal { address: "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into() }).unwrap();
+    assert_eq!(rl.index, None);
+}
+
+#[test]
+fn router_owner_only() {
+    let mut s = setup(1_000_000_000);
+    let err = s.app.execute_contract(Addr::unchecked("intruso"), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC, address: Some("0xabc".into()) }, &[]).unwrap_err();
+    assert!(err.root_cause().to_string().contains("unauthorized"));
+    // owner grava e lê
+    s.app.execute_contract(s.gov.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC, address: Some("0x1A41144c".into()) }, &[]).unwrap();
+    let r: RemoteRouterResponse = s.app.wrap().query_wasm_smart(&s.vault,
+        &QueryMsg::RemoteRouter { domain: DOM_BSC }).unwrap();
+    assert_eq!(r.address.unwrap(), "0x1a41144c");
+}

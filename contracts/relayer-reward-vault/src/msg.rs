@@ -59,6 +59,20 @@ pub enum ExecuteMsg {
     /// Só o owner: recompensa fixa por entrega remota no domínio (0 desativa).
     SetRemoteReward { domain: u32, reward: Uint128 },
 
+    // ---- Fase 1 (recibo trustless): registro de/para global de operadores ----
+    /// Só o owner: grava o endereço do operador `index` no `domain` (`None`
+    /// remove). Quando `domain` = ESTE domínio, também alimenta o reverse-lookup
+    /// (executor local → índice) usado pelo papel DESTINO.
+    SetOperatorAddress {
+        index: u32,
+        domain: u32,
+        address: Option<String>,
+    },
+
+    /// Só o owner: registra/atualiza o router (nosso vault) de um domínio (`None`
+    /// remove). `address` no formato hex-32 da convenção Hyperlane.
+    SetRemoteRouter { domain: u32, address: Option<String> },
+
     /// Atestador: afirma que as mensagens (despachadas DESTE mailbox p/ `domain`
     /// — o message_id é o MESMO nas duas chains) foram entregues lá pelo endereço
     /// vinculado ao `executor` (default: o próprio atestador). Ao atingir o
@@ -114,6 +128,19 @@ pub enum QueryMsg {
     /// vale o gás de enviar o recibo. amount = payable_count × recompensa do domínio.
     #[returns(QuoteRemoteResponse)]
     QuoteRemote { domain: u32, message_ids: Vec<HexBinary> },
+
+    // ---- Fase 1: registro de/para ----
+    /// Endereço do operador `index` no `domain` (registro de/para).
+    #[returns(OperatorAddressResponse)]
+    OperatorAddress { index: u32, domain: u32 },
+
+    /// Índice do operador dono de um endereço LOCAL (reverse-lookup).
+    #[returns(OperatorOfLocalResponse)]
+    OperatorOfLocal { address: String },
+
+    /// Router (nosso vault) registrado para um domínio.
+    #[returns(RemoteRouterResponse)]
+    RemoteRouter { domain: u32 },
 }
 
 #[cw_serde]
@@ -200,4 +227,20 @@ pub struct RemoteAttestationsResponse {
 pub struct QuoteRemoteResponse {
     pub amount: Uint128,
     pub payable_count: u32,
+}
+
+// ---- Fase 1: registro de/para ----
+#[cw_serde]
+pub struct OperatorAddressResponse {
+    pub address: Option<String>,
+}
+
+#[cw_serde]
+pub struct OperatorOfLocalResponse {
+    pub index: Option<u32>,
+}
+
+#[cw_serde]
+pub struct RemoteRouterResponse {
+    pub address: Option<String>,
 }

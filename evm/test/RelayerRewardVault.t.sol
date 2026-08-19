@@ -79,7 +79,7 @@ contract RelayerRewardVaultTest is Test {
 
     function setUp() public {
         mailbox = new MockMailbox();
-        vault = new RelayerRewardVault(address(mailbox), multisig, REWARD, WINDOW);
+        vault = new RelayerRewardVault(address(mailbox), multisig, REWARD, WINDOW, 56);
         igp = new MockIgp(payable(address(vault)));
         vm.deal(address(igp), 1 ether); // arrecadação acumulada no IGP
     }
@@ -97,11 +97,11 @@ contract RelayerRewardVaultTest is Test {
 
     function test_constructor_validations() public {
         vm.expectRevert(RelayerRewardVault.ZeroAddress.selector);
-        new RelayerRewardVault(address(0), multisig, REWARD, WINDOW);
+        new RelayerRewardVault(address(0), multisig, REWARD, WINDOW, 56);
         vm.expectRevert(RelayerRewardVault.ZeroReward.selector);
-        new RelayerRewardVault(address(mailbox), multisig, 0, WINDOW);
+        new RelayerRewardVault(address(mailbox), multisig, 0, WINDOW, 56);
         vm.expectRevert(RelayerRewardVault.ZeroWindow.selector);
-        new RelayerRewardVault(address(mailbox), multisig, REWARD, 0);
+        new RelayerRewardVault(address(mailbox), multisig, REWARD, 0, 56);
     }
 
     function test_claim_happy_path() public {
@@ -330,7 +330,7 @@ contract RelayerRewardVaultRemoteTest is Test {
 
     function setUp() public {
         mailbox = new MockMailbox();
-        vault = new RelayerRewardVault(address(mailbox), multisig, 1 ether, 1000);
+        vault = new RelayerRewardVault(address(mailbox), multisig, 1 ether, 1000, 56);
         vm.deal(address(vault), 10 ether);
         address[] memory atts = new address[](1);
         atts[0] = operador;
@@ -442,5 +442,55 @@ contract RelayerRewardVaultRemoteTest is Test {
         vm.prank(operador);
         vm.expectRevert(RelayerRewardVault.NotOwner.selector);
         vault.setRemoteReward(DOM_TC, 1);
+    }
+}
+
+// ===========================================================================
+// Fase 1 — registro de/para (EVM)
+// ===========================================================================
+contract RelayerRewardVaultRegistryTest is Test {
+    MockMailbox internal mailbox;
+    RelayerRewardVault internal vault;
+    address internal multisig = makeAddr("multisig");
+    address internal opTC = makeAddr("opTC");
+
+    function setUp() public {
+        mailbox = new MockMailbox();
+        vault = new RelayerRewardVault(address(mailbox), multisig, 1 ether, 1000, 56); // BSC
+    }
+
+    function test_de_para_e_reverse_lookup_local() public {
+        address execBsc = 0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291;
+        vm.startPrank(multisig);
+        // operador 0 no domínio LOCAL (BSC=56) → alimenta reverse-lookup
+        vault.setOperatorAddress(0, 56, "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291");
+        // e no TC (132556) → só de/para, sem reverse-lookup local
+        vault.setOperatorAddress(0, 132556, "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp");
+        vm.stopPrank();
+
+        (bool found, uint32 idx) = vault.operatorOfLocal(execBsc);
+        assertTrue(found);
+        assertEq(idx, 0);
+        assertEq(vault.operatorAddress(0, 132556), "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp");
+        assertEq(vault.operatorCount(), 1);
+    }
+
+    function test_remover_limpa_reverse_lookup() public {
+        address execBsc = 0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291;
+        vm.startPrank(multisig);
+        vault.setOperatorAddress(0, 56, "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291");
+        vault.setOperatorAddress(0, 56, "");
+        vm.stopPrank();
+        (bool found, ) = vault.operatorOfLocal(execBsc);
+        assertFalse(found);
+    }
+
+    function test_router_owner_only() public {
+        vm.prank(opTC);
+        vm.expectRevert(RelayerRewardVault.NotOwner.selector);
+        vault.setRemoteRouter(132556, bytes32(uint256(1)));
+        vm.prank(multisig);
+        vault.setRemoteRouter(132556, bytes32(uint256(0xABCD)));
+        assertEq(vault.remoteRouter(132556), bytes32(uint256(0xABCD)));
     }
 }
