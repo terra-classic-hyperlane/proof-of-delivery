@@ -624,3 +624,23 @@ contract RelayerRewardVaultReceiptTest is Test {
         assertEq(payoutTC.balance, mid); // não pagou de novo
     }
 }
+
+contract RelayerRewardVaultIsmTest is Test {
+    MockMailbox internal mailbox;
+    RelayerRewardVault internal vault;
+    address internal owner = makeAddr("owner");
+
+    function setUp() public {
+        mailbox = new MockMailbox();
+        vault = new RelayerRewardVault(address(mailbox), owner, 1 ether, 1000, 56);
+    }
+    function test_ism_default_e_settable_owner_only() public {
+        assertEq(vault.interchainSecurityModule(), address(0)); // default
+        vm.prank(makeAddr("x"));
+        vm.expectRevert(RelayerRewardVault.NotOwner.selector);
+        vault.setIsm(address(0xA82087));
+        vm.prank(owner);
+        vault.setIsm(address(0xA82087));
+        assertEq(vault.interchainSecurityModule(), address(0xA82087));
+    }
+}

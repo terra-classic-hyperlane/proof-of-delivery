@@ -29,6 +29,7 @@ case "$CHAIN" in
     MAILBOX="0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4"
     IGP="0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923"
     ORACLE="0x7dE950f8F0a037783989a6BE84B3620916552306"
+    WARP_ISM="0xa82087B8eea0394B1476f716B91c10531025Ef42"   # ISM do warp p/ TC→BSC
     REWARD_WEI="50000000000000"; WINDOW_BLOCKS="1600000"
     ;;
   ethereum)
@@ -39,6 +40,7 @@ case "$CHAIN" in
     MAILBOX="0xc005dc82818d67AF737725bD4bf75435d065D239"
     IGP="0x9650F1f8DB492750323172145e67Df4e89E964Aa"
     ORACLE="0x3987cCE8f08037EBF93Ef3a934753540A94196cE"
+    WARP_ISM="0xDe8edEC7207e2dEf9D347Eaa1f6Ee50420bc070b"   # ISM do warp p/ TC→ETH
     REWARD_WEI="400000000000000"; WINDOW_BLOCKS="100800"
     ;;
   *) echo "chain desconhecida: $CHAIN"; exit 1;;
@@ -79,6 +81,8 @@ done_step OP_TC || { say "4/7 operatorAddress[0][132556] = $OPERADOR_TC (registr
   SEND "$V" "setOperatorAddress(uint32,uint32,string)" 0 "$TC_DOMAIN" "$OPERADOR_TC" >/dev/null; mark OP_TC ok; }
 done_step ROUTER || { say "5/7 remoteRouter[132556] = vault do TC (canônico)"; \
   SEND "$V" "setRemoteRouter(uint32,bytes32)" "$TC_DOMAIN" "$TC_VAULT_HEX32" >/dev/null; mark ROUTER ok; }
+done_step ISM || { say "5b/7 setIsm = $WARP_ISM (o mesmo ISM do warp — valida recibos vindos do TC)"; \
+  SEND "$V" "setIsm(address)" "$WARP_ISM" >/dev/null; mark ISM ok; }
 
 if ! done_step REWARD; then
   say "6/7 remoteReward[132556] = taxa real BSC→TC (fórmula do IGP custom)"
@@ -95,6 +99,7 @@ echo "localDomain:  $(cast call --rpc-url "$RPC" "$V" 'localDomain()(uint32)')"
 echo "router[TC]:   $(cast call --rpc-url "$RPC" "$V" 'remoteRouter(uint32)(bytes32)' $TC_DOMAIN)"
 echo "reward[TC]:   $(cast call --rpc-url "$RPC" "$V" 'remoteReward(uint32)(uint256)' $TC_DOMAIN)"
 echo "op0/local:    $(cast call --rpc-url "$RPC" "$V" 'operatorOfLocal(address)(bool,uint32)' $OPERATOR_LOCAL)"
+echo "ism:          $(cast call --rpc-url "$RPC" "$V" 'interchainSecurityModule()(address)')"
 say "VAULT RECIBO ($CHAIN) NO AR: $V"
 echo "➡️  agora rode:  BSC_VAULT=$V bash deploy/tc-migrate-vault-receipt.sh"
 echo "   (registra este vault como router no TC + semear os pools p/ pagar)"

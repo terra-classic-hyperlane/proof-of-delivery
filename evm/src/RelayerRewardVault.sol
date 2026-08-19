@@ -80,6 +80,7 @@ contract RelayerRewardVault {
     event RemotePaid(bytes32 indexed id, address indexed executor, uint32 domain, uint256 amount);
     event OperatorAddressSet(uint32 indexed index, uint32 indexed domain, string addr);
     event RemoteRouterSet(uint32 indexed domain, bytes32 router);
+    event IsmSet(address ism);
     event ReceiptSent(uint32 indexed originDomain, uint256 count, bytes32 messageId);
     event ReceiptPaid(bytes32 indexed id, uint32 indexed operatorIndex, address recipient, uint256 amount);
 
@@ -139,6 +140,9 @@ contract RelayerRewardVault {
     /// router confiável (nosso vault) por domínio, em bytes32 (convenção Hyperlane)
     mapping(uint32 domain => bytes32 router) public remoteRouter;
     uint32 public operatorCount;
+    /// ISM que valida os recibos recebidos (o mesmo do warp da rota). 0 = default
+    /// do Mailbox. Necessário quando o ISM default não conhece a origem do recibo.
+    address public ism;
 
     // ============ Modifiers ============
     modifier onlyOwner() {
@@ -343,6 +347,13 @@ contract RelayerRewardVault {
         emit RemoteRouterSet(domain, router);
     }
 
+    /// @notice Owner: ISM que valida os recibos (aponte para o ISM do warp da
+    ///         rota). 0 = usa o ISM default do Mailbox.
+    function setIsm(address _ism) external onlyOwner {
+        ism = _ism;
+        emit IsmSet(_ism);
+    }
+
     /// @dev converte a string "0x…40hex" no address (para o reverse-lookup local).
     function _parseAddr(string memory s) internal pure returns (address a) {
         bytes memory b = bytes(s);
@@ -446,9 +457,9 @@ contract RelayerRewardVault {
         }
     }
 
-    /// @notice ISM = default do Mailbox (a rota já é segura nos dois sentidos).
-    function interchainSecurityModule() external pure returns (address) {
-        return address(0);
+    /// @notice ISM do recipient: o configurado (do warp da rota) ou 0 = default.
+    function interchainSecurityModule() external view returns (address) {
+        return ism;
     }
 
     /// @dev domínio de origem da msg Hyperlane: version(1)+nonce(4) → origin em [5..9].
