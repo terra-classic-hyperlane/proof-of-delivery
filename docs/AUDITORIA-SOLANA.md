@@ -69,3 +69,17 @@ que devolve a posse do IGP a qualquer chave se necessário.
 - [ ] oracle-agent: config real preenchida (pod/IGP) e prefixo de módulo do pod
       APLICADO em `src/chains/solana.js` (corrigido 18/08 — sem ele o SubmitPrice
       seria rejeitado com InvalidInstructionData).
+
+## v2 ClaimRemote — 19/08/2026 (upgrade in-place do pod)
+
+- `solana program extend` +21.856 bytes e **upgrade no MESMO program id**
+  (`2mQZcHYL…`, tx `5q8eG4qUKKq6ziAZaMdgkzR8vpCekLjW3m5wrg8aZmx4DJ2hVtVzZA4Lu89GnLjRmuM4aWXe1yHmYrP5E1x8hncq`).
+  pod.so v2: 206.760 bytes. PDAs/estado preservados.
+- Design Solana: em vez de PDA por mensagem (rent > recompensa), os créditos
+  remotos entram no **relatório de época** existente (`EpochReport.remote`),
+  mesmo hash/quórum, saque pelo `Withdraw` normal. 12 testes (2 novos).
+- Config via proposta administrativa (quórum 1):
+  `SetRemoteReward(132556, 499000)` tx `5GXH29C85YtbLBLoNY6qKMyQwPCBHJXrRkWFaaf8d3MJv2MY4jFNyJH7xyN822RAhLoGudENX6t7izi5CrWBRbXx`
+  (499.000 lamports = taxa REAL medida no dispatch `4wiG4TtZ…`) ·
+  `SetRemoteBinding(132556, PbEo7Fn2… → terra1run9wz…)` tx `4J3tCCkV7T96hhaTSqmtBPBne2X7xASTCVw8XWYzknpEpBCxPvtuJTfR5dFq3iDd1yj4s49XnnUeKXoXRGF97gex`.
+  PDAs: reward `8N3sq5XgZGn2xJ22hhNZXmTpv2TS4sVPAdXPp8GUVDDs` · binding `GTeqFxoQgfUJipvgjKxRZZsKGDEbMLSSuDXaVPEd3ez4`.

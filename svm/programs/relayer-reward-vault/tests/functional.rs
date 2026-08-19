@@ -111,6 +111,7 @@ async fn send(
 
 fn report(epoch: u64, credits: Vec<(Pubkey, u64)>) -> EpochReport {
     EpochReport {
+        remote: vec![],
         epoch,
         window_start_slot: 100,
         window_end_slot: 200,
@@ -414,4 +415,113 @@ async fn withdraw_surplus_enforces_destination_in_hash() {
         .unwrap()
         .lamports;
     assert_eq!(bal, 10 * REWARD);
+}
+
+// ===========================================================================
+// v2 — créditos REMOTOS no relatório de época (ClaimRemote)
+// ===========================================================================
+use rrv::{remote_binding_pda, remote_reward_pda};
+
+const DOM_TC: u32 = 132_556;
+const RREWARD: u64 = 499_000;
+
+/// aprova (quórum 1) uma AdminAction com contas extras
+async fn admin_exec(env: &mut Env, action: AdminAction, nonce: u64, extras: Vec<AccountMeta>) {
+    let envelope = AdminEnvelope { nonce, action };
+    let (prop, _) = proposal_pda(&env.program_id, &envelope.hash());
+    let mut accounts = vec![
+        AccountMeta::new(env.ops[0].pubkey(), true),
+        AccountMeta::new(env.config, false),
+        AccountMeta::new(prop, false),
+        AccountMeta::new_readonly(system_program::id(), false),
+    ];
+    accounts.extend(extras);
+    let ix = Instruction {
+        program_id: env.program_id,
+        accounts,
+        data: borsh::to_vec(&RrvInstruction::SubmitAdminAction { envelope }).unwrap(),
+    };
+    let signer = env.ops[0].insecure_clone();
+    send(&mut env.ctx, &[ix], &[signer]).await.unwrap();
+}
+
+#[tokio::test]
+async fn remote_credits_via_epoch_report() {
+    let mut env = setup(1).await;
+    let op_a = env.ops[0].pubkey();
+    let (rw, _) = remote_reward_pda(&env.program_id, DOM_TC);
+    let (bind, _) = remote_binding_pda(&env.program_id, DOM_TC, &op_a);
+
+    admin_exec(
+        &mut env,
+        AdminAction::SetRemoteReward { domain: DOM_TC, reward: RREWARD },
+        10,
+        vec![AccountMeta::new(rw, false)],
+    )
+    .await;
+    admin_exec(
+        &mut env,
+        AdminAction::SetRemoteBinding {
+            domain: DOM_TC,
+            operator: op_a,
+            remote_address: "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into(),
+        },
+        11,
+        vec![AccountMeta::new(bind, false)],
+    )
+    .await;
+
+    // relatório SÓ com créditos remotos (2 entregas no TC)
+    let mut r = report(1, vec![]);
+    r.remote = vec![(DOM_TC, op_a, 2)];
+    let (epoch_acc, _) = epoch_pda(&env.program_id, 1);
+    let (credit_a, _) = credit_pda(&env.program_id, &op_a);
+    let signer = env.ops[0].insecure_clone();
+    let ix = Instruction {
+        program_id: env.program_id,
+        accounts: vec![
+            AccountMeta::new(signer.pubkey(), true),
+            AccountMeta::new(env.config, false),
+            AccountMeta::new(epoch_acc, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+            AccountMeta::new_readonly(rw, false),
+            AccountMeta::new_readonly(bind, false),
+            AccountMeta::new(credit_a, false),
+        ],
+        data: borsh::to_vec(&RrvInstruction::SubmitEpochReport { report: r }).unwrap(),
+    };
+    send(&mut env.ctx, &[ix], &[signer]).await.unwrap();
+
+    let credit = get_credit(&mut env, &op_a).await.unwrap();
+    assert_eq!(credit.credited, 2 * RREWARD);
+}
+
+#[tokio::test]
+async fn remote_sem_reward_ou_binding_rejeitado() {
+    let mut env = setup(1).await;
+    let op_a = env.ops[0].pubkey();
+    let (rw, _) = remote_reward_pda(&env.program_id, DOM_TC);
+    let (bind, _) = remote_binding_pda(&env.program_id, DOM_TC, &op_a);
+    let (epoch_acc, _) = epoch_pda(&env.program_id, 2);
+    let (credit_a, _) = credit_pda(&env.program_id, &op_a);
+
+    let mut r = report(2, vec![]);
+    r.remote = vec![(DOM_TC, op_a, 1)];
+    let signer = env.ops[0].insecure_clone();
+    let ix = Instruction {
+        program_id: env.program_id,
+        accounts: vec![
+            AccountMeta::new(signer.pubkey(), true),
+            AccountMeta::new(env.config, false),
+            AccountMeta::new(epoch_acc, false),
+            AccountMeta::new_readonly(system_program::id(), false),
+            AccountMeta::new_readonly(rw, false),
+            AccountMeta::new_readonly(bind, false),
+            AccountMeta::new(credit_a, false),
+        ],
+        data: borsh::to_vec(&RrvInstruction::SubmitEpochReport { report: r }).unwrap(),
+    };
+    // sem reward PDA criado → ERR_NO_REMOTE_REWARD (113 = 0x71)
+    let err = send(&mut env.ctx, &[ix], &[signer]).await.unwrap_err();
+    assert!(err.contains("0x71"), "esperava ERR_NO_REMOTE_REWARD: {err}");
 }

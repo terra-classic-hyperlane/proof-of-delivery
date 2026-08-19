@@ -120,7 +120,17 @@ entrega NO TC → claim-agent detecta a entrega no TC (o evento traz a ORIGEM),
 enfileira e atesta no vault da BSC → **a taxa em BNB volta para o operador**.
 O mesmo para a ETH. Assim, TODAS as 4 chains pagam a taxa de origem ao executor.
 
-## 9. Sustentabilidade (atenção do owner/governança)
+## 9. v2 na Solana (via relatório de época)
+
+Na Solana, PDA por mensagem custaria mais rent (~0,0015 SOL) que a própria taxa
+(0,000499 SOL). Por isso o `EpochReport` ganhou o campo `remote:
+[(domínio, operador, contagem)]` — os créditos remotos passam pelo MESMO
+hash/quórum do relatório e saem pelo `Withdraw` normal, custo extra zero.
+Config por proposta administrativa: reward `499.000 lamports` (taxa real medida)
+e vínculo `(132556, PbEo7Fn2…) → terra1run9wz…`. O claim-agent agrega as
+entregas de msgs Solana→TC por época e as inclui no relatório automaticamente.
+
+## 10. Sustentabilidade (atenção do owner/governança)
 
 A v2 paga do MESMO pool que o `Claim` local. Com recompensa 33 LUNC ≈ taxa média
 de origem, o pool fica ~neutro (entra taxa, sai recompensa). Se a governança

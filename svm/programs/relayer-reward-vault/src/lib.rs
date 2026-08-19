@@ -60,6 +60,22 @@ pub fn credit_pda(program_id: &Pubkey, operator: &Pubkey) -> (Pubkey, u8) {
         program_id,
     )
 }
+/// recompensa por entrega remota (lamports), por domínio de ENTREGA
+pub fn remote_reward_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PREFIX, SEED_SEP, b"rrew", SEED_SEP, &domain.to_le_bytes()],
+        program_id,
+    )
+}
+
+/// vínculo de identidade: (domínio de entrega, operador local) → endereço remoto
+pub fn remote_binding_pda(program_id: &Pubkey, domain: u32, operator: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PREFIX, SEED_SEP, b"rbind", SEED_SEP, &domain.to_le_bytes(), SEED_SEP, operator.as_ref()],
+        program_id,
+    )
+}
+
 pub fn proposal_pda(program_id: &Pubkey, envelope_hash: &[u8; 32]) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_SEP, SEED_PROP, SEED_SEP, envelope_hash],
@@ -124,6 +140,10 @@ pub struct EpochReport {
     pub window_end_slot: u64,
     /// (operador, nº de entregas) — ESTRITAMENTE ordenado por operador.
     pub credits: Vec<(Pubkey, u64)>,
+    /// v2 ClaimRemote: entregas de msgs ORIGINADAS AQUI feitas pelo operador em
+    /// outra chain — (domínio da entrega, operador local, nº de entregas).
+    /// Crédito = count × remote_reward(domínio). Coberto pelo MESMO hash/quórum.
+    pub remote: Vec<(u32, Pubkey, u64)>,
 }
 
 impl EpochReport {
@@ -143,6 +163,12 @@ pub enum AdminAction {
     /// destino DENTRO do envelope → dentro do hash → dentro da aprovação.
     WithdrawSurplus { to: Pubkey, amount: u64 },
     SetEpochDuration(u64),
+    /// v2: recompensa fixa (lamports) por entrega remota no domínio (0 desativa).
+    /// Contas extras: [reward PDA w]
+    SetRemoteReward { domain: u32, reward: u64 },
+    /// v2: vínculo operador local → endereço executor na chain do domínio.
+    /// Contas extras: [binding PDA w]
+    SetRemoteBinding { domain: u32, operator: Pubkey, remote_address: String },
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
@@ -242,6 +268,8 @@ const ERR_EXECUTED: u32 = 109;
 const ERR_BAD_DESTINATION: u32 = 110;
 const ERR_TOO_MANY: u32 = 111;
 const ERR_EPOCH_WRONG_REPORT: u32 = 112;
+const ERR_NO_REMOTE_REWARD: u32 = 113;
+const ERR_NO_REMOTE_BINDING: u32 = 114;
 
 fn custom(code: u32) -> ProgramError {
     ProgramError::Custom(code)
@@ -350,7 +378,9 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         custom(ERR_UNSORTED),
     )?;
     ensure(
-        !report.credits.is_empty() && report.credits.len() <= MAX_OPERATORS,
+        (!report.credits.is_empty() || !report.remote.is_empty())
+            && report.credits.len() <= MAX_OPERATORS
+            && report.remote.len() <= MAX_OPERATORS,
         custom(ERR_TOO_MANY),
     )?;
     ensure(
@@ -450,6 +480,71 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
 
         let amount = delivered
             .checked_mul(config.reward_lamports)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        credit.credited = credit
+            .credited
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        config.total_credited = config
+            .total_credited
+            .checked_add(amount)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        store(credit_info, &credit)?;
+    }
+
+    // ---- v2 ClaimRemote: créditos por entregas REMOTAS de msgs originadas aqui.
+    //      Contas por entrada de report.remote: [reward PDA ro, binding PDA ro,
+    //      credit PDA w]. Crédito = count × reward(domínio); saque via Withdraw.
+    for (domain, remote_op, count) in report.remote.iter() {
+        ensure(*count > 0, ProgramError::InvalidInstructionData)?;
+
+        let reward_info = next_account_info(iter).map_err(|_| custom(ERR_NO_REMOTE_REWARD))?;
+        let (expected_rw, _) = remote_reward_pda(program_id, *domain);
+        ensure(
+            *reward_info.key == expected_rw && reward_info.owner == program_id,
+            custom(ERR_NO_REMOTE_REWARD),
+        )?;
+        let reward: u64 = load_streaming(reward_info)?;
+        ensure(reward > 0, custom(ERR_NO_REMOTE_REWARD))?;
+
+        let binding_info = next_account_info(iter).map_err(|_| custom(ERR_NO_REMOTE_BINDING))?;
+        let (expected_bind, _) = remote_binding_pda(program_id, *domain, remote_op);
+        ensure(
+            *binding_info.key == expected_bind && binding_info.owner == program_id,
+            custom(ERR_NO_REMOTE_BINDING),
+        )?;
+
+        let credit_info = next_account_info(iter).map_err(|_| custom(ERR_EPOCH_WRONG_REPORT))?;
+        let (expected_credit, credit_bump) = credit_pda(program_id, remote_op);
+        ensure(*credit_info.key == expected_credit, ProgramError::InvalidSeeds)?;
+        let mut credit: OperatorCredit = if credit_info.data_is_empty() {
+            create_pda(
+                operator,
+                credit_info,
+                system,
+                program_id,
+                CREDIT_SPACE,
+                &[
+                    SEED_PREFIX,
+                    SEED_SEP,
+                    SEED_CREDIT,
+                    SEED_SEP,
+                    remote_op.as_ref(),
+                    &[credit_bump],
+                ],
+            )?;
+            OperatorCredit {
+                bump: credit_bump,
+                operator: *remote_op,
+                credited: 0,
+                withdrawn: 0,
+            }
+        } else {
+            ensure(credit_info.owner == program_id, ProgramError::IncorrectProgramId)?;
+            load_streaming(credit_info)?
+        };
+        let amount = count
+            .checked_mul(reward)
             .ok_or(ProgramError::ArithmeticOverflow)?;
         credit.credited = credit
             .credited
@@ -589,6 +684,42 @@ fn submit_admin_action(
         AdminAction::SetEpochDuration(secs) => {
             ensure(secs > 0, ProgramError::InvalidInstructionData)?;
             config.epoch_duration_secs = secs;
+        }
+        AdminAction::SetRemoteReward { domain, reward } => {
+            let reward_info = next_account_info(iter).map_err(|_| custom(ERR_NO_REMOTE_REWARD))?;
+            let (expected, bump) = remote_reward_pda(program_id, domain);
+            ensure(*reward_info.key == expected, ProgramError::InvalidSeeds)?;
+            if reward_info.data_is_empty() {
+                create_pda(
+                    operator,
+                    reward_info,
+                    system,
+                    program_id,
+                    16,
+                    &[SEED_PREFIX, SEED_SEP, b"rrew", SEED_SEP, &domain.to_le_bytes(), &[bump]],
+                )?;
+            }
+            store(reward_info, &reward)?;
+        }
+        AdminAction::SetRemoteBinding { domain, operator: remote_op, remote_address } => {
+            ensure(
+                !remote_address.is_empty() && remote_address.len() <= 100,
+                ProgramError::InvalidInstructionData,
+            )?;
+            let binding_info = next_account_info(iter).map_err(|_| custom(ERR_NO_REMOTE_BINDING))?;
+            let (expected, bump) = remote_binding_pda(program_id, domain, &remote_op);
+            ensure(*binding_info.key == expected, ProgramError::InvalidSeeds)?;
+            if binding_info.data_is_empty() {
+                create_pda(
+                    operator,
+                    binding_info,
+                    system,
+                    program_id,
+                    128,
+                    &[SEED_PREFIX, SEED_SEP, b"rbind", SEED_SEP, &domain.to_le_bytes(), SEED_SEP, remote_op.as_ref(), &[bump]],
+                )?;
+            }
+            store(binding_info, &remote_address)?;
         }
         AdminAction::WithdrawSurplus { to, amount } => {
             // o destino aprovado está DENTRO do hash — a conta passada tem de bater

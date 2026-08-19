@@ -118,7 +118,7 @@ async function tcAttestRemote(chain, state, DRY) {
   }
 }
 
-async function runTcClaims(chain, st, DRY, state) {
+async function runTcClaims(chain, st, DRY, state, epochSecs) {
   await tcAutoSweep(chain, DRY).catch((e) => log("terraclassic", `sweep ERRO — ${e.message}`));
   await tcAttestRemote(chain, state, DRY).catch((e) => log("terraclassic", `attest ERRO — ${e.message}`));
   const height = await tcCurrentHeight(chain.rpc);
@@ -132,11 +132,17 @@ async function runTcClaims(chain, st, DRY, state) {
   // fila de atestação nos vaults EVM de ORIGEM (v2): entregas NO TC de msgs
   // vindas da BSC (56) / ETH (1) rendem a taxa de origem lá
   state.remoteAttestEvm = state.remoteAttestEvm ?? {};
+  state.remoteAttestSol = state.remoteAttestSol ?? {};
   for (const n of novos) {
     if (n.origin === 56 || n.origin === 1) {
       const q = new Set(state.remoteAttestEvm[n.origin] ?? []);
       q.add(n.id);
       state.remoteAttestEvm[n.origin] = [...q];
+    }
+    if (n.origin === 1399811149) {
+      // crédito remoto no vault da SOLANA, agregado por época de lá
+      const ep = Math.floor(Date.now() / 1000 / epochSecs);
+      state.remoteAttestSol[ep] = (state.remoteAttestSol[ep] ?? 0) + 1;
     }
   }
   st.pending = [...new Set([...(st.pending ?? []), ...novos.map((n) => n.id)])];
@@ -324,31 +330,49 @@ async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
   const now = Math.floor(Date.now() / 1000);
   const currentEpoch = Math.floor(now / epochSecs);
   const kp = Keypair.fromSeed(Uint8Array.from(Buffer.from(process.env[chain.privateKeyEnv].replace(/^0x/, ""), "hex")));
-  for (const [epochStr, e] of Object.entries(st.epochs)) {
-    const epoch = Number(epochStr);
-    if (e.reported || e.count === 0 || epoch >= currentEpoch) continue;
-    log("solana", `época ${epoch} fechada: ${e.count} entrega(s) do relayer` + (DRY ? " [dry-run: não reportado]" : ""));
+  const remoteQ = state.remoteAttestSol ?? {};
+  const DOM_TC = 132556;
+  const epochsToReport = new Set([
+    ...Object.keys(st.epochs),
+    ...Object.keys(remoteQ),
+  ].map(Number).filter((ep) => ep < currentEpoch));
+  for (const epoch of epochsToReport) {
+    const e = (st.epochs[epoch] = st.epochs[epoch] ?? { count: 0, minSlot: 0, maxSlot: 0, reported: false });
+    const remoteCount = remoteQ[epoch] ?? 0;
+    if (e.reported || (e.count === 0 && remoteCount === 0)) continue;
+    log("solana", `época ${epoch} fechada: ${e.count} entrega(s) local(is) + ${remoteCount} remota(s)` + (DRY ? " [dry-run: não reportado]" : ""));
     if (DRY) continue;
-    // EpochReport { epoch u64, start u64, end u64, credits: [(relayer, count)] }
-    const report = Buffer.concat([
-      u64le(epoch), u64le(e.minSlot), u64le(e.maxSlot),
-      u32le(1), Buffer.from(relayer.toBytes()), u64le(e.count),
-    ]);
+    // EpochReport { epoch, start, end, credits: [(op,count)], remote: [(dom,op,count)] }
+    const credits = e.count > 0
+      ? Buffer.concat([u32le(1), Buffer.from(relayer.toBytes()), u64le(e.count)])
+      : u32le(0);
+    const remote = remoteCount > 0
+      ? Buffer.concat([u32le(1), u32le(DOM_TC), Buffer.from(relayer.toBytes()), u64le(remoteCount)])
+      : u32le(0);
+    const report = Buffer.concat([u64le(epoch), u64le(e.minSlot), u64le(e.maxSlot), credits, remote]);
+    const creditPda = rrvPda(pod, [Buffer.from("credit"), sep, Buffer.from(relayer.toBytes())]);
+    const keys = [
+      { pubkey: kp.publicKey, isSigner: true, isWritable: true },
+      { pubkey: rrvPda(pod, [Buffer.from("config")]), isSigner: false, isWritable: true },
+      { pubkey: rrvPda(pod, [Buffer.from("epoch"), sep, u64le(epoch)]), isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ];
+    if (e.count > 0) keys.push({ pubkey: creditPda, isSigner: false, isWritable: true });
+    if (remoteCount > 0) {
+      keys.push({ pubkey: rrvPda(pod, [Buffer.from("rrew"), sep, u32le(DOM_TC)]), isSigner: false, isWritable: false });
+      keys.push({ pubkey: rrvPda(pod, [Buffer.from("rbind"), sep, u32le(DOM_TC), sep, Buffer.from(relayer.toBytes())]), isSigner: false, isWritable: false });
+      keys.push({ pubkey: creditPda, isSigner: false, isWritable: true });
+    }
     const ix = new TransactionInstruction({
       programId: pod,
-      keys: [
-        { pubkey: kp.publicKey, isSigner: true, isWritable: true },
-        { pubkey: rrvPda(pod, [Buffer.from("config")]), isSigner: false, isWritable: true },
-        { pubkey: rrvPda(pod, [Buffer.from("epoch"), sep, u64le(epoch)]), isSigner: false, isWritable: true },
-        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: rrvPda(pod, [Buffer.from("credit"), sep, Buffer.from(relayer.toBytes())]), isSigner: false, isWritable: true },
-      ],
+      keys,
       data: Buffer.concat([Buffer.from([0, 1]), report]), // [módulo rrv][SubmitEpochReport]
     });
     const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
     await conn.confirmTransaction(sig, "confirmed");
     e.reported = true;
-    log("solana", `✓ relatório da época ${epoch} → ${sig}`);
+    delete remoteQ[epoch];
+    log("solana", `✓ relatório da época ${epoch} (${e.count} local + ${remoteCount} remota) → ${sig}`);
   }
 
   // 3. saca crédito disponível (respeitando o rent da PDA do pool)
@@ -386,7 +410,7 @@ export async function runClaims(name, chain, state, DRY, epochSecs) {
   const key = `claims:${name}`;
   const st = (state[key] = state[key] ?? {});
   try {
-    if (chain.type === "cosmwasm") await runTcClaims(chain, st, DRY, state);
+    if (chain.type === "cosmwasm") await runTcClaims(chain, st, DRY, state, epochSecs);
     else if (chain.type === "evm") await runEvmClaims(name, chain, st, DRY, state);
     else if (chain.type === "solana") await runSolanaClaims(chain, st, DRY, epochSecs, state);
   } catch (err) {
