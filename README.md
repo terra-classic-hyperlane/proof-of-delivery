@@ -90,6 +90,7 @@ Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 
 ## Documentação de auditoria e operação
 
+- **`docs/MANUAL-EXPANSAO.md`** — como adicionar chains, operadores e associações (de/para); por id vs por época.
 - **`docs/CLAIM-REMOTO.md`** — Vault v2: como as 4 chains se amarram (vínculos de endereço, atestação com quórum, taxa de origem paga ao operador).
 
 - **`docs/REGISTRO-AUDITORIA.md`** — TODOS os endereços/operadores/parâmetros das 4 redes + verificação em 1 linha por invariante.

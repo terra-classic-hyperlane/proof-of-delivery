@@ -116,7 +116,8 @@ os scripts deste repo são a referência executável:
 | Preço de emergência (multisig) | gov variante 8 `ForceSetGasData` |
 | Beneficiary do IGP (multisig) | gov variante 9 |
 | **Devolver posse do IGP (emergência)** | gov variante 10 `TransferIgpOwnership(Some(pubkey))` |
-| Relatório de época / saque (vault) | rrv variantes 1 (`SubmitEpochReport`) / 2 (`Withdraw`) |
+| Relatório de época / saque (vault) | rrv variantes 1 (`SubmitEpochReport`, agora com campo `remote` = créditos de origem) / 2 (`Withdraw`) |
+| v2: recompensa/vínculo remoto (proposta) | `AdminAction::SetRemoteReward` / `SetRemoteBinding` — modelo em `deploy/rrv-remote-config.mjs` |
 | Semear o pool | transferir SOL p/ `Eq1mJGTS…Dwb9w` |
 | Upgrade authority → multisig | `solana program set-upgrade-authority 2mQZcHYL… --new-upgrade-authority <MULTISIG>` |
 

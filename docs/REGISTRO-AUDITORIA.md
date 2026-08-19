@@ -88,6 +88,18 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
   gas `[9441·84975]` · decimals 6 · pool **0,3 SOL** ✓.
 - `pod.so` 184.904 bytes, deploy `--max-len` exato (custo 1,359 SOL + finalize; rent recuperável).
 
+## 4b. ClaimRemote (v2) — taxa de origem nas 4 chains
+
+| Origem | Mecanismo | Recompensa/entrega | Vínculo executor |
+|---|---|---|---|
+| TC (code_id 11589) | por id | 33 LUNC | SOL `PbEo…` · BSC `0x8f08…` · ETH `0xEF81…` |
+| BSC (`0x1A41144c…`) | por id | 2.259.538.750.000 wei | dom 132556 → `terra1run9wz…` |
+| ETH (`0x04096dCB…`) | por id | 9.294.377.050.000 wei | dom 132556 → `terra1run9wz…` |
+| Solana (pod, upgrade 19/08) | por época | 499.000 lamports | dom 132556 → `terra1run9wz…` (PDAs `8N3sq5Xg…`/`GTeqFxoQ…`) |
+
+Atestadores = owner de cada chain · quórum 1 (teste). Expansão (chains,
+operadores, vínculos): `MANUAL-EXPANSAO.md`.
+
 ## 5. Relayer em operação (1 operador nesta fase)
 
 | Chain | Endereço do relayer |

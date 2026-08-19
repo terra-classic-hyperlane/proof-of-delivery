@@ -17,6 +17,10 @@ das entregas do relayer** (`src/claims.js`, config `chains.<nome>.claims`):
 - **Solana**: conta os `process()` pagos pelo relayer no Mailbox por época;
   época fechada → `SubmitEpochReport` (módulo rrv do pod; quórum on-chain) →
   `Withdraw` do crédito disponível (respeitando o rent do pool).
+- **v2 ClaimRemote (taxa de ORIGEM)**: o scanner do TC captura a ORIGEM de cada
+  entrega sua e o agente atesta no vault de origem — TC atesta por id
+  (`remoteAttest`), BSC/ETH por id (`remoteAttestEvm`), Solana por época
+  (`remoteAttestSol` → campo `remote` do relatório). Tudo no MESMO ciclo horário.
 
 Cursors/pendências/épocas ficam no `state.json`. **Primeira rodada só grava o
 cursor** — apenas entregas NOVAS são resgatadas automaticamente (antigas:

@@ -51,6 +51,18 @@ O mesmo vale para ETH e Solana — só muda o domínio e o endereço vinculado.
 | Solana | pool SOL via época | 0,003 SOL | quórum de operadores |
 | **BSC/ETH/SOL (v2)** | **pool TC via `AttestRemoteDelivery`** | **33 LUNC/entrega (por domínio, owner define)** | **atestação com quórum + vínculo** |
 
+E, simetricamente, cada chain de ORIGEM paga a taxa ao executor — **por id**
+(registro individual por mensagem) nas chains onde armazenar é barato, e
+**por época** (agregado de 6 h no relatório) na Solana, onde o rent por conta
+custaria mais que a taxa (detalhe: `MANUAL-EXPANSAO.md` §2):
+
+| Origem | Mecanismo | Valor por entrega |
+|---|---|---|
+| TC | por id (`AttestRemoteDelivery`) | 33 LUNC |
+| BSC | por id (`attestRemoteDelivery`) | 0,0000023 BNB (taxa real) |
+| ETH | por id (`attestRemoteDelivery`) | 0,0000093 ETH (taxa real) |
+| Solana | por época (`EpochReport.remote`) | 0,000499 SOL (taxa real) |
+
 ## 4. O modelo de confiança (honesto)
 
 O TC **não enxerga** as outras chains. A v2 não muda isso — ela replica o
