@@ -35,6 +35,8 @@ use solana_program::{
 #[cfg(not(feature = "no-entrypoint"))]
 solana_program::entrypoint!(process_instruction);
 
+pub mod receipt;
+
 // ---------------------------------------------------------------------------
 // Seeds (spec §09: seeds = ["rrv", "-", "prop", "-", hash(envelope)])
 // ---------------------------------------------------------------------------
@@ -211,13 +213,13 @@ pub enum Instruction {
 /// Contas têm espaço fixo com folga (zero-padded); por isso o deserialize é
 /// STREAMING (`T::deserialize`), que ignora os bytes finais — `try_from_slice`
 /// exigiria consumo exato e falharia.
-fn load_streaming<T: BorshDeserialize>(info: &AccountInfo) -> Result<T, ProgramError> {
+pub(crate) fn load_streaming<T: BorshDeserialize>(info: &AccountInfo) -> Result<T, ProgramError> {
     let data = info.data.borrow();
     let mut slice: &[u8] = &data;
     T::deserialize(&mut slice).map_err(|_| ProgramError::InvalidAccountData)
 }
 
-fn store<T: BorshSerialize>(info: &AccountInfo, value: &T) -> ProgramResult {
+pub(crate) fn store<T: BorshSerialize>(info: &AccountInfo, value: &T) -> ProgramResult {
     let bytes = borsh::to_vec(value).map_err(|_| ProgramError::InvalidAccountData)?;
     let mut data = info.data.borrow_mut();
     if bytes.len() > data.len() {
@@ -231,7 +233,7 @@ fn store<T: BorshSerialize>(info: &AccountInfo, value: &T) -> ProgramResult {
     Ok(())
 }
 
-fn create_pda<'a>(
+pub(crate) fn create_pda<'a>(
     payer: &AccountInfo<'a>,
     pda: &AccountInfo<'a>,
     system: &AccountInfo<'a>,
@@ -247,7 +249,7 @@ fn create_pda<'a>(
     )
 }
 
-fn ensure(cond: bool, err: ProgramError) -> ProgramResult {
+pub(crate) fn ensure(cond: bool, err: ProgramError) -> ProgramResult {
     if cond {
         Ok(())
     } else {
@@ -271,7 +273,7 @@ const ERR_EPOCH_WRONG_REPORT: u32 = 112;
 const ERR_NO_REMOTE_REWARD: u32 = 113;
 const ERR_NO_REMOTE_BINDING: u32 = 114;
 
-fn custom(code: u32) -> ProgramError {
+pub(crate) fn custom(code: u32) -> ProgramError {
     ProgramError::Custom(code)
 }
 
