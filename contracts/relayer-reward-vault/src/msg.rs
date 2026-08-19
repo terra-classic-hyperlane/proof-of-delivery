@@ -73,6 +73,18 @@ pub enum ExecuteMsg {
     /// remove). `address` no formato hex-32 da convenção Hyperlane.
     SetRemoteRouter { domain: u32, address: Option<String> },
 
+    // ---- Fase 2/3 (recibo trustless) ----
+    /// PAPEL DESTINO. Prova que estas MENSAGENS (bytes completos) foram entregues
+    /// AQUI (raw query DELIVERIES por keccak256(msg)) e despacha UM recibo de
+    /// volta ao vault de origem — o domínio de origem é LIDO da mensagem (não
+    /// forjável). Fundos anexados pagam o hook/IGP do recibo (operador paga).
+    SendReceipt { messages: Vec<HexBinary> },
+
+    /// PAPEL ORIGEM. Chamado pelo hpl-mailbox ao entregar o recibo. Só aceita do
+    /// Mailbox e de um `sender` == router registrado do `origin`. Paga cada id ao
+    /// endereço do operador N no NOSSO registro local. Idempotente.
+    Handle(HandleMsg),
+
     /// Atestador: afirma que as mensagens (despachadas DESTE mailbox p/ `domain`
     /// — o message_id é o MESMO nas duas chains) foram entregues lá pelo endereço
     /// vinculado ao `executor` (default: o próprio atestador). Ao atingir o
@@ -141,6 +153,14 @@ pub enum QueryMsg {
     /// Router (nosso vault) registrado para um domínio.
     #[returns(RemoteRouterResponse)]
     RemoteRouter { domain: u32 },
+}
+
+/// Espelha `hpl_interface::core::HandleMsg` (o que o Mailbox envia ao recipient).
+#[cw_serde]
+pub struct HandleMsg {
+    pub origin: u32,
+    pub sender: HexBinary,
+    pub body: HexBinary,
 }
 
 #[cw_serde]

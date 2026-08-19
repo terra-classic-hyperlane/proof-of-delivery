@@ -37,6 +37,18 @@ mod mock_mailbox {
     #[cw_serde]
     pub struct InstantiateMsg {}
 
+    use cw_storage_plus::Item;
+    pub const LAST_DISPATCH: Item<(u32, HexBinary, HexBinary)> = Item::new("last_dispatch");
+
+    #[cw_serde]
+    pub struct DispatchMsg {
+        pub dest_domain: u32,
+        pub recipient_addr: HexBinary,
+        pub msg_body: HexBinary,
+        pub hook: Option<String>,
+        pub metadata: Option<HexBinary>,
+    }
+
     #[cw_serde]
     pub enum ExecuteMsg {
         /// registra uma entrega como se `sender` tivesse executado o process()
@@ -45,6 +57,8 @@ mod mock_mailbox {
             sender: String,
             block_number: u64,
         },
+        /// captura o recibo despachado pelo vault (papel destino)
+        Dispatch(DispatchMsg),
     }
 
     pub fn instantiate(
@@ -78,12 +92,19 @@ mod mock_mailbox {
                 )?;
                 Ok(Response::new())
             }
+            ExecuteMsg::Dispatch(d) => {
+                LAST_DISPATCH.save(deps.storage, &(d.dest_domain, d.recipient_addr, d.msg_body))?;
+                Ok(Response::new())
+            }
         }
     }
 
-    pub fn query(_deps: Deps, _env: Env, _msg: cosmwasm_std::Empty) -> StdResult<Binary> {
-        to_json_binary(&())
+    pub fn query(deps: Deps, _env: Env, _msg: QueryLastDispatch) -> StdResult<Binary> {
+        to_json_binary(&LAST_DISPATCH.may_load(deps.storage)?)
     }
+
+    #[cw_serde]
+    pub struct QueryLastDispatch {}
 }
 
 // ---------------------------------------------------------------------------
@@ -1259,4 +1280,108 @@ fn router_owner_only() {
     let r: RemoteRouterResponse = s.app.wrap().query_wasm_smart(&s.vault,
         &QueryMsg::RemoteRouter { domain: DOM_BSC }).unwrap();
     assert_eq!(r.address.unwrap(), "0x1a41144c");
+}
+
+// ===========================================================================
+// Fase 2/3 — recibo trustless (CW: send_receipt no destino + handle na origem)
+// ===========================================================================
+use sha3::{Digest, Keccak256};
+
+const DOM_BSC_R: u32 = 56;
+
+/// monta uma mensagem Hyperlane com origin_domain embutido em [5..9]
+fn hyp_msg(origin: u32, nonce: u32) -> HexBinary {
+    let mut m = vec![3u8]; // version
+    m.extend_from_slice(&nonce.to_be_bytes());
+    m.extend_from_slice(&origin.to_be_bytes());
+    m.extend_from_slice(&[0u8; 32]); // sender
+    m.extend_from_slice(&DOM_TC.to_be_bytes()); // dest
+    m.extend_from_slice(&[0u8; 32]); // recipient
+    m.extend_from_slice(b"x"); // body
+    HexBinary::from(m)
+}
+fn keccak_id(m: &HexBinary) -> HexBinary {
+    let mut h = Keccak256::new();
+    h.update(m.as_slice());
+    HexBinary::from(h.finalize().to_vec())
+}
+
+#[test]
+fn send_receipt_prova_entrega_e_despacha() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    let relayer = s.relayer_a.clone();
+    // registro: executor local (relayer_a) = operador 0; router da BSC
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: Some(relayer.to_string()) }, &[]).unwrap();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC_R,
+            address: Some("0x00000000000000000000000000000000000000000000000000000000000000bc".into()) }, &[]).unwrap();
+    // mensagem originada na BSC (56), entregue AQUI (TC) pelo relayer_a
+    let m = hyp_msg(DOM_BSC_R, 1);
+    let id = keccak_id(&m);
+    s.app.execute_contract(relayer.clone(), s.mailbox.clone(),
+        &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
+    // send_receipt (papel destino) — despacha 1 recibo p/ a BSC
+    s.app.execute_contract(relayer.clone(), s.vault.clone(),
+        &ExecuteMsg::SendReceipt { messages: vec![m] }, &[]).unwrap();
+    // o mock mailbox capturou o dispatch: destino 56, corpo de 36 bytes
+    let last: Option<(u32, HexBinary, HexBinary)> = s.app.wrap()
+        .query_wasm_smart(&s.mailbox, &mock_mailbox::QueryLastDispatch {}).unwrap();
+    let (dest, _router, body) = last.unwrap();
+    assert_eq!(dest, DOM_BSC_R);
+    assert_eq!(body.len(), 36);
+    assert_eq!(&body.as_slice()[0..32], id.as_slice()); // id no corpo
+}
+
+#[test]
+fn handle_paga_operador_do_registro_local_e_idempotente() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    let payout = s.relayer_a.clone();
+    let router_bsc = "0x00000000000000000000000000000000000000000000000000000000000000bc";
+    // operador 0 recebe no domínio LOCAL (TC); recompensa e router p/ origem BSC
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: Some(payout.to_string()) }, &[]).unwrap();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteReward { domain: DOM_BSC_R, reward: Uint128::from(33_000_000u128) }, &[]).unwrap();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC_R, address: Some(router_bsc.into()) }, &[]).unwrap();
+
+    let id = keccak_id(&hyp_msg(DOM_BSC_R, 9));
+    let mut body = id.to_vec();
+    body.extend_from_slice(&0u32.to_be_bytes()); // operador 0
+    let handle = ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg {
+        origin: DOM_BSC_R,
+        sender: HexBinary::from(hex::decode("00000000000000000000000000000000000000000000000000000000000000bc").unwrap()),
+        body: HexBinary::from(body),
+    });
+    let before = balance(&s.app, &payout);
+    // SÓ o mailbox chama handle
+    s.app.execute_contract(s.mailbox.clone(), s.vault.clone(), &handle, &[]).unwrap();
+    assert_eq!(balance(&s.app, &payout), before + 33_000_000);
+    // reentrega do MESMO recibo não paga de novo
+    s.app.execute_contract(s.mailbox.clone(), s.vault.clone(), &handle, &[]).unwrap();
+    assert_eq!(balance(&s.app, &payout), before + 33_000_000);
+}
+
+#[test]
+fn handle_rejeita_nao_mailbox_e_router_errado() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC_R,
+            address: Some("0x00000000000000000000000000000000000000000000000000000000000000bc".into()) }, &[]).unwrap();
+    let mut body = keccak_id(&hyp_msg(DOM_BSC_R, 1)).to_vec();
+    body.extend_from_slice(&0u32.to_be_bytes());
+    let good = HexBinary::from(hex::decode("00000000000000000000000000000000000000000000000000000000000000bc").unwrap());
+    // não-mailbox (um relayer qualquer) → Unauthorized
+    let err = s.app.execute_contract(s.relayer_a.clone(), s.vault.clone(),
+        &ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg { origin: DOM_BSC_R, sender: good.clone(), body: HexBinary::from(body.clone()) }), &[]).unwrap_err();
+    assert!(err.root_cause().to_string().contains("unauthorized"));
+    // mailbox, mas sender != router → Unauthorized
+    let bad = HexBinary::from(hex::decode("00000000000000000000000000000000000000000000000000000000000000ff").unwrap());
+    let err = s.app.execute_contract(s.mailbox.clone(), s.vault.clone(),
+        &ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg { origin: DOM_BSC_R, sender: bad, body: HexBinary::from(body) }), &[]).unwrap_err();
+    assert!(err.root_cause().to_string().contains("unauthorized"));
 }

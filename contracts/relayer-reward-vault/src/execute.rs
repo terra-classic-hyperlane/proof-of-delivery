@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
 
 use cosmwasm_std::{
-    ensure, to_json_binary, BankMsg, Coin, DepsMut, Env, HexBinary, MessageInfo, Response, Uint128,
-    WasmMsg,
+    ensure, to_json_binary, BankMsg, Coin, CosmosMsg, DepsMut, Env, HexBinary, MessageInfo,
+    Response, Uint128, WasmMsg,
 };
+use crate::msg::HandleMsg;
 
 use crate::error::ContractError;
 use crate::mailbox::{hex, load_delivery};
@@ -523,4 +524,126 @@ pub fn set_remote_router(
     Ok(Response::new()
         .add_attribute("action", "set_remote_router")
         .add_attribute("domain", domain.to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// Fase 2/3 — recibo trustless (papel DESTINO: send_receipt · ORIGEM: handle)
+// ---------------------------------------------------------------------------
+
+fn keccak256(bz: &[u8]) -> Vec<u8> {
+    use sha3::{Digest, Keccak256};
+    let mut h = Keccak256::new();
+    h.update(bz);
+    h.finalize().to_vec()
+}
+
+/// domínio de origem da msg Hyperlane: version(1)+nonce(4) → origin em [5..9].
+fn origin_of(msg: &[u8]) -> Result<u32, ContractError> {
+    ensure!(msg.len() >= 9, ContractError::Std(cosmwasm_std::StdError::generic_err("msg curta")));
+    Ok(u32::from_be_bytes([msg[5], msg[6], msg[7], msg[8]]))
+}
+
+/// PAPEL DESTINO: prova as entregas e despacha UM recibo ao vault de origem.
+pub fn send_receipt(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    messages: Vec<HexBinary>,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    ensure!(!config.paused, ContractError::Paused {});
+    ensure!(!messages.is_empty(), ContractError::EmptyBatch {});
+
+    let origin = origin_of(messages[0].as_slice())?;
+    let mut body: Vec<u8> = Vec::with_capacity(messages.len() * 36);
+    for m in &messages {
+        let bytes = m.as_slice();
+        ensure!(origin_of(bytes)? == origin, ContractError::Std(
+            cosmwasm_std::StdError::generic_err("origens misturadas")));
+        let id = keccak256(bytes);
+        let delivery = load_delivery(&deps.querier, &config.mailbox, &id)?
+            .ok_or_else(|| ContractError::NotDelivered { id: hex(&id) })?;
+        // executor local = quem processou (delivery.sender)
+        let idx = OPERATOR_OF_LOCAL
+            .may_load(deps.storage, delivery.sender.to_string())?
+            .ok_or_else(|| ContractError::NoBinding { operator: delivery.sender.to_string(), domain: origin })?;
+        body.extend_from_slice(&id);
+        body.extend_from_slice(&idx.to_be_bytes());
+    }
+    let router = REMOTE_ROUTER.may_load(deps.storage, origin)?
+        .ok_or(ContractError::NoRemoteReward { domain: origin })?;
+    let router_hex = HexBinary::from(::hex::decode(router.trim_start_matches("0x"))
+        .map_err(|_| ContractError::Std(cosmwasm_std::StdError::generic_err("router hex")))?);
+
+    // dispatch no hpl-mailbox (fundos anexados pagam o hook/IGP — operador paga)
+    #[derive(serde::Serialize)]
+    struct DispatchMsg { dest_domain: u32, recipient_addr: HexBinary, msg_body: HexBinary, hook: Option<String>, metadata: Option<HexBinary> }
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum MailboxExec { Dispatch(DispatchMsg) }
+    let dispatch = CosmosMsg::Wasm(WasmMsg::Execute {
+        contract_addr: config.mailbox.to_string(),
+        msg: to_json_binary(&MailboxExec::Dispatch(DispatchMsg {
+            dest_domain: origin,
+            recipient_addr: router_hex,
+            msg_body: HexBinary::from(body),
+            hook: None,
+            metadata: None,
+        }))?,
+        funds: info.funds,
+    });
+    Ok(Response::new()
+        .add_message(dispatch)
+        .add_attribute("action", "send_receipt")
+        .add_attribute("origin", origin.to_string())
+        .add_attribute("count", messages.len().to_string()))
+}
+
+/// PAPEL ORIGEM: recebe o recibo do Mailbox e paga os operadores do registro local.
+pub fn handle(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: HandleMsg,
+) -> Result<Response, ContractError> {
+    let config = CONFIG.load(deps.storage)?;
+    // SÓ o mailbox pode chamar handle
+    ensure!(info.sender == config.mailbox, ContractError::Unauthorized {});
+    // sender (dispatcher remoto) deve ser o router registrado do origin
+    let router = REMOTE_ROUTER.may_load(deps.storage, msg.origin)?
+        .ok_or(ContractError::Unauthorized {})?;
+    let sender_hex = format!("0x{}", hex(msg.sender.as_slice()));
+    ensure!(sender_hex.to_lowercase() == router.to_lowercase(), ContractError::Unauthorized {});
+
+    let body = msg.body.as_slice();
+    ensure!(!body.is_empty() && body.len() % 36 == 0, ContractError::EmptyBatch {});
+    let reward = REMOTE_REWARDS.may_load(deps.storage, msg.origin)?.unwrap_or_default();
+
+    let mut msgs: Vec<CosmosMsg> = vec![];
+    let mut paid: Vec<String> = vec![];
+    for chunk in body.chunks(36) {
+        let id = &chunk[0..32];
+        if REMOTE_CLAIMED.may_load(deps.storage, id.to_vec())?.is_some() { continue; }
+        let idx = u32::from_be_bytes([chunk[32], chunk[33], chunk[34], chunk[35]]);
+        // paga o operador N pelo endereço no NOSSO domínio local
+        let payout = match OPERATOR_ADDR.may_load(deps.storage, (idx, LOCAL_DOMAIN))? {
+            Some(a) => a, None => continue,
+        };
+        if reward.is_zero() { continue; }
+        REMOTE_CLAIMED.save(deps.storage, id.to_vec(), &RemoteClaimRecord {
+            executor: deps.api.addr_validate(&payout)?, domain: msg.origin, amount: reward,
+            claimed_at_block: env.block.height,
+        })?;
+        let cur = TOTAL_REMOTE_PAID.may_load(deps.storage)?.unwrap_or_default();
+        TOTAL_REMOTE_PAID.save(deps.storage, &cur.checked_add(reward).map_err(cosmwasm_std::StdError::overflow)?)?;
+        msgs.push(CosmosMsg::Bank(BankMsg::Send {
+            to_address: payout, amount: vec![Coin { denom: config.denom.clone(), amount: reward }],
+        }));
+        paid.push(hex(id));
+    }
+    Ok(Response::new()
+        .add_messages(msgs)
+        .add_attribute("action", "handle_receipt")
+        .add_attribute("origin", msg.origin.to_string())
+        .add_attribute("paid", paid.len().to_string()))
 }
