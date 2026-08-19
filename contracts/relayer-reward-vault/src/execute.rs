@@ -12,7 +12,8 @@ use crate::msg::InstantiateMsg;
 use crate::state::{
     ClaimRecord, Config, RemoteClaimRecord, RemoteConfig, CLAIMED, CONFIG, OPERATOR_ADDR,
     OPERATOR_COUNT, OPERATOR_OF_LOCAL, REMOTE_ATTESTS, REMOTE_BINDINGS, REMOTE_CLAIMED,
-    REMOTE_CONFIG, REMOTE_REWARDS, REMOTE_ROUTER, TOTAL_CLAIMS, TOTAL_PAID, TOTAL_REMOTE_PAID,
+    REMOTE_CONFIG, REMOTE_REWARDS, REMOTE_ROUTER, SENT_RECEIPT, TOTAL_CLAIMS, TOTAL_PAID,
+    TOTAL_REMOTE_PAID,
 };
 
 pub fn instantiate(
@@ -546,7 +547,7 @@ fn origin_of(msg: &[u8]) -> Result<u32, ContractError> {
 /// PAPEL DESTINO: prova as entregas e despacha UM recibo ao vault de origem.
 pub fn send_receipt(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     messages: Vec<HexBinary>,
 ) -> Result<Response, ContractError> {
@@ -561,15 +562,25 @@ pub fn send_receipt(
         ensure!(origin_of(bytes)? == origin, ContractError::Std(
             cosmwasm_std::StdError::generic_err("origens misturadas")));
         let id = keccak256(bytes);
+        // idempotência no DESTINO: um id só gera recibo UMA vez. Já-enviados (nesta
+        // chamada ou em outra) são PULADOS — evita duplo-pagamento no lado que paga
+        // (essencial p/ Solana, que não deduplica no handle). Marcado na MESMA tx
+        // do dispatch: se o dispatch reverter, a marca também reverte (atômico).
+        if SENT_RECEIPT.may_load(deps.storage, id.to_vec())?.is_some() {
+            continue;
+        }
         let delivery = load_delivery(&deps.querier, &config.mailbox, &id)?
             .ok_or_else(|| ContractError::NotDelivered { id: hex(&id) })?;
         // executor local = quem processou (delivery.sender)
         let idx = OPERATOR_OF_LOCAL
             .may_load(deps.storage, delivery.sender.to_string())?
             .ok_or_else(|| ContractError::NoBinding { operator: delivery.sender.to_string(), domain: origin })?;
+        SENT_RECEIPT.save(deps.storage, id.to_vec(), &env.block.height)?;
         body.extend_from_slice(&id);
         body.extend_from_slice(&idx.to_be_bytes());
     }
+    // todos já haviam sido enviados → nada novo a despachar (não gasta gás à toa)
+    ensure!(!body.is_empty(), ContractError::NothingNewToSend {});
     let router = REMOTE_ROUTER.may_load(deps.storage, origin)?
         .ok_or(ContractError::NoRemoteReward { domain: origin })?;
     let router_hex = HexBinary::from(::hex::decode(router.trim_start_matches("0x"))

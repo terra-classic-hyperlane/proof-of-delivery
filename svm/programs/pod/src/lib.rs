@@ -52,8 +52,24 @@ pub fn process_instruction(
         if disc == receipt::ISM_DISC {
             return receipt::ism_response();
         }
-        // HandleAccountMetas / IsmAccountMetas → metas vazias (o keeper monta)
-        return receipt::empty_metas();
+        if disc == receipt::ISM_METAS_DISC {
+            return receipt::ism_account_metas();
+        }
+        if disc == receipt::HANDLE_METAS_DISC {
+            // borsh HandleInstruction { origin u32, sender H256(32), message Vec }
+            let rest = &data[8..];
+            let origin = u32::from_le_bytes(
+                rest.get(0..4).ok_or(ProgramError::InvalidInstructionData)?.try_into().unwrap(),
+            );
+            let mlen = u32::from_le_bytes(
+                rest.get(36..40).ok_or(ProgramError::InvalidInstructionData)?.try_into().unwrap(),
+            ) as usize;
+            let message = rest
+                .get(40..40 + mlen)
+                .ok_or(ProgramError::InvalidInstructionData)?;
+            return receipt::handle_account_metas(program_id, origin, message);
+        }
+        return Err(ProgramError::InvalidInstructionData);
     }
     let (module, rest) = data
         .split_first()

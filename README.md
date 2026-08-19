@@ -83,8 +83,13 @@ qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
 
 | Artefato | sha256 |
 |---|---|
-| `artifacts/relayer_reward_vault.wasm` (231 KB) | `c9699711a661607bebe30819ee1dc0035ff5276523dbb08b80a108fb03721d82` |
+| `artifacts/relayer_reward_vault.wasm` (355 KB) | `cb753ed7aaa136342e4f685e85b8323e9947965c06ada8f4dbb04662563f19bd` |
 | `artifacts/oracle_governor.wasm` (268 KB) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
+
+> Hash do `relayer_reward_vault.wasm` atualizado ao adicionar a idempotência de
+> emissão de recibo (`SENT_RECEIPT`) — pré-requisito do corredor Solana→TC (o
+> destino que paga na Solana não deduplica no `handle`). Anterior:
+> `c9699711a661607bebe30819ee1dc0035ff5276523dbb08b80a108fb03721d82`.
 
 Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
 

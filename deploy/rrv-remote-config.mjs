@@ -1,3 +1,8 @@
+// ⚠️ DESCONTINUADO — modelo ANTIGO (ClaimRemote/atestação, com SetRemoteBinding).
+//   O corredor Solana→TC agora usa o MODELO DE RECIBO: veja
+//   `deploy/rrv-receipt-config-solana.mjs` (+ `tc-receipt-config-solana.sh`) e §G
+//   de `docs/RECIBO-TRUSTLESS.md`. Mantido só como referência histórica.
+//
 // v2 ClaimRemote na Solana: SetRemoteReward + SetRemoteBinding via proposta
 // administrativa (quórum atual 1 → a aprovação do signatário executa).
 //   node deploy/rrv-remote-config.mjs

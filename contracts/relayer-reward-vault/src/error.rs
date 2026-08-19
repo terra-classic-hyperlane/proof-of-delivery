@@ -78,4 +78,7 @@ pub enum ContractError {
 
     #[error("remote quorum must be >= 1 and <= number of attestors")]
     BadRemoteQuorum {},
+
+    #[error("nothing new to send: all message ids in the batch already had a receipt dispatched")]
+    NothingNewToSend {},
 }

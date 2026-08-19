@@ -211,8 +211,9 @@ pub enum Instruction {
     SetRemoteRouter { domain: u32, router: [u8; 32] },
     /// [operator s w, config, opsol PDA w, oploc PDA w, system]
     SetOperatorSol { index: u32, operator: Pubkey },
-    /// PAPEL DESTINO (keeper, MESMA tx da entrega). Contas: ver receipt::send_receipt_atomic.
-    SendReceiptAtomic {},
+    /// Operador saca o SOL do recibo acumulado na sua PDA operator_sol(index).
+    /// [signer(payout) w, opsol PDA(index) w]
+    WithdrawOperatorSol { index: u32, amount: u64 },
 }
 
 // ---------------------------------------------------------------------------
@@ -313,7 +314,9 @@ pub fn process_instruction(
         Instruction::SetOperatorSol { index, operator } => {
             receipt::set_operator_sol(program_id, accounts, index, operator)
         }
-        Instruction::SendReceiptAtomic {} => receipt::send_receipt_atomic(program_id, accounts),
+        Instruction::WithdrawOperatorSol { index, amount } => {
+            receipt::withdraw_operator_sol(program_id, accounts, index, amount)
+        }
     }
 }
 

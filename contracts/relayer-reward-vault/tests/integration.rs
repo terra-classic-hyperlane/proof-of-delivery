@@ -1335,6 +1335,29 @@ fn send_receipt_prova_entrega_e_despacha() {
 }
 
 #[test]
+fn send_receipt_nao_reemite_o_mesmo_id() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    let relayer = s.relayer_a.clone();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: Some(relayer.to_string()) }, &[]).unwrap();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC_R,
+            address: Some("0x00000000000000000000000000000000000000000000000000000000000000bc".into()) }, &[]).unwrap();
+    let m = hyp_msg(DOM_BSC_R, 7);
+    let id = keccak_id(&m);
+    s.app.execute_contract(relayer.clone(), s.mailbox.clone(),
+        &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
+    // 1ª emissão: ok
+    s.app.execute_contract(relayer.clone(), s.vault.clone(),
+        &ExecuteMsg::SendReceipt { messages: vec![m.clone()] }, &[]).unwrap();
+    // 2ª emissão do MESMO id: recusada (nada novo) — anti-duplo-pagamento no destino
+    let err = s.app.execute_contract(relayer.clone(), s.vault.clone(),
+        &ExecuteMsg::SendReceipt { messages: vec![m] }, &[]).unwrap_err();
+    assert!(err.root_cause().to_string().contains("nothing new to send"));
+}
+
+#[test]
 fn handle_paga_operador_do_registro_local_e_idempotente() {
     let mut s = setup(1_000_000_000);
     let owner = s.gov.clone();

@@ -69,6 +69,11 @@ pub const REMOTE_CLAIMED: Map<Vec<u8>, RemoteClaimRecord> = Map::new("remote_cla
 /// message_id → atestações acumuladas (atestador, executor apontado).
 pub const REMOTE_ATTESTS: Map<Vec<u8>, Vec<(Addr, Addr)>> = Map::new("remote_attests");
 pub const TOTAL_REMOTE_PAID: Item<Uint128> = Item::new("total_remote_paid");
+/// message_id → bloco em que o recibo (papel DESTINO) foi despachado.
+/// Existência = já emitiu recibo p/ este id → NÃO reemite. A idempotência do
+/// pagamento mora AQUI (no destino que emite), porque destinos como a Solana não
+/// conseguem deduplicar no `handle` (o Mailbox não passa payer p/ criar conta).
+pub const SENT_RECEIPT: Map<Vec<u8>, u64> = Map::new("sent_receipt");
 
 // ---------------------------------------------------------------------------
 // Fase 1 (recibo trustless) — REGISTRO DE/PARA GLOBAL de operadores.
