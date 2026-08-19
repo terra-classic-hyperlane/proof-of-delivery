@@ -109,6 +109,11 @@ pub enum QueryMsg {
     /// Atestações pendentes de uma mensagem (auditoria pública).
     #[returns(RemoteAttestationsResponse)]
     RemoteAttestations { message_id: HexBinary },
+
+    /// Quanto estes ids PAGARIAM se confirmados (ainda não pagos) — decidir se
+    /// vale o gás de enviar o recibo. amount = payable_count × recompensa do domínio.
+    #[returns(QuoteRemoteResponse)]
+    QuoteRemote { domain: u32, message_ids: Vec<HexBinary> },
 }
 
 #[cw_serde]
@@ -189,4 +194,10 @@ pub struct RemoteClaimedResponse {
 pub struct RemoteAttestationsResponse {
     /// (atestador, executor apontado)
     pub attestations: Vec<(Addr, Addr)>,
+}
+
+#[cw_serde]
+pub struct QuoteRemoteResponse {
+    pub amount: Uint128,
+    pub payable_count: u32,
 }

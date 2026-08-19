@@ -119,6 +119,9 @@ pub mod entry {
             QueryMsg::RemoteAttestations { message_id } => {
                 to_json_binary(&crate::query::remote_attestations(deps, message_id)?)
             }
+            QueryMsg::QuoteRemote { domain, message_ids } => {
+                to_json_binary(&crate::query::quote_remote(deps, domain, message_ids)?)
+            }
         };
         Ok(res?)
     }

@@ -278,6 +278,23 @@ contract RelayerRewardVault {
         return remoteAttestors.length;
     }
 
+    /// @notice Quanto estes ids PAGARIAM se confirmados (ainda não pagos) — para
+    ///         o operador decidir se vale o gás de enviar o recibo/atestação.
+    ///         `amount` = payableCount × recompensa do domínio.
+    function quoteRemote(uint32 domain, bytes32[] calldata ids)
+        external
+        view
+        returns (uint256 amount, uint256 payableCount)
+    {
+        uint256 r = remoteReward[domain];
+        for (uint256 i = 0; i < ids.length; ++i) {
+            if (remoteClaimed[ids[i]].executor == address(0)) {
+                payableCount += 1;
+                amount += r;
+            }
+        }
+    }
+
     // ============ Views ============
 
     /// @notice Quantas entregas o pool atual consegue pagar.

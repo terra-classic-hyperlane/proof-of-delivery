@@ -106,7 +106,7 @@ pub fn solvency(deps: Deps, env: Env) -> Result<SolvencyResponse, ContractError>
 // v2 — ClaimRemote
 // ---------------------------------------------------------------------------
 use crate::msg::{
-    RemoteAttestationsResponse, RemoteBindingResponse, RemoteClaimedResponse,
+    QuoteRemoteResponse, RemoteAttestationsResponse, RemoteBindingResponse, RemoteClaimedResponse,
     RemoteConfigResponse, RemoteRewardResponse,
 };
 use crate::state::{
@@ -171,5 +171,23 @@ pub fn remote_attestations(
         attestations: REMOTE_ATTESTS
             .may_load(deps.storage, message_id.to_vec())?
             .unwrap_or_default(),
+    })
+}
+
+pub fn quote_remote(
+    deps: Deps,
+    domain: u32,
+    message_ids: Vec<cosmwasm_std::HexBinary>,
+) -> Result<QuoteRemoteResponse, ContractError> {
+    let reward = REMOTE_REWARDS.may_load(deps.storage, domain)?.unwrap_or_default();
+    let mut payable_count = 0u32;
+    for id in &message_ids {
+        if REMOTE_CLAIMED.may_load(deps.storage, id.to_vec())?.is_none() {
+            payable_count += 1;
+        }
+    }
+    Ok(QuoteRemoteResponse {
+        amount: reward.checked_mul(cosmwasm_std::Uint128::from(payable_count)).unwrap_or_default(),
+        payable_count,
     })
 }
