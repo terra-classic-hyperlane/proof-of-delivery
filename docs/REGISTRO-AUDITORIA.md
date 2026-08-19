@@ -38,10 +38,10 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
 
 | Peça | Endereço |
 |---|---|
-| **RelayerRewardVault** | `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` |
+| **RelayerRewardVault v2** (ClaimRemote) | `0x1A41144ccbA0797BB0e9e448Aa3C330Eb68347D1` (v1 `0x8b3A9eEB…145D` deprecado) |
 | **GasOracleGovernor** | `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` |
 | Mailbox | `0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4` |
-| IGP (beneficiary = **vault** ✓) | `0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923` |
+| IGP (beneficiary = **vault v2** ✓) | `0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923` |
 | Oracle (owner = **governor** ✓) | `0x7dE950f8F0a037783989a6BE84B3620916552306` |
 | Warp IGORFAKE | `0x3605D8946FC6F5A75d89d92173100F59743B5318` |
 | ISM (threshold 1) | `0xa82087B8eea0394B1476f716B91c10531025Ef42` |
@@ -55,10 +55,10 @@ Warp/validadores: `WARP-IGORFAKE.md`. Como operar cada contrato: `OPERACAO-CONTR
 
 | Peça | Endereço |
 |---|---|
-| **RelayerRewardVault** | `0xDf90d3b7FF98466E148B334128374807b3e89EbD` |
+| **RelayerRewardVault v2** (ClaimRemote) | `0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1` (v1 `0xDf90d3b7…9EbD` deprecado) |
 | **GasOracleGovernor** | `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` |
 | Mailbox | `0xc005dc82818d67AF737725bD4bf75435d065D239` |
-| IGP (beneficiary = **vault** ✓) | `0x9650F1f8DB492750323172145e67Df4e89E964Aa` |
+| IGP (beneficiary = **vault v2** ✓) | `0x9650F1f8DB492750323172145e67Df4e89E964Aa` |
 | Oracle (owner = **governor** ✓) | `0x3987cCE8f08037EBF93Ef3a934753540A94196cE` |
 | Warp IGORFAKE | `0xA687a4C4CA49795999b36fDC8A18d1DDd63eDFB5` |
 | ISM (threshold 1, mesmo validador da BSC) | `0xDe8edEC7207e2dEf9D347Eaa1f6Ee50420bc070b` |

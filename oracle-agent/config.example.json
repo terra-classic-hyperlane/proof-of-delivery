@@ -104,7 +104,7 @@
       "claims": {
         "enabled": true,
         "mailbox": "0xc005dc82818d67AF737725bD4bf75435d065D239",
-        "vault": "0xDf90d3b7FF98466E148B334128374807b3e89EbD",
+        "vault": "0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1",
         "relayer": "0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae",
         "rpc": "https://rpc.mevblocker.io",
         "chunkBlocks": 500,

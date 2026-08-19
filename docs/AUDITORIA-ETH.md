@@ -38,3 +38,10 @@ operators=[0xEF81…00ae] · quorum=1 · época=21600s · delta=2000 bps`.
 
 - [ ] Semear o pool (sugestão 0,04 ETH; qualquer valor serve para começar).
 - [ ] Handoff: vault/governor/igp/oracle/ISM → multisig dos validadores (§8).
+
+## Vault v2 (ClaimRemote) — 19/08/2026
+
+Deploy novo `0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1` (v1 `0xDf90d3b7…9EbD`
+deprecado, pool 0). `igp.setBeneficiary(v2)` ✓ · atestador `0xEF81…00ae` quórum 1 ·
+vínculo dom 132556 → `terra1run9wz…` · recompensa remota **9.294.377.050.000 wei**
+(= taxa real: (50k+300k overhead) × gasPrice 1e10 × rate 26555363 / 1e10).
