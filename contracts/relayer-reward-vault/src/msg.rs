@@ -153,6 +153,24 @@ pub enum QueryMsg {
     /// Router (nosso vault) registrado para um domínio.
     #[returns(RemoteRouterResponse)]
     RemoteRouter { domain: u32 },
+
+    /// Hyperlane: o Mailbox pergunta o ISM do recipient ao entregar (o recibo).
+    /// Espelha `hpl_interface::ism::IsmSpecifierQueryMsg` — retornamos `None`
+    /// (usa o ISM default do Mailbox, que já valida o corredor TC↔BSC).
+    #[returns(InterchainSecurityModuleResponse)]
+    IsmSpecifier(IsmSpecifierQueryMsg),
+}
+
+#[cw_serde]
+#[derive(QueryResponses)]
+pub enum IsmSpecifierQueryMsg {
+    #[returns(InterchainSecurityModuleResponse)]
+    InterchainSecurityModule(),
+}
+
+#[cw_serde]
+pub struct InterchainSecurityModuleResponse {
+    pub ism: Option<Addr>,
 }
 
 /// Espelha `hpl_interface::core::HandleMsg` (o que o Mailbox envia ao recipient).

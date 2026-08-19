@@ -141,6 +141,9 @@ pub mod entry {
             QueryMsg::RemoteRouter { domain } => {
                 to_json_binary(&crate::query::remote_router(deps, domain)?)
             }
+            QueryMsg::IsmSpecifier(_) => {
+                to_json_binary(&crate::msg::InterchainSecurityModuleResponse { ism: None })
+            }
         };
         Ok(res?)
     }

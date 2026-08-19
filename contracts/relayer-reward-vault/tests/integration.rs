@@ -1385,3 +1385,11 @@ fn handle_rejeita_nao_mailbox_e_router_errado() {
         &ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg { origin: DOM_BSC_R, sender: bad, body: HexBinary::from(body) }), &[]).unwrap_err();
     assert!(err.root_cause().to_string().contains("unauthorized"));
 }
+
+#[test]
+fn ism_specifier_query_deserializa_o_json_do_mailbox() {
+    // o hpl-mailbox envia exatamente: {"ism_specifier":{"interchain_security_module":[]}}
+    let json = br#"{"ism_specifier":{"interchain_security_module":[]}}"#;
+    let parsed: relayer_reward_vault::msg::QueryMsg = cosmwasm_std::from_json(json).unwrap();
+    matches!(parsed, relayer_reward_vault::msg::QueryMsg::IsmSpecifier(_));
+}
