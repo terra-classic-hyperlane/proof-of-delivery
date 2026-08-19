@@ -126,8 +126,11 @@ async function round() {
   // chains em paralelo; cada uma é independente
   await Promise.allSettled(chains.map(([name, c]) => runChain(name, c, usd)));
 
-  // fase de CLAIMS (sequencial — poupa os RPCs públicos); estado no state.json
-  for (const [name, c] of chains) {
+  // fase de CLAIMS (sequencial — poupa os RPCs públicos); estado no state.json.
+  // TC por ÚLTIMO: é ele quem ATESTA no vault as entregas que os scanners das
+  // remotas acabaram de enfileirar — assim tudo fecha na MESMA rodada.
+  const ordered = [...chains].sort(([, a], [, b]) => (a.type === "cosmwasm" ? 1 : 0) - (b.type === "cosmwasm" ? 1 : 0));
+  for (const [name, c] of ordered) {
     await runClaims(name, c, state, DRY, config.epochDurationSecs ?? 21_600);
   }
   if (!DRY) saveState();
