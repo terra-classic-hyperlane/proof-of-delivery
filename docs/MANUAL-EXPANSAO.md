@@ -1,103 +1,113 @@
 # Manual de Expansão — nova chain, novos operadores, novas associações
 
-Como crescer o sistema sem quebrar nada. Três operações, nesta ordem de
-frequência: **associar endereços (de/para)** · **adicionar operador** ·
-**adicionar chain**. Endereços atuais: `REGISTRO-AUDITORIA.md`.
+Como crescer o sistema sem quebrar nada, no **modelo de recibo trustless**
+(`RECIBO-TRUSTLESS.md`). Três operações: **registrar identidade (de/para)** ·
+**adicionar operador** · **adicionar chain**. Endereços atuais:
+`REGISTRO-AUDITORIA.md`.
 
 ---
 
-## 1. O que é a "associação (de/para)" — o vínculo de identidade
+## 1. O que é a "associação (de/para)" — o registro de identidade
 
-Um operador é UMA entidade com um endereço DIFERENTE em cada chain. A associação
-(binding) registra isso **dentro do vault de cada chain de origem**, para que ele
-saiba a quem pagar a taxa quando a entrega acontece em outra rede:
+Um operador é UMA identidade com um endereço DIFERENTE em cada chain. O registro
+guarda isso por ÍNDICE — a mesma linha vale em todas as chains:
 
 ```
-Vault do TC     : (terra1run9wz…, domínio 1399811149) → PbEo7Fn2…   "as entregas
-Vault do TC     : (terra1run9wz…, domínio 56)         → 0x8f08…      NA chain X
-Vault do TC     : (terra1run9wz…, domínio 1)          → 0xEF81…      feitas por
-Vault da BSC    : (0x8f08…,       domínio 132556)     → terra1run9wz…  ESTE
-Vault da ETH    : (0xEF81…,       domínio 132556)     → terra1run9wz…  endereço
-Vault da Solana : (PbEo7Fn2…,     domínio 132556)     → terra1run9wz…  são minhas"
+operador 0 = { TC: terra1run9wz…,  BSC: 0x8f08…,  ETH: 0xEF81…,  SOL: PbEo… }
+operador 1 = { TC: terra1abc…,     BSC: 0x1234…,  ETH: 0x5678…,  SOL: 9xYz… }
 ```
 
-Leitura: "no vault de ORIGEM, o operador LOCAL declara qual é o SEU endereço
-executor no domínio de ENTREGA". Só o owner/governança grava vínculos — é a
-troca de confiança do modelo: o quórum atesta A ENTREGA, o vínculo prova A IDENTIDADE.
+Cada vault guarda esse registro (`operator_address[(índice, domínio)]`) e um
+**reverse-lookup** para o domínio LOCAL (`endereço → índice`). O recibo carrega
+só **(message_id, índice)**; cada chain paga o endereço do índice no SEU próprio
+registro. É a troca de confiança do modelo trustless: os validadores provam A
+ENTREGA (no recibo), o registro (só o owner grava) diz A IDENTIDADE/para onde pagar.
 
-### Comandos por chain (owner)
+### Comandos (owner) — ver §3.2 para o passo a passo por chain
 
 ```bash
-# TC (vault v2)
-terrad tx wasm execute $VAULT '{"set_remote_binding":{"operator":"<terra1_operador>","domain":<dom_entrega>,"remote_address":"<endereco_executor_lá>"}}' $TX
-# remover: "remote_address": null
-
-# BSC/ETH (vault v2)
-cast send $VAULT "setRemoteBinding(address,uint32,string)" <operador_local> <dom_entrega> "<endereco_executor_lá>"
-# remover: string vazia ""
-
-# Solana (proposta administrativa com quórum — modelo em deploy/rrv-remote-config.mjs)
-# AdminAction::SetRemoteBinding { domain, operator: <pubkey_local>, remote_address: "<endereco_lá>" }
+# TC
+terrad tx wasm execute $VAULT '{"set_operator_address":{"index":<N>,"domain":<dom>,"address":"<endereco>"}}' $TX
+# BSC/ETH
+cast send $VAULT "setOperatorAddress(uint32,uint32,string)" <N> <dom> "<endereco>"
+# remover: address null (TC) / "" (EVM) no domínio
 ```
 
 ---
 
 ## 2. Por id vs por época — os dois modos de pagamento da taxa de origem
 
+O pagamento é sempre **na chain de ORIGEM** (quem cobrou a taxa), ao **operador
+que ENTREGOU** (provado pelo `processor(id)` no destino + recibo assinado pelos
+validadores). Muda só como o registro é guardado:
+
 | Modo | Onde | Como funciona | Por quê |
 |---|---|---|---|
-| **Por id** | TC, BSC, ETH | Cada `message_id` é atestado e pago individualmente (`AttestRemoteDelivery`/`attestRemoteDelivery`). Registro `remote_claimed[id]` garante 1 pagamento por mensagem, auditável id a id. | Nessas chains, guardar 1 registro por id custa centavos — vale a granularidade máxima. |
-| **Por época** | Solana | As entregas são AGREGADAS por janela de 6 h e entram no `EpochReport.remote` (contagem × recompensa), sob o mesmo hash/quórum do relatório; saque via `Withdraw`. | Na Solana, 1 conta por id custaria ~0,0015 SOL de rent — MAIS que a taxa (0,0005). Agregar por época zera o custo extra. |
+| **Por id** | TC, BSC, ETH | Cada `message_id` é pago individualmente ao receber o recibo (`handle`). `remote_claimed[id]` garante 1 pagamento por mensagem, auditável id a id. | Guardar 1 registro por id custa centavos — vale a granularidade máxima. |
+| **Por época** | Solana | Entregas AGREGADAS por janela de 6 h no `EpochReport.remote` (contagem × recompensa); saque via `Withdraw`. | Na Solana 1 conta por id custaria ~0,0015 SOL de rent — MAIS que a taxa. Agregar zera o custo. |
 
-O resultado econômico é o mesmo (taxa real da origem → executor); muda só a
-granularidade do registro. **Desde 19/08 este é o ÚNICO pagamento real** — as
-recompensas de destino foram reduzidas a 1 unidade simbólica (fim do pagamento
-duplo; ver CLAIM-REMOTO §3). A tabela vigente:
+Tabela vigente (recompensa remota ≈ taxa real de origem):
 
 | Origem | Mecanismo | Valor por entrega |
 |---|---|---|
-| TC | por id (`AttestRemoteDelivery`) | 33 LUNC |
-| BSC | por id (`attestRemoteDelivery`) | ≈1,81e12 wei (taxa real, recalibrável) |
-| ETH | por id (`attestRemoteDelivery`) | ≈9,29e12 wei (taxa real) |
+| TC | por id (recibo → `handle`) | 33 LUNC |
+| BSC | por id (recibo → `handle`) | ≈2,26e12 wei (taxa real, recalibrável) |
+| ETH | por id (recibo → `handle`) | ≈9,29e12 wei (taxa real) |
 | Solana | por época (`EpochReport.remote`) | 499.000 lamports (taxa real) |
+
+> **Modelo atual = RECIBO TRUSTLESS** (`RECIBO-TRUSTLESS.md`): o vault de destino
+> prova a entrega e despacha um recibo assinado pelos validadores; o vault de
+> origem paga ao receber. **Sem atestadores, sem quórum, sem agente com poder de
+> decisão.** O modelo de atestação anterior (com quórum) está descrito em
+> `CLAIM-REMOTO.md`/`SEGURANCA-CLAIMREMOTO.md` para referência histórica.
 
 ---
 
-## 3. Adicionar um OPERADOR (novo relayer entra no sistema)
+## 3. Adicionar um OPERADOR (modelo de recibo)
 
-Checklist completo — papel a papel. Sempre que o conjunto passar de 1 operador
-independente, **suba os quóruns para ≥ 2** (é o que transforma auto-atestação
-em verificação cruzada).
+No modelo de recibo **não há quórum nem atestação** — cada operador é
+INDEPENDENTE: quem entrega, recebe (o `processor(id)` prova quem foi, o registro
+de/para diz para onde pagar). Adicionar operador = só **registrar os endereços
+dele** (o owner grava; um dia o frontend faz isso numa tela).
 
 ### 3.1 O novo operador prepara
 - 1 endereço por chain (TC/BSC/ETH/Solana) com saldo mínimo p/ gás;
-- roda o próprio relayer Hyperlane e (recomendado) a própria instância do
-  oracle-agent+claim-agent (`docs/ORACLE-AGENT.md`) com as SUAS chaves.
+- roda o próprio relayer Hyperlane (para entregar e ganhar as taxas de origem).
 
-### 3.2 O owner/governança registra (por chain)
+### 3.2 O owner registra o de/para (índice novo, ex.: 1) — em CADA vault
+
+Regra: em cada vault, o endereço do **domínio LOCAL** alimenta o reverse-lookup
+(é assim que o destino descobre "quem entregou aqui é o operador N"); os demais
+domínios são o registro de para onde pagar na origem.
+
 ```bash
-# TC — governor (preço) e vault (atestador remoto):
-terrad tx wasm execute $GOV   '{"set_operators":{"add":["<terra1_novo>"],"remove":[]}}' $TX
-terrad tx wasm execute $GOV   '{"set_quorum":{"quorum":2}}' $TX
-terrad tx wasm execute $VAULT '{"set_remote_operators":{"attestors":["<atuais>","<terra1_novo>"],"quorum":2}}' $TX
+# --- Vault do TC (dom local 132556) ---
+terrad tx wasm execute $VAULT_TC '{"set_operator_address":{"index":1,"domain":132556,"address":"terra1novo..."}}' $TX  # local
+terrad tx wasm execute $VAULT_TC '{"set_operator_address":{"index":1,"domain":56,"address":"0xNOVO_BSC..."}}' $TX        # registro
+terrad tx wasm execute $VAULT_TC '{"set_operator_address":{"index":1,"domain":1,"address":"0xNOVO_ETH..."}}' $TX
 
-# BSC/ETH — governor e vault v2:
-cast send $GOV   "setOperators(address[],address[])" "[<0x_novo>]" "[]"
-cast send $GOV   "setQuorum(uint256)" 2
-cast send $VAULT "setRemoteOperators(address[],uint256)" "[<atuais>,<0x_novo>]" 2
+# --- Vault da BSC (dom local 56) ---
+cast send $VAULT_BSC "setOperatorAddress(uint32,uint32,string)" 1 56     "0xNOVO_BSC..."     # local → reverse-lookup
+cast send $VAULT_BSC "setOperatorAddress(uint32,uint32,string)" 1 132556 "terra1novo..."     # registro
 
-# Solana — governor (multisig assina) e vault (proposta com quórum):
-node deploy/register-solana-operator.mjs <pubkey_novo>     # governor: SetOperators
-# governor: SetQuorum(2) — instrução gov variante 4
-# vault: AdminAction::AddOperator(<pubkey_novo>) + AdminAction::SetQuorum(2)
+# --- Vault da ETH (dom local 1) --- idem BSC, trocando 56→1
+# --- Solana (pod) --- proposta administrativa (multisig):
+#   AdminAction::SetRemoteBinding{ domain, operator: <pubkey>, remote_address } — modelo em deploy/rrv-remote-config.mjs
 ```
 
-### 3.3 Associações do novo operador
-Grave os vínculos de/para dele em TODOS os vaults de origem (seção 1).
+### 3.3 Conferência
+```bash
+# reverse-lookup: o executor local do operador 1 resolve para o índice 1?
+cast call $VAULT_BSC "operatorOfLocal(address)(bool,uint32)" 0xNOVO_BSC...
+terrad q wasm contract-state smart $VAULT_TC '{"operator_of_local":{"address":"terra1novo..."}}' --node $NODE
+```
+Uma entrega de teste do operador 1 → o recibo paga o endereço dele
+(`remote_claimed[id].executor` = endereço de N na origem). Nenhum outro passo.
 
-### 3.4 Conferência
-`remote_config`/`remoteAttestorCount()`/config PDA devem listar o novo operador;
-uma entrega de teste dele deve gerar os dois pagamentos (destino + origem).
+### 3.4 Remover um operador
+`set_operator_address` com endereço vazio/`null` no domínio local remove o
+reverse-lookup (ele deixa de ser reconhecido como executor); remova nos demais
+domínios para limpar o registro.
 
 ---
 
@@ -106,25 +116,28 @@ uma entrega de teste dele deve gerar os dois pagamentos (destino + origem).
 Pré-requisito: o warp/mailbox/IGP/ISM da nova rede já implantados (fora do
 escopo deste sistema). Depois, 6 passos:
 
-1. **Contratos deste sistema na nova rede** — conforme a VM:
-   - EVM: `deploy/evm-deploy.sh` (governor+vault) + `deploy/evm-vault-v2.sh`
-     (padrão v2) — copie um bloco `case` existente e ajuste endereços;
-   - CosmWasm: padrão do `deploy/tc-deploy.sh`;
-   - SVM: padrão do pod (`deploy/solana-deploy.sh`).
-   Em todos: `IGP.beneficiary → vault` e `oracle.owner → governor`.
-2. **Domínio novo nos governors existentes** — faixa de preço em cada chain que
-   passa a cotar a nova rede: `set_bounds`/`setBounds`/`SetDomainConfig`
-   (derive dos valores VIGENTES ÷3 ×3 — produção é a verdade, nunca a doc).
-3. **Recompensas remotas** — em cada vault de origem que passa a ter mensagens
-   entregues na nova rede: `set_remote_reward{<novo_dom>, <taxa média real>}`;
-   e no vault DA nova rede: rewards para os domínios existentes.
-4. **Associações** — vínculos de/para de cada operador com o endereço dele na
-   nova rede (seção 1), nos dois sentidos.
-5. **oracle-agent/claim-agent** — novo bloco em `config.json` (`chains.<nome>`):
-   rpc, governor, oracle, chave em `.env`, e `claims{mailbox, vault, relayer,
-   domain, rpc de getLogs}`. O modo âncora cria a referência sozinho na 1ª rodada.
-6. **Auditoria** — criar `docs/AUDITORIA-<CHAIN>.md` (padrão dos existentes) e
-   atualizar `REGISTRO-AUDITORIA.md`/`WARP-IGORFAKE.md`.
+1. **Vault deste sistema na nova rede** (mesmo contrato, os 2 papéis):
+   - EVM: `deploy/evm-vault-receipt.sh <chain>` (deploy + beneficiary + config);
+   - CosmWasm: padrão do `deploy/tc-migrate-vault-receipt.sh`;
+   - SVM: mesmo programa `pod` (sem deploy novo — só config).
+   Em todos: `IGP.beneficiary → vault`.
+2. **Router cruzado** — cada par de vaults registra o outro como router
+   confiável: `set_remote_router{domain, <vault do outro>}` (o endereço é o
+   canônico 32B / hex32 left-pad). É o que autoriza o `handle` e define o alvo do
+   `send_receipt`. **Sem router mútuo, o recibo não é aceito nem despachado.**
+3. **Recompensas** — em cada vault de origem, `set_remote_reward{<dom_destino>,
+   <taxa real>}` para os destinos que ele passa a servir (produção é a verdade).
+4. **de/para dos operadores** — registre o endereço de cada operador na nova
+   rede em TODOS os vaults (§3.2), nos dois sentidos.
+5. **Rota Hyperlane** — o vault precisa ser um recipient válido e o ISM de
+   entrada aceitar a rota do recibo. Corredores que já têm warp bidirecional
+   (o ISM já valida os 2 sentidos) usam o ISM default — sem config extra. Uma
+   rota nova exige registrar o ISM/validadores dela (config de infra, sem tocar
+   em contrato Hyperlane nativo).
+6. **oracle-agent** — novo bloco em `config.json` (preço). O claim-agent de
+   ATESTAÇÃO não é mais necessário no modelo de recibo; o operador (ou o
+   frontend) chama `send_receipt` quando o `quote` compensa o gás.
+7. **Auditoria** — `docs/AUDITORIA-<CHAIN>.md` + atualizar `REGISTRO-AUDITORIA.md`.
 
 ---
 
@@ -132,11 +145,16 @@ escopo deste sistema). Depois, 6 passos:
 
 1. **Produção é a verdade** — faixa, preço e recompensa se derivam do valor
    vigente on-chain, nunca de documentação (ela envelhece).
-2. **Quórum 1 é modo de teste** — com o owner = operador único. Dois ou mais
-   operadores independentes ⇒ quórum ≥ 2 em TUDO (preço, época, atestação).
-3. **Deploys são LOCAIS** — a VPS só roda os binários do relayer/validador e o
-   agente; wasm/scripts de deploy nunca vão para lá.
-4. **Recompensa remota ≈ taxa real** — mantém o pool neutro. Monitorar
+2. **Modelo de recibo não tem quórum** — cada operador é independente; a prova é
+   o `processor(id)` + o recibo assinado pelos validadores. Um operador só recebe
+   por entregas que ELE fez, no endereço que o OWNER registrou.
+3. **Router mútuo é obrigatório** — os dois vaults do corredor têm de registrar
+   um ao outro (`set_remote_router`); é a allowlist que torna o `handle` seguro.
+4. **Deploys são LOCAIS** — a VPS só roda os binários do relayer/validador e o
+   oracle-agent; wasm/scripts de deploy nunca vão para lá.
+5. **Recompensa remota ≈ taxa real** — mantém o pool neutro. Monitorar
    `total_remote_paid` vs arrecadação (Sweep/IGP) por chain.
-5. **Relayer sincronizado é dinheiro** — relaying é permissionless; indexação
+6. **Relayer sincronizado é dinheiro** — relaying é permissionless; indexação
    atrasada = corrida perdida para concorrentes (aconteceu: `EaxLm3Hw…`).
+7. **O operador decide quando sacar** — sem limiar on-chain; consulte `quote`
+   e agrupe entregas (batching) até o recibo compensar o gás.
