@@ -112,6 +112,18 @@ flowchart LR
 Sem uso → sem arrecadação, mas também sem trabalho. Tarifa < arrecadação média
 por entrega ⇒ o pool nunca fica insolvente (spec §01/§05).
 
+**v2 (ClaimRemote):** o pool da rede de ORIGEM também paga a taxa da mensagem ao
+operador que a entregou NUMA OUTRA rede — via atestação com quórum (diagrama 4b):
+
+```mermaid
+flowchart LR
+    U2["Usuário despacha<br/>DE X para Y"] -- "taxa (moeda de X)" --> IGPX["IGP de X"] --> POOLX["Vault de X"]
+    RELY["SEU relayer<br/>entrega em Y"] -- "verificada pelo<br/>claim-agent" --> ATT["AttestRemoteDelivery<br/>no Vault de X"]
+    ATT -- "vínculo + quórum +<br/>1x por message_id" --> POOLX
+    POOLX -- "recompensa remota<br/>(≈ taxa de origem)" --> OP["Operador<br/>(endereço em X)"]
+    style POOLX fill:#0a6b4e,color:#fff
+```
+
 ---
 
 ## 4. Prova de entrega — os três mecanismos
@@ -130,6 +142,15 @@ flowchart TB
     subgraph P2["BSC/ETHEREUM · prova direta"]
         A2["claim(ids)"] --> B2["mailbox.processor(id) == msg.sender?<br/>processedAt(id)+janela ≥ bloco?"]
         B2 -- sim --> C2["💰 transfer nativo (atômico, reentrancy-guard)"]
+    end
+
+    subgraph P4["QUALQUER ORIGEM · v2 ClaimRemote (atestação de entrega REMOTA)"]
+        A4["claim-agent verifica a entrega<br/>na chain de DESTINO"] --> B4["AttestRemoteDelivery{domínio, ids}<br/>no vault da chain de ORIGEM"]
+        B4 --> C4{"atestador registrado?<br/>vínculo (operador,domínio)?<br/>id nunca pago?"}
+        C4 -- sim --> D4{"atestações CONCORDANTES<br/>≥ quórum?"}
+        D4 -- sim --> E4["💰 recompensa fixa do domínio<br/>ao operador vinculado (1x por id)"]
+        D4 -- "ainda não" --> F4["atestação registrada,<br/>aguarda quórum (auditável)"]
+        C4 -- não --> G4["⛔ reverte"]
     end
 
     subgraph P3["SOLANA · quórum por época (a chain não registra o executor)"]
@@ -170,6 +191,21 @@ flowchart TB
 > timelock (spec §12).
 
 ---
+
+### 5b. ClaimRemote — quem controla o quê (v2)
+
+```mermaid
+flowchart TB
+    OWN["Owner do vault<br/>(hoje deployer · depois governança/multisig)"]
+    OWN -->|SetRemoteOperators| ATT["Atestadores + quórum<br/>(hoje: 1 operador, quórum 1)"]
+    OWN -->|SetRemoteBinding| BIND["Vínculos de identidade<br/>operador ↔ endereço em cada chain"]
+    OWN -->|SetRemoteReward| RW["Recompensa fixa por domínio<br/>(≈ taxa média de origem)"]
+    ATT -->|AttestRemoteDelivery| PAY["Pagamento 1x por message_id<br/>(effects-first, auditável)"]
+    BIND --> PAY
+    RW --> PAY
+    NOTE["⚠️ com 1 operador o quórum 1 é auto-atestação<br/>(fase de teste) — subir p/ ≥2 com operadores independentes"]
+    ATT -.-> NOTE
+```
 
 ## 6. Oracle de preço — o mesmo padrão nas 4 redes
 

@@ -105,7 +105,22 @@ store `A9866AEE…`, migrate `C4075BA8…`) via `deploy/tc-migrate-vault-v2.sh`
 30 testes verdes (5 novos da v2: quórum 1 paga, anti-duplo, quórum 2 espera
 concordância, rejeições, totais). Registro de execução: `AUDITORIA-TC.md`.
 
-## 8. Sustentabilidade (atenção do owner/governança)
+## 8. v2 também na BSC e na ETH (espelho do modelo)
+
+Os vaults EVM ganharam o MESMO módulo (`attestRemoteDelivery` etc., 38 testes
+foundry). Como os contratos EVM não são migráveis e os pools estavam zerados,
+a v2 é um **deploy novo** + `igp.setBeneficiary(v2)` — script LOCAL
+`deploy/evm-vault-v2.sh bsc|ethereum`, que também configura: atestador = owner,
+quórum 1, vínculo `(owner, 132556) → terra1run9wz…` e **recompensa = cotação
+real do IGP** (`quoteGasPayment(132556, destinationGas)`) — exatamente a taxa
+que o usuário paga na origem.
+
+Fluxo espelhado: usuário despacha DA BSC → paga taxa em BNB → seu relayer
+entrega NO TC → claim-agent detecta a entrega no TC (o evento traz a ORIGEM),
+enfileira e atesta no vault da BSC → **a taxa em BNB volta para o operador**.
+O mesmo para a ETH. Assim, TODAS as 4 chains pagam a taxa de origem ao executor.
+
+## 9. Sustentabilidade (atenção do owner/governança)
 
 A v2 paga do MESMO pool que o `Claim` local. Com recompensa 33 LUNC ≈ taxa média
 de origem, o pool fica ~neutro (entra taxa, sai recompensa). Se a governança

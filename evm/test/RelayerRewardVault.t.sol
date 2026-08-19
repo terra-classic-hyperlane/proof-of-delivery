@@ -315,3 +315,110 @@ contract RelayerRewardVaultTest is Test {
         assertEq(vault.claimsPayable(), 5);
     }
 }
+
+// ===========================================================================
+// v2 — ClaimRemote (atestação de entregas remotas)
+// ===========================================================================
+contract RelayerRewardVaultRemoteTest is Test {
+    MockMailbox internal mailbox;
+    RelayerRewardVault internal vault;
+    address internal multisig = makeAddr("multisig");
+    address internal operador = makeAddr("operador");
+    address internal operador2 = makeAddr("operador2");
+    uint32 internal constant DOM_TC = 132556;
+    uint256 internal constant RREWARD = 0.0001 ether;
+
+    function setUp() public {
+        mailbox = new MockMailbox();
+        vault = new RelayerRewardVault(address(mailbox), multisig, 1 ether, 1000);
+        vm.deal(address(vault), 10 ether);
+        address[] memory atts = new address[](1);
+        atts[0] = operador;
+        vm.startPrank(multisig);
+        vault.setRemoteOperators(atts, 1);
+        vault.setRemoteBinding(operador, DOM_TC, "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp");
+        vault.setRemoteReward(DOM_TC, RREWARD);
+        vm.stopPrank();
+    }
+
+    function _ids1(bytes32 a) internal pure returns (bytes32[] memory ids) {
+        ids = new bytes32[](1);
+        ids[0] = a;
+    }
+
+    function test_quorum1_paga_na_hora() public {
+        uint256 before = operador.balance;
+        bytes32[] memory ids = new bytes32[](2);
+        ids[0] = bytes32(uint256(0xA1));
+        ids[1] = bytes32(uint256(0xA2));
+        vm.prank(operador);
+        vault.attestRemoteDelivery(DOM_TC, ids, address(0));
+        assertEq(operador.balance, before + 2 * RREWARD);
+        (address exec, uint32 dom, uint256 amt, ) = vault.remoteClaimed(ids[0]);
+        assertEq(exec, operador);
+        assertEq(dom, DOM_TC);
+        assertEq(amt, RREWARD);
+        assertEq(vault.totalRemotePaid(), 2 * RREWARD);
+    }
+
+    function test_id_nao_paga_duas_vezes() public {
+        vm.prank(operador);
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xB1))), address(0));
+        vm.prank(operador);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                RelayerRewardVault.RemoteAlreadyClaimed.selector, bytes32(uint256(0xB1)), operador
+            )
+        );
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xB1))), address(0));
+    }
+
+    function test_quorum2_espera_concordancia() public {
+        address[] memory atts = new address[](2);
+        atts[0] = operador;
+        atts[1] = operador2;
+        vm.prank(multisig);
+        vault.setRemoteOperators(atts, 2);
+        uint256 before = operador.balance;
+        vm.prank(operador);
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xC1))), address(0));
+        assertEq(operador.balance, before); // 1 de 2 — nada pago
+        vm.prank(operador2);
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xC1))), operador);
+        assertEq(operador.balance, before + RREWARD); // concordância fecha o quórum
+    }
+
+    function test_rejeita_nao_atestador_e_sem_vinculo_e_sem_recompensa() public {
+        vm.prank(makeAddr("intruso"));
+        vm.expectRevert(RelayerRewardVault.NotAttestor.selector);
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xD1))), address(0));
+
+        vm.prank(operador);
+        vm.expectRevert(
+            abi.encodeWithSelector(RelayerRewardVault.NoBinding.selector, operador, uint32(99))
+        );
+        vault.attestRemoteDelivery(99, _ids1(bytes32(uint256(0xD2))), address(0));
+
+        vm.prank(multisig);
+        vault.setRemoteReward(DOM_TC, 0);
+        vm.prank(operador);
+        vm.expectRevert(
+            abi.encodeWithSelector(RelayerRewardVault.NoRemoteReward.selector, DOM_TC)
+        );
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xD3))), address(0));
+    }
+
+    function test_pool_insuficiente_reverte() public {
+        vm.prank(multisig);
+        vault.setRemoteReward(DOM_TC, 100 ether);
+        vm.prank(operador);
+        vm.expectRevert();
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xE1))), address(0));
+    }
+
+    function test_so_owner_configura() public {
+        vm.prank(operador);
+        vm.expectRevert(RelayerRewardVault.NotOwner.selector);
+        vault.setRemoteReward(DOM_TC, 1);
+    }
+}

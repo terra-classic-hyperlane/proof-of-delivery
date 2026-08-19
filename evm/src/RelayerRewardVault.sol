@@ -38,6 +38,13 @@ contract RelayerRewardVault {
     error ZeroAddress();
     error TransferFailed();
     error Reentrancy();
+    // ---- v2 ClaimRemote ----
+    error NotAttestor();
+    error NoBinding(address operator, uint32 domain);
+    error NoRemoteReward(uint32 domain);
+    error RemoteAlreadyClaimed(bytes32 id, address executor);
+    error AlreadyAttested(bytes32 id, address attestor);
+    error BadRemoteQuorum();
 
     // ============ Events ============
     event RewardClaimed(bytes32 indexed id, address indexed claimant, uint256 amount);
@@ -48,6 +55,12 @@ contract RelayerRewardVault {
     event SurplusWithdrawn(address indexed to, uint256 amount);
     event OwnershipTransferStarted(address indexed current, address indexed pending);
     event OwnershipTransferred(address indexed previous, address indexed current);
+    // ---- v2 ClaimRemote ----
+    event RemoteConfigSet(uint256 attestorCount, uint256 quorum);
+    event RemoteBindingSet(address indexed operator, uint32 indexed domain, string remoteAddress);
+    event RemoteRewardSet(uint32 indexed domain, uint256 reward);
+    event RemoteAttested(bytes32 indexed id, address indexed attestor, address indexed executor);
+    event RemotePaid(bytes32 indexed id, address indexed executor, uint32 domain, uint256 amount);
 
     // ============ Storage ============
     IMailboxDelivery public immutable mailbox;
@@ -68,6 +81,32 @@ contract RelayerRewardVault {
     uint256 public totalClaims;
 
     uint256 private _entered; // reentrancy guard (1 = livre, 2 = ocupado)
+
+    // ---- v2 ClaimRemote: taxa de ORIGEM paga por entrega remota atestada.
+    //      Esta chain não enxerga as outras; a confiança fica no conjunto de
+    //      atestadores + vínculos + quórum (mesmo modelo do vault da Solana),
+    //      com dano limitado: 1 pagamento por id, recompensa fixa por domínio.
+    struct RemoteClaimRecord {
+        address executor;
+        uint32 domain;
+        uint256 amount;
+        uint256 blockNumber;
+    }
+
+    address[] public remoteAttestors;
+    mapping(address attestor => bool) public isRemoteAttestor;
+    uint256 public remoteQuorum;
+    /// operador local → domínio remoto → endereço do executor lá (ex.: terra1…)
+    mapping(address operator => mapping(uint32 domain => string)) public remoteBinding;
+    /// recompensa fixa por entrega remota, por domínio (0 = desativado)
+    mapping(uint32 domain => uint256) public remoteReward;
+    /// message id → pagamento remoto efetuado (executor != 0 = pago; anti-duplo)
+    mapping(bytes32 id => RemoteClaimRecord) public remoteClaimed;
+    /// id → atestador → executor apontado (anti re-atestação)
+    mapping(bytes32 id => mapping(address attestor => address executor)) public remoteVote;
+    /// id → executor → nº de atestações concordantes
+    mapping(bytes32 id => mapping(address executor => uint256)) public remoteVoteCount;
+    uint256 public totalRemotePaid;
 
     // ============ Modifiers ============
     modifier onlyOwner() {
@@ -150,6 +189,87 @@ contract RelayerRewardVault {
 
         (bool ok, ) = msg.sender.call{value: total}("");
         if (!ok) revert TransferFailed();
+    }
+
+    // ============ v2 — ClaimRemote ============
+
+    /// @notice Owner: define atestadores e quórum de atestações CONCORDANTES.
+    function setRemoteOperators(address[] calldata attestors_, uint256 quorum_) external onlyOwner {
+        if (quorum_ == 0 || quorum_ > attestors_.length) revert BadRemoteQuorum();
+        for (uint256 i = 0; i < remoteAttestors.length; ++i) {
+            isRemoteAttestor[remoteAttestors[i]] = false;
+        }
+        delete remoteAttestors;
+        for (uint256 i = 0; i < attestors_.length; ++i) {
+            if (attestors_[i] == address(0)) revert ZeroAddress();
+            isRemoteAttestor[attestors_[i]] = true;
+            remoteAttestors.push(attestors_[i]);
+        }
+        remoteQuorum = quorum_;
+        emit RemoteConfigSet(attestors_.length, quorum_);
+    }
+
+    /// @notice Owner: vincula o endereço REMOTO do operador num domínio ("" remove).
+    function setRemoteBinding(address operator, uint32 domain, string calldata remoteAddress)
+        external
+        onlyOwner
+    {
+        remoteBinding[operator][domain] = remoteAddress;
+        emit RemoteBindingSet(operator, domain, remoteAddress);
+    }
+
+    /// @notice Owner: recompensa fixa por entrega remota no domínio (0 desativa).
+    function setRemoteReward(uint32 domain, uint256 reward) external onlyOwner {
+        remoteReward[domain] = reward;
+        emit RemoteRewardSet(domain, reward);
+    }
+
+    /**
+     * @notice Atestador: afirma que as mensagens (despachadas DESTE mailbox p/
+     *         `domain` — o message id é o MESMO nas duas chains) foram entregues
+     *         lá pelo endereço vinculado ao `executor` (address(0) = o próprio
+     *         atestador). Ao atingir o quórum de atestações CONCORDANTES paga a
+     *         recompensa — UMA vez por id. ATÔMICO: id inválido reverte o lote.
+     */
+    function attestRemoteDelivery(uint32 domain, bytes32[] calldata ids, address executor)
+        external
+        nonReentrant
+    {
+        if (paused) revert VaultPaused();
+        if (ids.length == 0) revert EmptyBatch();
+        if (!isRemoteAttestor[msg.sender]) revert NotAttestor();
+        address exec = executor == address(0) ? msg.sender : executor;
+        if (bytes(remoteBinding[exec][domain]).length == 0) revert NoBinding(exec, domain);
+        uint256 reward = remoteReward[domain];
+        if (reward == 0) revert NoRemoteReward(domain);
+
+        uint256 payCount = 0;
+        for (uint256 i = 0; i < ids.length; ++i) {
+            bytes32 id = ids[i];
+            address paidTo = remoteClaimed[id].executor;
+            if (paidTo != address(0)) revert RemoteAlreadyClaimed(id, paidTo);
+            if (remoteVote[id][msg.sender] != address(0)) revert AlreadyAttested(id, msg.sender);
+            remoteVote[id][msg.sender] = exec;
+            uint256 agree = ++remoteVoteCount[id][exec];
+            emit RemoteAttested(id, msg.sender, exec);
+            if (agree >= remoteQuorum) {
+                // effects-first: marca pago antes da transferência
+                remoteClaimed[id] = RemoteClaimRecord(exec, domain, reward, block.number);
+                ++payCount;
+                emit RemotePaid(id, exec, domain, reward);
+            }
+        }
+        if (payCount > 0) {
+            uint256 total = reward * payCount;
+            if (address(this).balance < total) revert InsufficientPool(total, address(this).balance);
+            totalRemotePaid += total;
+            (bool ok, ) = exec.call{value: total}("");
+            if (!ok) revert TransferFailed();
+        }
+    }
+
+    function remoteAttestorCount() external view returns (uint256) {
+        return remoteAttestors.length;
     }
 
     // ============ Views ============

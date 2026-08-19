@@ -92,6 +92,15 @@ $SEND $GOV "transferOracleOwnership(address)" <novo_dono_do_oracle>   # devolve 
 $SEND $GOV "transferOwnership(address)" <multisig> && (novo owner) "acceptOwnership()"  # handoff 2 passos
 ```
 
+### Vault v2 — ClaimRemote (taxa de origem por entrega remota)
+```bash
+$SEND $VAULT "setRemoteOperators(address[],uint256)" "[<atestador>]" 1        # owner
+$SEND $VAULT "setRemoteBinding(address,uint32,string)" <operador> 132556 "terra1..."  # owner
+$SEND $VAULT "setRemoteReward(uint32,uint256)" 132556 <wei>                   # owner (0 desativa)
+$SEND $VAULT "attestRemoteDelivery(uint32,bytes32[],address)" 132556 "[<0xid>]" 0x0000000000000000000000000000000000000000  # atestador (agente faz sozinho)
+cast call $VAULT "remoteClaimed(bytes32)(address,uint32,uint256,uint256)" <0xid>      # auditoria
+```
+
 ## 3. Solana (programa único `pod`)
 
 Todo instruction data começa com **1 byte de módulo**: `0x00`=vault(rrv) ·

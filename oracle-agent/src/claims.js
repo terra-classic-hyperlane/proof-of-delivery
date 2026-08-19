@@ -47,10 +47,12 @@ async function tcScan(chain, fromHeight, toHeight) {
       const sender = evs.find((e) => e.type === "message" && e.attributes.some((a) => a.key === "action"))
         ?.attributes.find((a) => a.key === "sender")?.value;
       if (sender !== chain.claims.relayer) continue;
+      const origin = evs.find((e) => e.type === "wasm-mailbox_process")
+        ?.attributes.find((a) => a.key === "origin")?.value;
       for (const e of evs) {
         if (e.type !== "wasm-mailbox_process_id") continue;
         const id = e.attributes.find((a) => a.key === "message_id")?.value;
-        if (id) ids.push(id.replace(/^0x/, ""));
+        if (id) ids.push({ id: id.replace(/^0x/, ""), origin: Number(origin ?? 0) });
       }
     }
     if (txs.length < 50) break;
@@ -127,7 +129,17 @@ async function runTcClaims(chain, st, DRY, state) {
   }
   const novos = await tcScan(chain, st.cursor, height);
   st.cursor = height;
-  st.pending = [...new Set([...(st.pending ?? []), ...novos])];
+  // fila de atestação nos vaults EVM de ORIGEM (v2): entregas NO TC de msgs
+  // vindas da BSC (56) / ETH (1) rendem a taxa de origem lá
+  state.remoteAttestEvm = state.remoteAttestEvm ?? {};
+  for (const n of novos) {
+    if (n.origin === 56 || n.origin === 1) {
+      const q = new Set(state.remoteAttestEvm[n.origin] ?? []);
+      q.add(n.id);
+      state.remoteAttestEvm[n.origin] = [...q];
+    }
+  }
+  st.pending = [...new Set([...(st.pending ?? []), ...novos.map((n) => n.id)])];
   if (novos.length) log("terraclassic", `${novos.length} entrega(s) nova(s) do relayer detectada(s)`);
   if (!st.pending.length) return;
 
@@ -182,9 +194,38 @@ async function runEvmClaims(name, chain, st, DRY, state) {
     "function claim(bytes32[] ids)",
     "function claimedBy(bytes32) view returns (address)",
     "function claimsPayable() view returns (uint256)",
+    "function attestRemoteDelivery(uint32 domain, bytes32[] ids, address executor)",
+    "function remoteClaimed(bytes32) view returns (address executor, uint32 domain, uint256 amount, uint256 blockNumber)",
+    "function remoteReward(uint32) view returns (uint256)",
   ];
   const mailbox = new Contract(chain.claims.mailbox, MAILBOX_ABI, provider);
   const vault = new Contract(chain.claims.vault, VAULT_ABI, provider);
+
+  // ---- v2: atesta AQUI as entregas (feitas no TC) de msgs ORIGINADAS aqui ----
+  const attQ = (state.remoteAttestEvm ?? {})[chain.claims.domain] ?? [];
+  if (attQ.length) {
+    try {
+      const reward = await vault.remoteReward(132556);
+      if (reward === 0n) {
+        log(name, `vault ainda sem v2/recompensa — ${attQ.length} atestação(ões) na fila`);
+      } else {
+        const ids = [];
+        for (const id of attQ) {
+          const rc = await vault.remoteClaimed("0x" + id);
+          if (rc[0] === "0x0000000000000000000000000000000000000000") ids.push("0x" + id);
+        }
+        if (ids.length && !DRY) {
+          const wallet = new Wallet(process.env[chain.privateKeyEnv], provider);
+          const tx = await vault.connect(wallet).attestRemoteDelivery(132556, ids, "0x0000000000000000000000000000000000000000");
+          const rc = await tx.wait();
+          log(name, `✓ atestado ${ids.length} entrega(s) no TC (origem ${chain.claims.domain}) → ${rc.hash}`);
+        }
+        state.remoteAttestEvm[chain.claims.domain] = [];
+      }
+    } catch (e) {
+      log(name, `atestação v2 ERRO — ${String(e.message).slice(0, 80)} (fila mantida)`);
+    }
+  }
 
   // varredura em janelas configuráveis (RPCs públicos variam MUITO no limite
   // de eth_getLogs: 1rpc/BSC = 50 blocos; mevblocker/ETH aceita centenas)
