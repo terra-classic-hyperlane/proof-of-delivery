@@ -13,3 +13,4 @@ deploy/tc-deploy.state
 deploy/evm-*.state
 deploy/solana.state
 deploy/node_modules
+deploy/.claim-agent-seen.json
