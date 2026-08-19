@@ -88,14 +88,20 @@ Mostra o que ele emitiria (quantos pendentes por chain), sem assinar nada.
 
 ---
 
-## Reporter do quórum (TC→Solana) — passo separado
+## Reporter do quórum (TC→Solana) — INSTALADO como serviço
 O `~/claim-agent/solana-epoch-reporter.mjs` reporta as entregas **TC→Solana** (modelo
-de quórum — ver `AUTOMACAO-CLAIMS.md`). Diferença: o `SubmitEpochReport` exige que
-quem assina seja um **operador registrado** do `pod` (não é uma gatilho qualquer). Para
-automatizar sem usar sua chave principal, registre uma carteira "reporter" dedicada
-como operador (via governança do `pod`) e use a chave dela. Além disso, ajuste o
-`reward_lamports` (hoje = 1, placeholder). Rodar manual:
+de quórum — ver `AUTOMACAO-CLAIMS.md`). Roda como serviço **`epoch-reporter.service`**
+(systemd), carregando o `.env` do relayer (`EnvironmentFile=/root/hyperlane/.env`) e
+assinando com a `SOLANA_PRIVATE_KEY` do relayer — que é o operador **PbEo** (registrado),
+então o `SubmitEpochReport` é aceito. A cada hora ele reporta a época fechada nova;
+época já reportada → "nada a fazer" (idempotente).
 ```bash
-cd ~/claim-agent && node solana-epoch-reporter.mjs            # DRY (mostra o relatório)
-SOLANA_KEYPAIR=/caminho/reporter.json node solana-epoch-reporter.mjs --submit
+systemctl status epoch-reporter
+tail -f /root/claim-agent/logs/reporter.log
+# manual/DRY:
+cd ~/claim-agent && node solana-epoch-reporter.mjs           # mostra o relatório sem enviar
 ```
+**Ajuste pendente:** `reward_lamports` está em **1** (placeholder) — a recompensa por
+entrega TC→Solana. Quando você definir o valor (governança do `pod`), os relatórios
+futuros creditam esse valor; o operador saca os créditos com a instrução `Withdraw` do
+`pod` (posso automatizar o saque também, se quiser).

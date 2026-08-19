@@ -19,6 +19,23 @@ import {
   Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction,
 } from "@solana/web3.js";
 import { keccak_256 } from "@noble/hashes/sha3";
+import bs58 from "bs58";
+
+// carrega a chave do operador de SOLANA_PRIVATE_KEY (base58 / hex / JSON array) —
+// mesmo formato do relayer — ou do arquivo SOLANA_KEYPAIR (fallback).
+function loadSolanaKp() {
+  const env = process.env.SOLANA_PRIVATE_KEY;
+  if (env && env.trim()) {
+    const s = env.trim();
+    let b;
+    if (s.startsWith("[")) b = Uint8Array.from(JSON.parse(s));
+    else if (/^(0x)?[0-9a-fA-F]+$/.test(s) && [64, 128].includes(s.replace(/^0x/, "").length)) b = Uint8Array.from(Buffer.from(s.replace(/^0x/, ""), "hex"));
+    else b = bs58.decode(s);
+    return b.length === 64 ? Keypair.fromSecretKey(b) : Keypair.fromSeed(b);
+  }
+  return Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(
+    process.env.SOLANA_KEYPAIR ?? "/home/lunc/keys/solana-keypair-BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j.json", "utf8"))));
+}
 
 const RPC = process.env.SOLANA_RPC ?? "https://api.mainnet-beta.solana.com";
 const POD = new PublicKey("2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj");
@@ -32,6 +49,8 @@ const EPOCH_SECS = 21600; // = config.epoch_duration_secs
 const SUBMIT = process.argv.includes("--submit");
 const epIdx = process.argv.indexOf("--epoch");
 const FORCE_EPOCH = epIdx > -1 ? Number(process.argv[epIdx + 1]) : null;
+const loopIdx = process.argv.indexOf("--loop");
+const LOOP_SECS = loopIdx > -1 ? Number(process.argv[loopIdx + 1] || 3600) : 0;
 
 const conn = new Connection(RPC, "confirmed");
 const sep = Buffer.from("-");
@@ -134,8 +153,9 @@ async function main() {
 
   if (!SUBMIT) { console.log("\n[DRY] use --submit p/ enviar (assina como operador do rrv)."); return; }
 
-  const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(
-    process.env.SOLANA_KEYPAIR ?? "/home/lunc/keys/solana-keypair-BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j.json", "utf8"))));
+  const kp = loadSolanaKp();
+  console.log("signatário:", kp.publicKey.toBase58(),
+    registered.has(kp.publicKey.toBase58()) ? "(operador ✓)" : "(⚠ NÃO é operador registrado — submit falhará)");
   const keys = [
     { pubkey: kp.publicKey, isSigner: true, isWritable: true },
     { pubkey: CONFIG, isSigner: false, isWritable: false },
@@ -144,8 +164,22 @@ async function main() {
     ...creditPdas.map((p) => ({ pubkey: p, isSigner: false, isWritable: true })),
   ];
   const ix = new TransactionInstruction({ programId: POD, keys, data });
-  const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
-  await conn.confirmTransaction(sig, "confirmed");
-  console.log("✓ EpochReport submetido:", sig);
+  try {
+    const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
+    await conn.confirmTransaction(sig, "confirmed");
+    console.log("✓ EpochReport submetido:", sig);
+  } catch (e) {
+    const m = String(e.message ?? e);
+    // 0x66=janela travada, 0x68=época ainda aberta, 0x69=já aplicada → nada a fazer.
+    // Outros (0x64 not_operator, 0x65 paused, 0x67 unsorted) são erros reais.
+    if (/custom program error: 0x6[689]\b/.test(m) || m.includes("0x69") || m.includes("0x68") || m.includes("0x66")) console.log("· época já reportada/aberta — nada a fazer");
+    else throw e;
+  }
 }
-main().catch((e) => { console.error("ERRO:", e.message); process.exit(1); });
+
+if (LOOP_SECS > 0) {
+  console.log(`reporter em loop a cada ${LOOP_SECS}s`);
+  for (;;) { await main().catch((e) => console.error("ERRO:", e.message)); await new Promise((r) => setTimeout(r, LOOP_SECS * 1000)); }
+} else {
+  main().catch((e) => { console.error("ERRO:", e.message); process.exit(1); });
+}
