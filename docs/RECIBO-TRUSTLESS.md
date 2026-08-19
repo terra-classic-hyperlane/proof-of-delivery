@@ -181,3 +181,28 @@ O front amarra os dois passos que ficam em chains diferentes:
   não dá para desviar o pagamento para o pool de outra chain.
 - **1 pagamento por id** (`remote_claimed`, effects-first) e teto por domínio.
 - Modelo comparado (confiança × custo): `SEGURANCA-CLAIMREMOTO.md` §3.
+
+---
+
+## F. Integração Hyperlane — 2 detalhes que só a chain real revelou (19/08)
+
+O vault é um **recipient** Hyperlane. Ao entregar o recibo, o Mailbox exige duas
+coisas do recipient que os mocks de teste não cobriam:
+
+1. **Responder a query de ISM.** O Mailbox pergunta `InterchainSecurityModule`
+   ao recipient. Sem a query, `process()` reverte ("Error fetching ISM address").
+   - CW: adicionada a variante `QueryMsg::IsmSpecifier(...)` → retorna `{ism:None}`.
+   - EVM: `interchainSecurityModule()` já existia.
+2. **Apontar para um ISM que conheça a ORIGEM do recibo.** `ism = None`/`address(0)`
+   usa o ISM DEFAULT da chain — que pode não conhecer a origem. No TC o default
+   já conhece a BSC (56); na BSC o default NÃO conhece o TC (132556) → erro
+   `No ISM found for origin: 132556`. Solução: apontar para o **mesmo ISM do
+   warp sintético** daquela rota (BSC: `0xa82087B8…`; ETH: `0xDe8edEC7…`), que já
+   valida as mensagens vindas do TC. EVM: `setIsm(<ism_do_warp>)` (owner).
+
+Regra geral p/ um corredor novo: o vault de CADA chain que RECEBE recibos aponta
+`ism` para o ISM do warp que valida a origem dos recibos (= os validadores da
+chain de origem). Corredor com warp bidirecional → esse ISM já existe.
+
+Provado em produção 19/08: BSC→TC (recibo → TC, ISM default do TC) e TC→BSC
+(recibo → BSC, `ism` = ISM do warp `0xa82087B8`).
