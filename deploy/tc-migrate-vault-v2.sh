@@ -11,13 +11,19 @@
 # terrad (o owner/admin terra1run9wz…). NADA disso roda na VPS (regra do projeto).
 # =============================================================================
 set -euo pipefail
-: "${KEY:?uso: KEY=<key_no_terrad> bash deploy/tc-migrate-vault-v2.sh}"
+KEY="${KEY:-hyperlane-deploy}"   # mesma chave do tc-deploy.sh (keyring file)
+KEYRING="file"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NODE=https://rpc.terra-classic.hexxagon.io
 VAULT=terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q
 OPERADOR=terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp
 WASM="$ROOT/artifacts/relayer_reward_vault.wasm"
-TX=(--from "$KEY" --gas auto --gas-adjustment 1.4 --gas-prices 28.325uluna --chain-id columbus-5 --node "$NODE" -y --output json --broadcast-mode sync)
+TX=(--from "$KEY" --keyring-backend "$KEYRING" --gas auto --gas-adjustment 1.5 --gas-prices 28.325uluna --chain-id columbus-5 --node "$NODE" -y --output json --broadcast-mode sync)
+read -rs -p "Senha do keyring (chave $KEY): " PASS; echo
+sign() { printf '%s\n%s\n' "$PASS" "$PASS" | terrad "$@"; }
+ADDR=$(sign keys show "$KEY" -a --keyring-backend "$KEYRING")
+[ "$ADDR" = "$OPERADOR" ] || { echo "❌ chave $KEY = $ADDR, esperado $OPERADOR"; exit 1; }
+echo "✓ chave confere: $ADDR"
 STATE="$ROOT/deploy/tc-v2.state"
 touch "$STATE"
 mark(){ echo "$1=$2" >> "$STATE"; }
@@ -32,7 +38,7 @@ echo "wasm: $(sha256sum "$WASM" | cut -d' ' -f1) (esperado e24a5e66ab4a503c6acf3
 
 if ! done_step CODE_ID; then
   say "1/4 store do wasm v2"
-  H=$(terrad tx wasm store "$WASM" "${TX[@]}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["txhash"])')
+  H=$(sign tx wasm store "$WASM" "${TX[@]}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["txhash"])')
   R=$(wait_tx "$H")
   CODE=$(echo "$R" | python3 -c '
 import json,sys
@@ -47,14 +53,14 @@ CODE=$(get_state CODE_ID); echo "code_id: $CODE"
 
 if ! done_step MIGRATED; then
   say "2/4 migrate (mesmo endereço — pool e beneficiary preservados)"
-  H=$(terrad tx wasm migrate "$VAULT" "$CODE" '{}' "${TX[@]}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["txhash"])')
+  H=$(sign tx wasm migrate "$VAULT" "$CODE" '{}' "${TX[@]}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["txhash"])')
   R=$(wait_tx "$H"); echo "$R" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("code")==0, r.get("raw_log")'
   mark MIGRATED "$H"; echo "✓ migrate: $H"
 fi
 
 exec_msg(){ # $1=step $2=json
   done_step "$1" && return
-  H=$(terrad tx wasm execute "$VAULT" "$2" "${TX[@]}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["txhash"])')
+  H=$(sign tx wasm execute "$VAULT" "$2" "${TX[@]}" | python3 -c 'import json,sys;print(json.load(sys.stdin)["txhash"])')
   R=$(wait_tx "$H"); echo "$R" | python3 -c 'import json,sys; r=json.load(sys.stdin); assert r.get("code")==0, r.get("raw_log")'
   mark "$1" "$H"; echo "✓ $1: $H"
 }
