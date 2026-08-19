@@ -102,6 +102,15 @@ pagamento por entrega é ÚNICO, na origem** — recompensas de destino reduzida
 1 unidade simbólica (TC tx `965542B7…` · BSC `0x2ce94a7a…` · ETH `0xa0d516d3…`
 · SOL `5Q7C34EP…`). Expansão: `MANUAL-EXPANSAO.md`.
 
+## 4c. Recibo trustless (TC↔BSC provado 19/08) — modelo DEFINITIVO
+
+Vaults com `send_receipt`/`handle`: TC `terra1gqkrh2…` (code_id 11592) · BSC
+`0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism=`0xa82087B8…`, o ISM do warp).
+Router mútuo + de/para operador 0. Pagamento SEM confiança: o destino prova a
+entrega, o recibo é validado pelos validadores da ponte, a origem paga.
+Detalhes: `RECIBO-TRUSTLESS.md`. Vaults de atestação anteriores (BSC 0x1A41144c,
+0xAe95a3) deprecados. ETH/Solana pendentes de replicação.
+
 ## 5. Relayer em operação (1 operador nesta fase)
 
 | Chain | Endereço do relayer |

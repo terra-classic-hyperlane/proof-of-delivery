@@ -4,8 +4,12 @@ Modelo sem confiança: o vault de DESTINO prova a entrega on-chain e despacha um
 recibo assinado pelos validadores da ponte; o vault de ORIGEM paga ao receber.
 Nenhum atestador, nenhum agente com poder de decisão — imune a relayer malicioso.
 
-> **Status:** interface-alvo (contratos em construção). As assinaturas abaixo são
-> o contrato que está sendo implementado; este doc e o código nascem alinhados.
+> **Status: PROVADO EM PRODUÇÃO (19/08/2026), corredor TC↔BSC nos 2 sentidos.**
+> Vaults recibo: TC `terra1gqkrh2…` (code_id 11592) · BSC
+> `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism = ISM do warp `0xa82087B8…`).
+> Provas: BSC→TC pagou 33 LUNC (tx `F4700EF4…`, msg `974a7e47…`); TC→BSC pagou
+> 2.259.538.750.000 wei BNB (msg `5920d3fb…`, recibo `b6d00d74…`). Detalhes de
+> integração Hyperlane no §F.
 
 ## Plano de implementação (fases)
 
