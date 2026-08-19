@@ -7,6 +7,17 @@ interface IMailboxDelivery {
     function processor(bytes32 _id) external view returns (address);
 
     function processedAt(bytes32 _id) external view returns (uint48);
+
+    /// Despacha uma mensagem pela ponte (recibo de volta). Paga o hook com msg.value.
+    function dispatch(uint32 destination, bytes32 recipient, bytes calldata body)
+        external
+        payable
+        returns (bytes32 messageId);
+
+    function quoteDispatch(uint32 destination, bytes32 recipient, bytes calldata body)
+        external
+        view
+        returns (uint256);
 }
 
 /**
@@ -45,6 +56,12 @@ contract RelayerRewardVault {
     error RemoteAlreadyClaimed(bytes32 id, address executor);
     error AlreadyAttested(bytes32 id, address attestor);
     error BadRemoteQuorum();
+    error NotMailbox();
+    error UntrustedRouter(uint32 origin, bytes32 sender);
+    error MixedOrigin();
+    error UnknownExecutor(bytes32 id, address executor);
+    error MalformedReceipt();
+    error NoRouter(uint32 domain);
 
     // ============ Events ============
     event RewardClaimed(bytes32 indexed id, address indexed claimant, uint256 amount);
@@ -63,6 +80,8 @@ contract RelayerRewardVault {
     event RemotePaid(bytes32 indexed id, address indexed executor, uint32 domain, uint256 amount);
     event OperatorAddressSet(uint32 indexed index, uint32 indexed domain, string addr);
     event RemoteRouterSet(uint32 indexed domain, bytes32 router);
+    event ReceiptSent(uint32 indexed originDomain, uint256 count, bytes32 messageId);
+    event ReceiptPaid(bytes32 indexed id, uint32 indexed operatorIndex, address recipient, uint256 amount);
 
     // ============ Storage ============
     IMailboxDelivery public immutable mailbox;
@@ -352,6 +371,91 @@ contract RelayerRewardVault {
                 amount += r;
             }
         }
+    }
+
+    // ============ Recibo trustless (Fase 2/3) ============
+
+    /// @notice PAPEL DESTINO. Prova que estas MENSAGENS (bytes completos) foram
+    ///         entregues AQUI e despacha UM recibo de volta ao vault de origem.
+    ///         `id = keccak256(message)` e o domínio de origem é LIDO da mensagem
+    ///         (bytes [1..5]) — o operador não consegue forjar o destino do recibo.
+    ///         Operador paga o gás do recibo via msg.value. Todas as msgs do lote
+    ///         devem ter a MESMA origem (um recibo → um vault de origem).
+    function sendReceipt(bytes[] calldata messages) external payable nonReentrant returns (bytes32) {
+        if (paused) revert VaultPaused();
+        uint256 n = messages.length;
+        if (n == 0) revert EmptyBatch();
+
+        uint32 originDomain = _originOf(messages[0]);
+        bytes memory body = new bytes(n * 36); // id(32) + operatorIndex(4) por entrega
+        for (uint256 i = 0; i < n; ++i) {
+            if (_originOf(messages[i]) != originDomain) revert MixedOrigin();
+            bytes32 id = keccak256(messages[i]);
+            address exec = mailbox.processor(id);
+            if (exec == address(0)) revert NotDelivered(id);
+            (bool found, uint32 idx) = this.operatorOfLocal(exec);
+            if (!found) revert UnknownExecutor(id, exec);
+            // grava id + idx no corpo (big-endian)
+            uint256 off = i * 36;
+            for (uint256 b = 0; b < 32; ++b) body[off + b] = id[b];
+            body[off + 32] = bytes1(uint8(idx >> 24));
+            body[off + 33] = bytes1(uint8(idx >> 16));
+            body[off + 34] = bytes1(uint8(idx >> 8));
+            body[off + 35] = bytes1(uint8(idx));
+        }
+        bytes32 router = remoteRouter[originDomain];
+        if (router == bytes32(0)) revert NoRouter(originDomain);
+        bytes32 mid = mailbox.dispatch{value: msg.value}(originDomain, router, body);
+        emit ReceiptSent(originDomain, n, mid);
+        return mid;
+    }
+
+    /// @notice PAPEL ORIGEM. Recebe o recibo do Mailbox. Só aceita do próprio
+    ///         Mailbox e de um `sender` == router registrado do domínio de origem.
+    ///         Paga cada id (não pago) ao endereço do operador N no NOSSO registro
+    ///         (localDomain). Idempotente: id já pago é ignorado, não reverte.
+    function handle(uint32 origin, bytes32 sender, bytes calldata body) external payable {
+        if (msg.sender != address(mailbox)) revert NotMailbox();
+        if (remoteRouter[origin] == bytes32(0) || sender != remoteRouter[origin]) {
+            revert UntrustedRouter(origin, sender);
+        }
+        if (body.length == 0 || body.length % 36 != 0) revert MalformedReceipt();
+        uint256 reward = remoteReward[origin]; // origin = onde a entrega ocorreu
+        uint256 count = body.length / 36;
+        for (uint256 i = 0; i < count; ++i) {
+            uint256 off = i * 36;
+            bytes32 id;
+            assembly { id := calldataload(add(body.offset, off)) }
+            if (remoteClaimed[id].executor != address(0)) continue; // idempotente
+            uint32 idx = (uint32(uint8(body[off + 32])) << 24)
+                | (uint32(uint8(body[off + 33])) << 16)
+                | (uint32(uint8(body[off + 34])) << 8)
+                | uint32(uint8(body[off + 35]));
+            string memory payoutStr = operatorAddress[idx][localDomain];
+            if (bytes(payoutStr).length == 0 || reward == 0) continue; // sem registro/recompensa
+            address payout = _parseAddr(payoutStr);
+            remoteClaimed[id] = RemoteClaimRecord(payout, origin, reward, block.number);
+            if (address(this).balance >= reward) {
+                totalRemotePaid += reward;
+                (bool ok, ) = payout.call{value: reward}("");
+                if (!ok) revert TransferFailed();
+                emit ReceiptPaid(id, idx, payout, reward);
+            } else {
+                emit ReceiptPaid(id, idx, payout, 0); // registrado; pool sem fundo (semear)
+            }
+        }
+    }
+
+    /// @notice ISM = default do Mailbox (a rota já é segura nos dois sentidos).
+    function interchainSecurityModule() external pure returns (address) {
+        return address(0);
+    }
+
+    /// @dev domínio de origem da msg Hyperlane: version(1)+nonce(4) → origin em [5..9].
+    function _originOf(bytes calldata message) internal pure returns (uint32) {
+        require(message.length >= 9, "msg");
+        return (uint32(uint8(message[5])) << 24) | (uint32(uint8(message[6])) << 16)
+            | (uint32(uint8(message[7])) << 8) | uint32(uint8(message[8]));
     }
 
     // ============ Views ============

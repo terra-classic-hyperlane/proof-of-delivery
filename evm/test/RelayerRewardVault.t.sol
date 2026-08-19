@@ -24,6 +24,40 @@ contract MockMailbox {
     function processedAt(bytes32 id) external view returns (uint48) {
         return deliveries[id].blockNumber;
     }
+
+    // --- recibo (dispatch) ---
+    uint32 public lastDest;
+    bytes32 public lastRecipient;
+    bytes public lastBody;
+    uint256 public lastValue;
+
+    function dispatch(uint32 destination, bytes32 recipient, bytes calldata body)
+        external payable returns (bytes32)
+    {
+        lastDest = destination;
+        lastRecipient = recipient;
+        lastBody = body;
+        lastValue = msg.value;
+        return keccak256(abi.encode(destination, recipient, body));
+    }
+
+    function quoteDispatch(uint32, bytes32, bytes calldata) external pure returns (uint256) {
+        return 0;
+    }
+
+    /// entrega um recibo no vault (simula o Mailbox chamando handle)
+    function deliverHandle(address vault, uint32 origin, bytes32 sender, bytes memory body) external {
+        (bool ok, ) = vault.call(abi.encodeWithSignature("handle(uint32,bytes32,bytes)", origin, sender, body));
+        require(ok, "handle failed");
+    }
+}
+
+/// Monta uma mensagem Hyperlane mínima com um origin domain específico (bytes[1..5]).
+library MsgLib {
+    function make(uint32 origin, uint32 nonce) internal pure returns (bytes memory m) {
+        // version(1) + nonce(4) + origin(4) + sender(32) + dest(4) + recipient(32) + body
+        m = abi.encodePacked(uint8(3), nonce, origin, bytes32(uint256(0x5eed)), uint32(56), bytes32(uint256(0xdead)), bytes("x"));
+    }
 }
 
 /// Mock do IGP upstream: claim() é permissionless e empurra o saldo ao beneficiary.
@@ -492,5 +526,101 @@ contract RelayerRewardVaultRegistryTest is Test {
         vm.prank(multisig);
         vault.setRemoteRouter(132556, bytes32(uint256(0xABCD)));
         assertEq(vault.remoteRouter(132556), bytes32(uint256(0xABCD)));
+    }
+}
+
+// ===========================================================================
+// Fase 2/3 — recibo trustless (EVM: sendReceipt no destino + handle na origem)
+// ===========================================================================
+contract RelayerRewardVaultReceiptTest is Test {
+    using MsgLib for uint32;
+    MockMailbox internal mailbox;
+    RelayerRewardVault internal vault;   // faz papel de DESTINO (BSC) e ORIGEM
+    address internal owner = makeAddr("owner");
+    address internal exec = makeAddr("exec");      // executor local (entrega aqui)
+    address internal payoutTC = makeAddr("payoutTC"); // conta do operador na "origem"
+    uint32 internal constant ORIGIN = 132556;      // origem das msgs (TC)
+    bytes32 internal constant ROUTER_TC = bytes32(uint256(0x7c));
+    uint256 internal constant REWARD = 0.01 ether;
+
+    function setUp() public {
+        mailbox = new MockMailbox();
+        vault = new RelayerRewardVault(address(mailbox), owner, 1 ether, 1000, 56); // BSC=56
+        vm.deal(address(vault), 10 ether);
+        vm.startPrank(owner);
+        vault.setRemoteRouter(ORIGIN, ROUTER_TC);
+        vault.setRemoteReward(ORIGIN, REWARD);
+        // operador 0: executor local = exec (dom 56) e conta de pagamento (dom TC)
+        vault.setOperatorAddress(0, 56, _hex(exec));
+        vault.setOperatorAddress(0, ORIGIN, _hex(payoutTC)); // origem paga aqui se ELA fosse origem; aqui é só registro
+        vm.stopPrank();
+    }
+
+    function _hex(address a) internal pure returns (string memory) {
+        return vm.toString(a);
+    }
+
+    // DESTINO: sendReceipt prova entrega, lê origem da msg, despacha o recibo
+    function test_sendReceipt_despacha_com_origem_lida_da_msg() public {
+        bytes memory m = MsgLib.make(ORIGIN, 1);
+        bytes32 id = keccak256(m);
+        mailbox.setDelivered(id, exec, uint48(block.number)); // exec entregou aqui
+        bytes[] memory msgs = new bytes[](1);
+        msgs[0] = m;
+        vm.prank(exec);
+        vault.sendReceipt(msgs);
+        assertEq(mailbox.lastDest(), ORIGIN);        // recibo vai p/ a origem lida da msg
+        assertEq(mailbox.lastRecipient(), ROUTER_TC);
+        assertEq(mailbox.lastBody().length, 36);     // 1 entrega
+    }
+
+    function test_sendReceipt_rejeita_nao_entregue_e_executor_desconhecido() public {
+        bytes memory m = MsgLib.make(ORIGIN, 2);
+        bytes[] memory msgs = new bytes[](1);
+        msgs[0] = m;
+        vm.expectRevert(abi.encodeWithSelector(RelayerRewardVault.NotDelivered.selector, keccak256(m)));
+        vault.sendReceipt(msgs);
+        // entregue por um executor SEM registro
+        mailbox.setDelivered(keccak256(m), makeAddr("estranho"), uint48(block.number));
+        vm.expectRevert();
+        vault.sendReceipt(msgs);
+    }
+
+    // ORIGEM: handle paga o operador do PRÓPRIO registro, só do router confiável
+    function test_handle_paga_operador_do_registro_local() public {
+        // este vault agora faz papel de ORIGEM: dom local 56, recibo vindo do TC(132556)
+        // registra o pagamento do operador 0 no dom LOCAL (56)
+        vm.prank(owner);
+        vault.setOperatorAddress(0, 56, _hex(payoutTC)); // no dom local paga payoutTC
+        bytes32 id = keccak256(MsgLib.make(56, 9));
+        bytes memory body = abi.encodePacked(id, uint32(0)); // (id, operador 0)
+        uint256 before = payoutTC.balance;
+        mailbox.deliverHandle(address(vault), ORIGIN, ROUTER_TC, body);
+        assertEq(payoutTC.balance, before + REWARD);
+        (address e, , uint256 amt, ) = vault.remoteClaimed(id);
+        assertEq(e, payoutTC);
+        assertEq(amt, REWARD);
+    }
+
+    function test_handle_rejeita_router_nao_confiavel_e_nao_mailbox() public {
+        bytes memory body = abi.encodePacked(keccak256("x"), uint32(0));
+        // não-mailbox
+        vm.expectRevert(RelayerRewardVault.NotMailbox.selector);
+        vault.handle(ORIGIN, ROUTER_TC, body);
+        // router errado — chama direto COMO mailbox p/ o revert propagar
+        vm.prank(address(mailbox));
+        vm.expectRevert(abi.encodeWithSelector(RelayerRewardVault.UntrustedRouter.selector, ORIGIN, bytes32(uint256(0xbad))));
+        vault.handle(ORIGIN, bytes32(uint256(0xbad)), body);
+    }
+
+    function test_handle_idempotente_nao_paga_duas_vezes() public {
+        vm.prank(owner);
+        vault.setOperatorAddress(0, 56, _hex(payoutTC));
+        bytes32 id = keccak256(MsgLib.make(56, 7));
+        bytes memory body = abi.encodePacked(id, uint32(0));
+        mailbox.deliverHandle(address(vault), ORIGIN, ROUTER_TC, body);
+        uint256 mid = payoutTC.balance;
+        mailbox.deliverHandle(address(vault), ORIGIN, ROUTER_TC, body); // reentrega
+        assertEq(payoutTC.balance, mid); // não pagou de novo
     }
 }
