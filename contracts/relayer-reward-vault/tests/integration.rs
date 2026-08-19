@@ -1109,39 +1109,26 @@ fn remote_id_nao_paga_duas_vezes() {
 }
 
 #[test]
-fn remote_quorum_2_espera_segunda_atestacao_concordante() {
+fn remote_quorum_2_exige_atestadores_independentes() {
     let mut s = setup(1_000_000_000);
     let a1 = s.relayer_a.clone();
     let a2 = Addr::unchecked("operador2");
-    setup_remote(&mut s, &[&a1, &a2], 2);
+    let a3 = Addr::unchecked("operador3");
+    setup_remote(&mut s, &[&a1, &a2, &a3], 2);
     let before = balance(&s.app, &a1);
-    // a1 atesta a própria entrega — ainda sem quórum, nada pago
-    s.app
-        .execute_contract(
-            a1.clone(),
-            s.vault.clone(),
-            &ExecuteMsg::AttestRemoteDelivery {
-                domain: DOM_SOL,
-                message_ids: vec![msg_id(0xC1)],
-                executor: None,
-            },
-            &[],
-        )
-        .unwrap();
+    let att = |_who: &Addr, exec: &Addr| ExecuteMsg::AttestRemoteDelivery {
+        domain: DOM_SOL,
+        message_ids: vec![msg_id(0xC1)],
+        executor: Some(exec.to_string()),
+    };
+    // o PRÓPRIO a1 atesta a si — anti-autopagamento: NÃO conta
+    s.app.execute_contract(a1.clone(), s.vault.clone(), &att(&a1, &a1), &[]).unwrap();
     assert_eq!(balance(&s.app, &a1), before);
-    // a2 CONCORDA (executor = a1) — fecha o quórum e paga a1
-    s.app
-        .execute_contract(
-            a2,
-            s.vault.clone(),
-            &ExecuteMsg::AttestRemoteDelivery {
-                domain: DOM_SOL,
-                message_ids: vec![msg_id(0xC1)],
-                executor: Some(a1.to_string()),
-            },
-            &[],
-        )
-        .unwrap();
+    // 1º independente (a2) — 1 de 2
+    s.app.execute_contract(a2.clone(), s.vault.clone(), &att(&a2, &a1), &[]).unwrap();
+    assert_eq!(balance(&s.app, &a1), before);
+    // 2º independente (a3) — fecha o quórum de INDEPENDENTES → paga a1
+    s.app.execute_contract(a3.clone(), s.vault.clone(), &att(&a3, &a1), &[]).unwrap();
     assert_eq!(balance(&s.app, &a1), before + REMOTE_REWARD);
 }
 

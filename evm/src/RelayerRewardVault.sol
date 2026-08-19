@@ -250,7 +250,13 @@ contract RelayerRewardVault {
             if (paidTo != address(0)) revert RemoteAlreadyClaimed(id, paidTo);
             if (remoteVote[id][msg.sender] != address(0)) revert AlreadyAttested(id, msg.sender);
             remoteVote[id][msg.sender] = exec;
-            uint256 agree = ++remoteVoteCount[id][exec];
+            // ANTI-AUTOPAGAMENTO: com quórum >= 2, o voto do PRÓPRIO beneficiário
+            // NÃO conta — o pagamento exige `quorum` atestadores INDEPENDENTES.
+            // (registra o voto para impedir re-voto, mas não avança o quórum.)
+            uint256 agree = remoteVoteCount[id][exec];
+            if (!(remoteQuorum >= 2 && msg.sender == exec)) {
+                agree = ++remoteVoteCount[id][exec];
+            }
             emit RemoteAttested(id, msg.sender, exec);
             if (agree >= remoteQuorum) {
                 // effects-first: marca pago antes da transferência

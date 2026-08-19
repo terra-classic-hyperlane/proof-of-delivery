@@ -384,7 +384,12 @@ pub fn attest_remote_delivery(
         );
         atts.push((info.sender.clone(), executor.clone()));
 
-        let agree = atts.iter().filter(|(_, e)| *e == executor).count() as u32;
+        // ANTI-AUTOPAGAMENTO: com quórum >= 2, atestações onde o atestador é o
+        // PRÓPRIO beneficiário não contam — exige `quorum` operadores independentes.
+        let agree = atts
+            .iter()
+            .filter(|(a, e)| *e == executor && !(rc.quorum >= 2 && *a == executor))
+            .count() as u32;
         if agree >= rc.quorum {
             // effects-first: marca pago ANTES do BankMsg
             REMOTE_CLAIMED.save(

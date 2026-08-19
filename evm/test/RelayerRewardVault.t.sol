@@ -373,19 +373,41 @@ contract RelayerRewardVaultRemoteTest is Test {
         vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xB1))), address(0));
     }
 
-    function test_quorum2_espera_concordancia() public {
-        address[] memory atts = new address[](2);
-        atts[0] = operador;
-        atts[1] = operador2;
+    function test_quorum2_exige_atestadores_independentes() public {
+        address operador3 = makeAddr("operador3");
+        address[] memory atts = new address[](3);
+        atts[0] = operador; atts[1] = operador2; atts[2] = operador3;
         vm.prank(multisig);
         vault.setRemoteOperators(atts, 2);
         uint256 before = operador.balance;
+        // o PRÓPRIO operador atesta a si — anti-autopagamento: NÃO conta
         vm.prank(operador);
-        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xC1))), address(0));
-        assertEq(operador.balance, before); // 1 de 2 — nada pago
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xC1))), operador);
+        assertEq(operador.balance, before);
+        // 1º atestador independente voucha — ainda 1 de 2
         vm.prank(operador2);
         vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xC1))), operador);
-        assertEq(operador.balance, before + RREWARD); // concordância fecha o quórum
+        assertEq(operador.balance, before);
+        // 2º independente — fecha o quórum de INDEPENDENTES → paga
+        vm.prank(operador3);
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xC1))), operador);
+        assertEq(operador.balance, before + RREWARD);
+    }
+
+    function test_autopagamento_bloqueado_em_quorum2() public {
+        address[] memory atts = new address[](2);
+        atts[0] = operador; atts[1] = operador2;
+        vm.prank(multisig);
+        vault.setRemoteOperators(atts, 2);
+        uint256 before = operador.balance;
+        // operador tenta se pagar sozinho — voto próprio não conta, nada pago
+        vm.prank(operador);
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xF2))), operador);
+        assertEq(operador.balance, before);
+        // e não pode votar de novo no mesmo id
+        vm.prank(operador);
+        vm.expectRevert(abi.encodeWithSelector(RelayerRewardVault.AlreadyAttested.selector, bytes32(uint256(0xF2)), operador));
+        vault.attestRemoteDelivery(DOM_TC, _ids1(bytes32(uint256(0xF2))), operador);
     }
 
     function test_rejeita_nao_atestador_e_sem_vinculo_e_sem_recompensa() public {
