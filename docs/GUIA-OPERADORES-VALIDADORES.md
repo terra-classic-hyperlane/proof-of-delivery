@@ -12,6 +12,7 @@
 4. [Endereços de todas as chains](#4-endereços-de-todas-as-chains)
 5. [Conversão de endereços para hex (comandos locais)](#5-conversão-de-endereços-para-hex-comandos-locais)
 6. [Operador — passo a passo para ganhar](#6-operador--passo-a-passo-para-ganhar)
+   · [6.3 Incluir um novo operador](#63-incluir-um-novo-operador-onboarding)
 7. [Validador](#7-validador)
 8. [Segurança — por que é trustless](#8-segurança--por-que-é-trustless)
 9. [Referência rápida de comandos](#9-referência-rápida-de-comandos)
@@ -203,18 +204,9 @@ Sem Foundry (manual): `0x` + 24 zeros + os 40 hex do endereço (minúsculo).
 ### 6.0 Pré-requisitos
 1. **Rode o relayer nativo do Hyperlane** (sem alteração) para as rotas que quer
    servir. É ele que entrega as mensagens e, depois, os recibos.
-2. **Peça ao owner do vault para te registrar** no de/para (você recebe um **índice**
-   e informa seu endereço em cada chain). Registro (feito pelo owner):
-   ```bash
-   # TC: índice N → seu endereço no TC (também vira o reverse-lookup do executor)
-   terrad tx wasm execute <VAULT_TC> \
-     '{"set_operator_address":{"index":N,"domain":132556,"address":"terra1SEU…"}}' \
-     --from <owner> --keyring-backend file --gas auto --gas-adjustment 1.5 \
-     --gas-prices 28.325uluna --chain-id columbus-5 \
-     --node https://rpc.terra-classic.hexxagon.io:443 -y
-   # Solana: índice N → sua carteira Solana (onde o SOL será creditado/sacado)
-   OP_INDEX=N OP_WALLET=<SUA_CARTEIRA_BASE58> node deploy/rrv-receipt-config-solana.mjs
-   ```
+2. **Esteja registrado no de/para** (você recebe um **índice** e informa seu endereço
+   em cada chain). O registro é feito pelo **owner** — passo a passo completo na
+   [§6.3 Incluir um novo operador](#63-incluir-um-novo-operador-onboarding).
 
 ### 6.1 Corredor Solana → TC (ganhar a taxa de origem, provado)
 
@@ -255,6 +247,69 @@ SOLANA_OP_KEYPAIR=/caminho/da/SUA_carteira.json \
 Mesmo modelo, espelhado. No **DESTINO** você chama `sendReceipt`; na **ORIGEM** o
 pagamento é automático quando o recibo chega. Ver `RECIBO-TRUSTLESS.md` §B/§C
 (comandos `cast`/`terrad` completos). ETH aguarda o deploy do vault (gás baixo).
+
+### 6.3 Incluir um novo operador (onboarding)
+
+> Feito pelo **owner** do vault. O operador em si não instala nada além do relayer
+> nativo — ele só precisa estar registrado.
+
+**Conceito:** um operador é **UMA identidade = UM índice global `N`** (`u32`), com **um
+endereço por chain**. Para cada chain que ele vai servir, o owner registra o **endereço
+do operador NAQUELA chain, sob o mesmo índice `N`**, usando o **domínio da própria
+chain**. Esse registro faz **duas coisas de uma vez**:
+- **pagamento** — quando aquela chain é ORIGEM, ela paga esse endereço;
+- **reconhecimento da entrega** (reverse-lookup) — quando aquela chain é DESTINO, o
+  `send_receipt` descobre "o executor é o operador N".
+
+Escolha o próximo índice livre (`0, 1, 2, …` — combine com o time para não repetir).
+O operador **não** precisa entrar na lista de operadores do governor para ganhar —
+basta o endereço registrado.
+
+**Passo a passo (registre em cada chain onde o operador vai atuar):**
+
+**① Terra Classic** (domínio 132556):
+```bash
+terrad tx wasm execute terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q \
+  '{"set_operator_address":{"index":N,"domain":132556,"address":"terra1DO_OPERADOR"}}' \
+  --from <OWNER> --keyring-backend file --gas auto --gas-adjustment 1.5 \
+  --gas-prices 28.325uluna --chain-id columbus-5 \
+  --node https://rpc.terra-classic.hexxagon.io:443 -y
+```
+
+**② Solana** (domínio 1399811149) — registra `operator_sol(N)` (pagamento) e o
+reverse-lookup. `SKIP_REWARD=1` porque a recompensa já está setada (evita reexecutar a
+proposta); o router é reescrito de forma idempotente:
+```bash
+OP_INDEX=N OP_WALLET=<CARTEIRA_BASE58_DO_OPERADOR> SKIP_REWARD=1 \
+  node deploy/rrv-receipt-config-solana.mjs
+```
+
+**③ BSC** (domínio 56):
+```bash
+cast send 0x34E06a7793877EC5251b1dC230aD7cD577d231f4 \
+  "setOperatorAddress(uint32,uint32,string)" N 56 "0xCARTEIRA_BSC_DO_OPERADOR" \
+  --legacy --private-key <OWNER_PK> --rpc-url https://bsc-dataseed.bnbchain.org
+```
+
+**④ Ethereum** (domínio 1) — *quando o vault do ETH existir*: igual ao BSC, trocando o
+endereço do vault e `56`→`1`.
+
+**Verificação (o reverse-lookup deve retornar N):**
+```bash
+# TC:
+terrad q wasm contract-state smart terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q \
+  '{"operator_of_local":{"address":"terra1DO_OPERADOR"}}' \
+  --node https://rpc.terra-classic.hexxagon.io:443
+# BSC:
+cast call 0x34E06a7793877EC5251b1dC230aD7cD577d231f4 \
+  "operatorOfLocal(address)(bool,uint32)" 0xCARTEIRA_BSC --rpc-url https://bsc-dataseed.bnbchain.org
+# Solana (a PDA opsol(N) deve existir e guardar a carteira):
+node -e 'import("@solana/web3.js").then(async w=>{const c=new w.Connection("https://api.mainnet-beta.solana.com");const u=n=>{const b=Buffer.alloc(4);b.writeUInt32LE(n);return b};const [p]=w.PublicKey.findProgramAddressSync([Buffer.from("rrv"),Buffer.from("-"),Buffer.from("opsol"),Buffer.from("-"),u(N)],new w.PublicKey("2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj"));console.log("opsol(N):",p.toBase58(),(await c.getAccountInfo(p))?"OK":"ausente")})'
+```
+
+Pronto: a partir daí o operador entrega com o relayer nativo e ganha seguindo a §6.1
+(Solana→TC) / §6.2 (EVM). Para **remover** um operador, o owner regrava o endereço
+como vazio (TC/EVM: `address` nulo/`""`), o que zera o reverse-lookup.
 
 ---
 
