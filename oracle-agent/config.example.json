@@ -50,7 +50,10 @@
         "enabled": true,
         "mailbox": "terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9",
         "vault": "terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q",
-        "relayer": "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp"
+        "relayer": "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp",
+        "igp": "terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz",
+        "lcd": "https://lcd.terra-classic.hexxagon.io",
+        "sweepMinUluna": "100000000"
       }
     },
     "bsc": {

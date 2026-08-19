@@ -50,7 +50,29 @@ async function tcScan(chain, fromHeight, toHeight) {
   return ids;
 }
 
+/** Sweep automático: quando o IGP acumular >= sweepMinUluna (default 100 LUNC),
+ *  puxa a arrecadação p/ o pool do vault (permissionless). */
+async function tcAutoSweep(chain, DRY) {
+  if (!chain.claims.igp || !chain.claims.lcd) return;
+  const r = await fetch(`${chain.claims.lcd}/cosmos/bank/v1beta1/balances/${chain.claims.igp}`).then((x) => x.json());
+  const bal = BigInt(r.balances?.find((b) => b.denom === "uluna")?.amount ?? "0");
+  const min = BigInt(chain.claims.sweepMinUluna ?? 100_000_000);
+  if (bal < min) return;
+  log("terraclassic", `IGP com ${Number(bal) / 1e6} LUNC acumulados` + (DRY ? " [dry-run: sweep não executado]" : " — executando Sweep"));
+  if (DRY) return;
+  const { SigningCosmWasmClient } = await import("@cosmjs/cosmwasm-stargate");
+  const { DirectSecp256k1Wallet } = await import("@cosmjs/proto-signing");
+  const { GasPrice } = await import("@cosmjs/stargate");
+  const key = process.env[chain.privateKeyEnv].replace(/^0x/, "");
+  const wallet = await DirectSecp256k1Wallet.fromKey(Uint8Array.from(Buffer.from(key, "hex")), chain.prefix);
+  const [acc] = await wallet.getAccounts();
+  const client = await SigningCosmWasmClient.connectWithSigner(chain.rpc, wallet, { gasPrice: GasPrice.fromString(chain.gasPrice) });
+  const res = await client.execute(acc.address, chain.claims.vault, { sweep: {} }, "auto");
+  log("terraclassic", `✓ Sweep → pool: ${res.transactionHash}`);
+}
+
 async function runTcClaims(chain, st, DRY) {
+  await tcAutoSweep(chain, DRY).catch((e) => log("terraclassic", `sweep ERRO — ${e.message}`));
   const height = await tcCurrentHeight(chain.rpc);
   if (st.cursor == null) {
     st.cursor = height;
