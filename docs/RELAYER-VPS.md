@@ -132,3 +132,10 @@ systemctl --user stop    tcpod-monitor    # parar
 journalctl --user -u tcpod-monitor -f     # logs
 ```
 
+O painel web (http://localhost:8787, refresh 10s) mostra 7 blocos em tempo real:
+**Validadores TC** (os 4, índice do checkpoint assinado vs tip, badge 3-de-4),
+**RPCs** (altura + latência das 4 chains), **Mensagens** (filas/presas + processadas
++ cursor por chain, do relayer), **Épocas & Oracle** (época atual + quando fecha,
+próxima do epoch-reporter, última/próxima do oracle-agent + preços que ele
+escreveu on-chain), **Carteiras**, **Pools** e **Serviços**.
+

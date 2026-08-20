@@ -1,11 +1,10 @@
-// monitor-web — painel de saúde em PÁGINA WEB (servidor local).
+// monitor-web — painel de OPERAÇÃO em tempo real (servidor local + auto-refresh).
 //
-// Roda no teu PC: consulta RPC/SSH do lado do servidor e serve uma página que
-// atualiza sozinha. Abra no navegador — nada vai pra internet (é localhost).
+// Carteiras · Pools · Serviços · VALIDADORES (checkpoints) · RPCs · MENSAGENS.
+// As consultas (RPC/S3/SSH) rodam no servidor; a página só lê do localhost.
 //
 //   uso:  node deploy/monitor-web.mjs           # http://localhost:8787
-//         PORT=9000 node deploy/monitor-web.mjs
-//         node deploy/monitor-web.mjs --no-vps  # sem SSH na VPS
+//         PORT=9000 / --no-vps
 import http from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -21,28 +20,86 @@ const TC_LCD = process.env.TC_LCD ?? "https://lcd.terra-classic.hexxagon.io";
 const BSC_RPC = process.env.BSC_RPC ?? "https://bsc-dataseed.bnbchain.org";
 const ETH_RPC = process.env.ETH_RPC ?? "https://ethereum-rpc.publicnode.com";
 
+// os NOSSOS validadores do TC (3-de-4). checkpoint_latest_index.json no S3 anunciado.
+const TC_VALIDATORS = [
+  { name: "igorveras", url: "https://hyperlane-validator-signatures-igorverasvalidador-terraclassic.s3.us-east-1.amazonaws.com" },
+  { name: "tcv", url: null }, // nunca anunciou storage
+  { name: "darksun", url: "https://hyperlane-validator-signatures-darksun-terraclassic.s3.eu-west-3.amazonaws.com" },
+  { name: "burnitall", url: "https://hyperlane-validator-signatures-burnitall-validator.s3.us-east-1.amazonaws.com/terraclassic" },
+];
+const TC_THRESHOLD = 3;
+
+const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch { return { v: null, ms: Date.now() - t }; } };
+
 async function prices() {
   const g = async (s) => Number((await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`).then((r) => r.json())).price || 0);
   const [LUNC, BNB, SOL, ETH] = await Promise.all([g("LUNCUSDT"), g("BNBUSDT"), g("SOLUSDT"), g("ETHUSDT")]);
   return { LUNC, BNB, SOL, ETH };
 }
-async function tcBalance(addr) {
-  const r = await fetch(`${TC_LCD}/cosmos/bank/v1beta1/balances/${addr}/by_denom?denom=uluna`).then((x) => x.json()).catch(() => null);
-  return Number(r?.balance?.amount ?? 0) / 1e6;
+async function tcBalance(a) { const r = await fetch(`${TC_LCD}/cosmos/bank/v1beta1/balances/${a}/by_denom?denom=uluna`).then((x) => x.json()).catch(() => null); return Number(r?.balance?.amount ?? 0) / 1e6; }
+async function tcQuery(c, m) { const q = Buffer.from(JSON.stringify(m)).toString("base64"); return (await fetch(`${TC_LCD}/cosmwasm/wasm/v1/contract/${c}/smart/${q}`).then((x) => x.json()).catch(() => null))?.data; }
+
+// ---- validadores TC: índice assinado vs tip da árvore ----
+async function validators() {
+  const tip = (await tcQuery("terra183lq6yqp8km3p34cxgk6k3u78uy4plqahey6rne7n9gy98delr9qyp0n2p", { merkle_hook: { count: {} } }))?.count;
+  const tipIdx = tip != null ? tip - 1 : null;
+  const list = await Promise.all(TC_VALIDATORS.map(async (v) => {
+    if (!v.url) return { name: v.name, idx: null, st: "offline", note: "não anunciou" };
+    const idx = await fetch(`${v.url}/checkpoint_latest_index.json`, { signal: AbortSignal.timeout(7000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    if (idx == null) return { name: v.name, idx: null, st: "offline", note: "sem resposta" };
+    const st = tipIdx == null ? "ok" : idx >= tipIdx - 2 ? "ok" : idx >= tipIdx - 10 ? "warn" : "low";
+    return { name: v.name, idx, st, note: tipIdx != null && idx < tipIdx - 2 ? `${tipIdx - idx} atrás` : "atual" };
+  }));
+  const online = list.filter((v) => v.st === "ok" || v.st === "warn").length;
+  return { tip: tipIdx, list, online, threshold: TC_THRESHOLD, healthy: online >= TC_THRESHOLD };
 }
-async function tcQuery(contract, msg) {
-  const q = Buffer.from(JSON.stringify(msg)).toString("base64");
-  return (await fetch(`${TC_LCD}/cosmwasm/wasm/v1/contract/${contract}/smart/${q}`).then((x) => x.json()).catch(() => null))?.data;
+
+// ---- RPCs: altura + latência + up/down ----
+async function rpcs() {
+  const conn = new Connection(HELIUS, "confirmed");
+  const [tc, bsc, eth, sol] = await Promise.all([
+    timed(async () => Number((await fetch(`${TC_LCD}/cosmos/base/tendermint/v1beta1/blocks/latest`).then((r) => r.json())).block.header.height)),
+    timed(async () => await new ethers.JsonRpcProvider(BSC_RPC).getBlockNumber()),
+    timed(async () => await new ethers.JsonRpcProvider(ETH_RPC).getBlockNumber()),
+    timed(async () => await conn.getSlot()),
+  ]);
+  const mk = (name, r) => ({ name, up: r.v != null, height: r.v, ms: r.ms });
+  return [mk("Terra Classic", tc), mk("BSC", bsc), mk("Ethereum", eth), mk("Solana", sol)];
 }
-async function vpsServices() {
-  if (NO_VPS) return null;
+
+// ---- serviços + métricas do relayer (uma SSH só, grep server-side) ----
+async function vpsAll() {
+  if (NO_VPS) return { skipped: true };
   try {
     const svcs = ["hyperlane-relayer", "hyperlane-validator", "oracle-agent", "claim-agent", "epoch-reporter", "deliver-receipts.timer"];
-    const { stdout } = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", VPS,
-      `for s in ${svcs.join(" ")}; do echo "$s=$(systemctl is-active $s 2>/dev/null)"; done; ` +
-      `echo "relayer_panics=$(journalctl -u hyperlane-relayer --since '-30 min' --no-pager 2>/dev/null | grep -c panicked)"; ` +
-      `echo "relayer_fds=$(ls /proc/$(systemctl show hyperlane-relayer -p MainPID --value)/fd 2>/dev/null | wc -l)"`]);
-    return Object.fromEntries(stdout.trim().split("\n").map((l) => l.split("=")));
+    const cmd =
+      `for s in ${svcs.join(" ")}; do echo "svc $s $(systemctl is-active $s 2>/dev/null)"; done; ` +
+      `echo "panics $(journalctl -u hyperlane-relayer --since '-30 min' --no-pager 2>/dev/null | grep -c panicked)"; ` +
+      `echo "fds $(ls /proc/$(systemctl show hyperlane-relayer -p MainPID --value)/fd 2>/dev/null | wc -l)"; ` +
+      // última atividade (unix ts) dos agentes de tempo — p/ calcular a próxima
+      `echo "oracle_last $(stat -c %Y /root/oracle-agent/logs/agent.log 2>/dev/null || echo 0)"; ` +
+      `echo "reporter_last $(journalctl -u epoch-reporter -o short-unix --no-pager 2>/dev/null | tail -1 | awk '{print int($1)}')"; ` +
+      `M=$(curl -s localhost:9091/metrics 2>/dev/null); ` +
+      // filas com valor > 0: nome, status, remote, valor
+      `echo "$M" | grep '^hyperlane_submitter_queue_length' | grep -vE ' 0$' | sed -E 's/.*queue_name=\"([^\"]+)\".*operation_status=\"([^\"]+)\".*remote=\"([^\"]+)\".* ([0-9]+)$/queue \\3 \\1 \\4 \\2/'; ` +
+      // total processado
+      `echo "processed $(echo \"$M\" | grep '^hyperlane_messages_processed_count' | awk '{s+=$NF} END{print s+0}')"; ` +
+      // cursor tip por chain (merkle_tree_insertion)
+      `echo "$M" | grep '^hyperlane_cursor_max_sequence' | grep 'merkle_tree_insertion' | sed -E 's/.*chain=\"([^\"]+)\".* ([0-9.e+]+)$/cursor \\1 \\2/'`;
+    const { stdout } = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", VPS, cmd]);
+    const out = { services: {}, queues: [], cursors: {}, panics: 0, fds: 0, processed: 0 };
+    for (const line of stdout.trim().split("\n")) {
+      const p = line.split(" ");
+      if (p[0] === "svc") out.services[p[1]] = p[2];
+      else if (p[0] === "panics") out.panics = Number(p[1]);
+      else if (p[0] === "fds") out.fds = Number(p[1]);
+      else if (p[0] === "processed") out.processed = Number(p[1]);
+      else if (p[0] === "queue") out.queues.push({ remote: p[1], name: p[2], n: Number(p[3]), status: p.slice(4).join(" ") });
+      else if (p[0] === "cursor") out.cursors[p[1]] = Number(p[2]);
+      else if (p[0] === "oracle_last") out.oracleLast = Number(p[1]) || 0;
+      else if (p[0] === "reporter_last") out.reporterLast = Number(p[1]) || 0;
+    }
+    return out;
   } catch (e) { return { error: String(e).slice(0, 80) }; }
 }
 
@@ -50,7 +107,7 @@ async function snapshot() {
   const P = await prices();
   const conn = new Connection(HELIUS, "confirmed");
   const eBsc = new ethers.JsonRpcProvider(BSC_RPC), eEth = new ethers.JsonRpcProvider(ETH_RPC);
-  const [tcOp, vaultPool, tcIgp, bscOp, bscVault, ethOp, pbeo, birx, poolInfo, vps] = await Promise.all([
+  const [tcOp, vaultPool, tcIgp, bscOp, bscVault, ethOp, pbeo, birx, poolInfo, vals, rpcHealth, vps] = await Promise.all([
     tcBalance("terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp"),
     tcQuery("terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q", { solvency: {} }),
     tcBalance("terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz"),
@@ -60,8 +117,14 @@ async function snapshot() {
     conn.getBalance(new PublicKey("PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS")).then((b) => b / 1e9).catch(() => null),
     conn.getBalance(new PublicKey("BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j")).then((b) => b / 1e9).catch(() => null),
     conn.getAccountInfo(new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w")).catch(() => null),
-    vpsServices(),
+    validators(), rpcs(), vpsAll(),
   ]);
+  // preços que o oracle-agent escreveu on-chain (o que o usuário do TC paga)
+  const ORACLE = "terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d";
+  const oraclePrices = await Promise.all([[1, "→ETH"], [56, "→BSC"], [1399811149, "→SOL"]].map(async ([dom, lbl]) => {
+    const r = await tcQuery(ORACLE, { oracle: { get_exchange_rate_and_gas_price: { dest_domain: dom } } });
+    return { lbl, rate: r?.exchange_rate, gas: r?.gas_price };
+  }));
   let sol = null;
   if (poolInfo) {
     const d = poolInfo.data; let o = 0; const u8 = () => d[o++]; const r8 = () => { let v = 0n; for (let i = 0; i < 8; i++) v |= BigInt(d[o + i]) << BigInt(8 * i); o += 8; return v; };
@@ -76,74 +139,110 @@ async function snapshot() {
       { id: "BSC gatilho (0x8f08)", v: bscOp, sym: "BNB", usd: (bscOp ?? 0) * P.BNB, st: st(bscOp, 0.01) },
       { id: "ETH operador (0xEF81)", v: ethOp, sym: "ETH", usd: (ethOp ?? 0) * P.ETH, st: st(ethOp, 0.005) },
       { id: "SOL PbEo (reporter)", v: pbeo, sym: "SOL", usd: (pbeo ?? 0) * P.SOL, st: st(pbeo, 0.02) },
-      { id: "SOL BirXd4Q (reserva/authority)", v: birx, sym: "SOL", usd: (birx ?? 0) * P.SOL, st: st(birx, 0.1) },
+      { id: "SOL BirXd4Q (reserva)", v: birx, sym: "SOL", usd: (birx ?? 0) * P.SOL, st: st(birx, 0.1) },
     ],
     pools: [
       { id: "TC vault pool", v: vaultPool ? Number(vaultPool.pool.amount) / 1e6 : null, sym: "LUNC", note: vaultPool ? `cobre ${Math.floor((Number(vaultPool.pool.amount) / 1e6) / 1584)} comissões` : "sem resposta" },
       { id: "TC IGP acumulado", v: tcIgp, sym: "LUNC", note: tcIgp > 1584 ? "varrer (Sweep)" : "" },
       { id: "BSC vault", v: bscVault, sym: "BNB", note: "" },
-      { id: "SOL pod pool", v: sol?.pool, sym: "SOL", note: sol ? `creditado ${sol.credited.toFixed(4)} SOL · replay base ${sol.base}/${sol.nowEpoch} ${sol.base > 0 && sol.nowEpoch - sol.base < 512 ? "ok" : "checar"}` : "" },
+      { id: "SOL pod pool", v: sol?.pool, sym: "SOL", note: sol ? `replay base ${sol.base}/${sol.nowEpoch} ${sol.base > 0 && sol.nowEpoch - sol.base < 512 ? "ok" : "checar"}` : "" },
     ],
-    services: NO_VPS ? { skipped: true } : vps,
+    validators: vals, rpcs: rpcHealth, vps,
+    timing: {
+      nowEpoch: Math.floor(Date.now() / 1000 / 21600),
+      epochClosesAt: (Math.floor(Date.now() / 1000 / 21600) + 1) * 21600, // unix ts do fim da época atual
+      oracleIntervalS: 14400, reporterLoopS: 3600,
+      oracleLast: vps?.oracleLast ?? null, reporterLast: vps?.reporterLast ?? null,
+      oraclePrices,
+    },
   };
 }
 
 const HTML = `<!doctype html><html lang="pt"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>tc-proof-of-delivery · painel</title><style>
+<title>tc-pod · operação</title><style>
 :root{--bg:#0d1117;--card:#161b22;--bd:#30363d;--tx:#e6edf3;--dim:#8b949e;--ok:#3fb950;--low:#f85149;--warn:#d29922;--cy:#58a6ff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
-header{padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
-h1{font-size:16px;margin:0;color:var(--cy)}.px{color:var(--dim);font-size:12px}
-main{padding:20px;display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));max-width:1200px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.5 ui-monospace,Menlo,monospace}
+header{padding:14px 20px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+h1{font-size:15px;margin:0;color:var(--cy)}.px{color:var(--dim);font-size:12px}#pulse{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;transition:opacity .2s}
+main{padding:18px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));max-width:1400px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:8px;overflow:hidden}
-.card h2{font-size:13px;margin:0;padding:10px 14px;border-bottom:1px solid var(--bd);color:var(--cy);background:#1c2128}
-.rowi{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid #21262d;gap:10px}
-.rowi:last-child{border:0}.lbl{color:var(--dim)}.val{text-align:right}.u{color:var(--dim);font-size:12px;margin-left:6px}
+.card h2{font-size:12px;margin:0;padding:9px 14px;border-bottom:1px solid var(--bd);color:var(--cy);background:#1c2128;display:flex;justify-content:space-between}
+.rowi{display:flex;justify-content:space-between;padding:7px 14px;border-bottom:1px solid #21262d;gap:10px}.rowi:last-child{border:0}
+.lbl{color:var(--dim)}.val{text-align:right}.u{color:var(--dim);font-size:11px;margin-left:5px}
 .badge{padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600}
-.ok{background:rgba(63,185,80,.15);color:var(--ok)}.low{background:rgba(248,81,73,.15);color:var(--low)}
-.warn{background:rgba(210,153,34,.15);color:var(--warn)}.err{background:rgba(248,81,73,.15);color:var(--low)}
-.note{color:var(--dim);font-size:12px}#err{color:var(--low);padding:0 20px}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.ok{background:rgba(63,185,80,.15);color:var(--ok)}.low,.err,.offline{background:rgba(248,81,73,.15);color:var(--low)}
+.warn{background:rgba(210,153,34,.15);color:var(--warn)}.note{color:var(--dim);font-size:11px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}#err{color:var(--low);padding:0 20px}
 </style></head><body>
-<header><h1>▓ tc-proof-of-delivery · painel</h1><div class="px" id="px">carregando…</div></header>
+<header><h1>▓ tc-proof-of-delivery · operação</h1><div class="px"><span id="pulse"></span><span id="px">carregando…</span></div></header>
 <div id="err"></div><main id="main"></main>
 <script>
-const money=(v,s)=>v==null?'<span class="badge err">err</span>':v.toFixed(s==='LUNC'?2:s==='SOL'?4:6)+' '+s;
+const money=(v,s)=>v==null?'<span class="badge err">err</span>':Number(v).toFixed(s==='LUNC'?2:s==='SOL'?4:6)+' '+s;
+const row=(l,v,x='')=>\`<div class="rowi"><span class="lbl">\${l}</span><span class="val">\${v} \${x}</span></div>\`;
+const card=(t,rows,sub='')=>\`<div class="card"><h2><span>\${t}</span><span class="note">\${sub}</span></h2>\${rows.join('')}</div>\`;
+const bdg=(s,txt)=>'<span class="badge '+s+'">'+(txt||s)+'</span>';
 async function tick(){
+  const pulse=document.getElementById('pulse'); pulse.style.opacity=.3;
   try{
-    const d=await (await fetch('/api')).json();
-    const P=d.prices;
-    document.getElementById('px').textContent=
-      \`LUNC $\${P.LUNC.toFixed(8)} · BNB $\${P.BNB.toFixed(2)} · SOL $\${P.SOL.toFixed(2)} · ETH $\${P.ETH.toFixed(2)}  ·  \${d.ts.slice(0,19).replace('T',' ')} UTC\`;
+    const d=await (await fetch('/api')).json(); const P=d.prices;
+    document.getElementById('px').textContent=\`LUNC $\${P.LUNC.toFixed(8)} · BNB $\${P.BNB.toFixed(2)} · SOL $\${P.SOL.toFixed(2)} · ETH $\${P.ETH.toFixed(2)} · \${d.ts.slice(0,19).replace('T',' ')} UTC\`;
     document.getElementById('err').textContent='';
     const cards=[];
-    // carteiras
-    cards.push(card('Carteiras-gatilho (gás)', d.wallets.map(w=>
-      row(w.id, money(w.v,w.sym)+' <span class="u">($'+w.usd.toFixed(2)+')</span>', '<span class="badge '+w.st+'">'+(w.st==='low'?'BAIXO':w.st)+'</span>'))));
-    // pools
-    cards.push(card('Pools (reserva das comissões)', d.pools.map(p=>
-      row(p.id, money(p.v,p.sym), p.note?'<span class="note">'+p.note+'</span>':''))));
-    // serviços
+    // Validadores TC
+    const V=d.validators;
+    cards.push(card('Validadores TC (checkpoints)',
+      V.list.map(v=>row(v.name, v.idx==null?'—':('idx '+v.idx), bdg(v.st==='ok'?'ok':v.st, v.st==='offline'?'OFFLINE':v.st==='low'?'ATRASADO':v.note))),
+      'tip '+(V.tip??'?')+' · '+bdg(V.healthy?'ok':'low', V.online+'/'+V.list.length+' (min '+V.threshold+')')));
+    // RPCs
+    cards.push(card('RPCs (saúde + latência)',
+      d.rpcs.map(r=>row(r.name, r.up?('bloco '+r.height):bdg('low','DOWN'), r.up?'<span class="note">'+r.ms+'ms</span>':''))));
+    // Mensagens (relayer)
+    const vp=d.vps;
+    let msgs;
+    if(vp.skipped) msgs=[row('(--no-vps)','')];
+    else if(vp.error) msgs=[row('SSH',bdg('err','inacessível'),vp.error)];
+    else{
+      msgs=[];
+      msgs.push(row('processadas (total)', vp.processed??0));
+      const q=vp.queues||[];
+      if(!q.length) msgs.push(row('em trânsito/presas', bdg('ok','0 — fila limpa')));
+      else q.forEach(x=>msgs.push(row('→ '+x.remote+' ('+x.name.replace('_queue','')+')', bdg('warn',x.n), '<span class="note">'+x.status+'</span>')));
+      Object.entries(vp.cursors||{}).forEach(([c,n])=>msgs.push(row('tip '+c, n)));
+    }
+    cards.push(card('Mensagens (relayer)', msgs));
+    // Épocas & Oracle
+    const T=d.timing, nowS=Date.now()/1000;
+    const fmtIn=(ts)=>{ if(!ts) return '—'; const s=Math.round(ts-nowS); if(s<=0) return 'agora'; const h=Math.floor(s/3600),m=Math.floor(s%3600/60); return h>0?h+'h'+m+'m':m+'m'; };
+    const fmtAgo=(ts)=>{ if(!ts) return '—'; const s=Math.round(nowS-ts); const h=Math.floor(s/3600),m=Math.floor(s%3600/60); return (h>0?h+'h'+m+'m':m+'m')+' atrás'; };
+    const or=[];
+    or.push(row('época atual (TC→Solana)', T.nowEpoch, '<span class="note">fecha em '+fmtIn(T.epochClosesAt)+'</span>'));
+    or.push(row('epoch-reporter última', fmtAgo(T.reporterLast), '<span class="note">loop '+(T.reporterLoopS/3600)+'h · próxima em '+fmtIn((T.reporterLast||nowS)+T.reporterLoopS)+'</span>'));
+    or.push(row('oracle-agent última', fmtAgo(T.oracleLast), '<span class="note">a cada '+(T.oracleIntervalS/3600)+'h · próxima em '+fmtIn((T.oracleLast||nowS)+T.oracleIntervalS)+'</span>'));
+    (T.oraclePrices||[]).forEach(p=>or.push(row('preço '+p.lbl, p.rate?('rate '+p.rate):'—', p.gas?'<span class="note">gas '+p.gas+'</span>':'')));
+    cards.push(card('Épocas & Oracle', or));
+    // Carteiras
+    cards.push(card('Carteiras-gatilho (gás)', d.wallets.map(w=>row(w.id, money(w.v,w.sym)+' <span class="u">($'+w.usd.toFixed(2)+')</span>', bdg(w.st, w.st==='low'?'BAIXO':w.st)))));
+    // Pools
+    cards.push(card('Pools (comissões)', d.pools.map(p=>row(p.id, money(p.v,p.sym), p.note?'<span class="note">'+p.note+'</span>':''))));
+    // Serviços
     let sv;
-    if(d.services&&d.services.skipped) sv=[row('(--no-vps)','','')];
-    else if(!d.services||d.services.error) sv=[row('SSH','<span class="badge err">inacessível</span>',d.services?.error||'')];
+    if(vp.skipped) sv=[row('(--no-vps)','')];
+    else if(vp.error) sv=[row('SSH',bdg('err','inacessível'),vp.error)];
     else{ sv=['hyperlane-relayer','hyperlane-validator','oracle-agent','claim-agent','epoch-reporter','deliver-receipts.timer'].map(s=>{
-      const a=d.services[s]==='active';return row(s,'<span class="dot" style="background:'+(a?'var(--ok)':'var(--low)')+'"></span>'+(d.services[s]||'?'),'');});
-      const p=Number(d.services.relayer_panics||0);
-      sv.push(row('relayer panics (30m)','<span class="badge '+(p>0?'low':'ok')+'">'+p+'</span>','<span class="note">fds '+(d.services.relayer_fds||'?')+'</span>'));
+        const a=vp.services[s]==='active';return row(s,'<span class="dot" style="background:'+(a?'var(--ok)':'var(--low)')+'"></span>'+(vp.services[s]||'?'));});
+      sv.push(row('relayer panics (30m)', bdg(vp.panics>0?'low':'ok', vp.panics), '<span class="note">fds '+vp.fds+'</span>'));
     }
     cards.push(card('Serviços (VPS)', sv));
     document.getElementById('main').innerHTML=cards.join('');
-  }catch(e){ document.getElementById('err').textContent='erro ao consultar: '+e.message; }
+  }catch(e){ document.getElementById('err').textContent='erro: '+e.message; }
+  finally{ pulse.style.opacity=1; }
 }
-const row=(l,v,x)=>\`<div class="rowi"><span class="lbl">\${l}</span><span class="val">\${v} \${x||''}</span></div>\`;
-const card=(t,rows)=>\`<div class="card"><h2>\${t}</h2>\${rows.join('')}</div>\`;
-tick(); setInterval(tick, 30000);
+tick(); setInterval(tick, 10000);
 </script></body></html>`;
 
 http.createServer(async (req, res) => {
   if (req.url === "/api") {
-    try { const s = await snapshot(); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(s)); }
+    try { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(await snapshot())); }
     catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })); }
   } else { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(HTML); }
-}).listen(PORT, () => console.log(`\n  painel web em → http://localhost:${PORT}\n  (Ctrl+C para parar)\n`));
+}).listen(PORT, () => console.log(`\n  painel em → http://localhost:${PORT}  (refresh 10s)\n`));
