@@ -151,3 +151,20 @@ lucrativos e automáticos (sem lógica de "só enviar quando compensa").
 `node igp-tariff.mjs --tariff --rewards --tc --bsc --eth --sol`. O pool fica neutro nos
 corredores de mesmo token (arrecada X, paga X); no cruzado TC↔Solana a conversão usa o
 câmbio do dia e os pools absorvem pequenas derivas.
+
+## Deploy do rrv A+B — MAINNET (20/08/2026) ✅
+
+Upgrade do pod `2mQZcHYL…` com o guard de replay por bitmap + close/refund do rent
+da época. Feito em produção:
+- extend +10240 B (o binário novo é maior) → deploy retomado do buffer após queda de
+  RPC (tx swap `3nKJAXQU…`, slot 440540031). Os 1,65 SOL do buffer VOLTARAM à
+  authority (2,266 SOL após).
+- migração `SetAppliedBase(82487)` = época atual−256 (tx `5Dg6zpgL…`); applied_base
+  confirmado 82487 on-chain.
+- Config íntegro pós-upgrade (quorum 1, reward 942951, 2 operadores, total_credited
+  6000000); pool de comissões intacto (0,3006 SOL). Novo código lê o Config antigo
+  migrado corretamente.
+- Custo do report TC→Solana: de US$1,29/época (rent permanente) → ~US$0 (reembolsável).
+
+Scripts: `deploy/solana-upgrade-pod.sh` (+`solana-resume-upgrade.sh` p/ RPC instável) ·
+`deploy/rrv-migrate-applied-base.mjs`.
