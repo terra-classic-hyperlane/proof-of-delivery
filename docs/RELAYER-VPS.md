@@ -118,3 +118,17 @@ PORT=9000 node deploy/monitor-web.mjs # outra porta
 node deploy/monitor-web.mjs --no-vps  # sem SSH
 ```
 Deixe rodando num terminal e mantenha a aba aberta.
+
+### Painel web como SERVIÇO (sobe sozinho)
+
+`bash deploy/install-monitor-web-service.sh` — instala o painel como serviço de
+usuário do systemd (roda como você, com suas chaves SSH), habilita no boot
+(linger) e deixa em http://localhost:8787 sempre no ar.
+
+```bash
+systemctl --user status  tcpod-monitor    # estado
+systemctl --user restart tcpod-monitor    # após editar monitor-web.mjs
+systemctl --user stop    tcpod-monitor    # parar
+journalctl --user -u tcpod-monitor -f     # logs
+```
+
