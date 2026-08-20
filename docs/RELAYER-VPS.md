@@ -89,3 +89,19 @@ journalctl -u hyperlane-relayer | grep 'starting up with version'  # c117895a…
 ```
 Prova funcional: uma transferência nova deve ser entregue no destino sem
 intervenção (o `delivered()`/`message_delivered` vira true e a comissão cai).
+
+## Painel de monitoramento
+
+`node deploy/monitor.mjs` — visão única de saúde (4 chains + VPS):
+- **Carteiras-gatilho**: TC operador, BSC 0x8f08, ETH 0xEF81, SOL PbEo (reporter),
+  SOL BirXd4Q (authority) — com alerta ⚠ BAIXO quando o gás acaba.
+- **Pools**: TC vault + IGP acumulado (avisa quando varrer com Sweep), BSC vault,
+  SOL pod/Config + base do bitmap de replay vs época atual.
+- **Serviços VPS**: relayer/validator/oracle-agent/claim-agent/epoch-reporter/
+  deliver-receipts.timer (active?), panics do relayer e nº de fds.
+
+```bash
+node deploy/monitor.mjs            # completo (on-chain + SSH na VPS)
+node deploy/monitor.mjs --no-vps   # só on-chain (sem SSH)
+node deploy/monitor.mjs --watch    # atualiza a cada 60s
+```
