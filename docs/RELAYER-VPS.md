@@ -105,3 +105,16 @@ node deploy/monitor.mjs            # completo (on-chain + SSH na VPS)
 node deploy/monitor.mjs --no-vps   # só on-chain (sem SSH)
 node deploy/monitor.mjs --watch    # atualiza a cada 60s
 ```
+
+### Painel WEB (navegador)
+
+`node deploy/monitor-web.mjs` — sobe um servidor local e mostra o mesmo painel no
+navegador, atualizando sozinho a cada 30s. As consultas (RPC + SSH) rodam no
+servidor; a página só lê do localhost (nada vai pra internet).
+
+```bash
+node deploy/monitor-web.mjs           # abre http://localhost:8787
+PORT=9000 node deploy/monitor-web.mjs # outra porta
+node deploy/monitor-web.mjs --no-vps  # sem SSH
+```
+Deixe rodando num terminal e mantenha a aba aberta.
