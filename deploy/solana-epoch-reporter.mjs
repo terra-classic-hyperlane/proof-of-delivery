@@ -158,7 +158,10 @@ async function main() {
     registered.has(kp.publicKey.toBase58()) ? "(operador ✓)" : "(⚠ NÃO é operador registrado — submit falhará)");
   const keys = [
     { pubkey: kp.publicKey, isSigner: true, isWritable: true },
-    { pubkey: CONFIG, isSigner: false, isWritable: false },
+    // CONFIG É ESCRITO pelo programa (total_credited + bitmap de replay das
+    // épocas) → precisa ser writable. (era read-only por engano; nunca aparecia
+    // porque o submit falhava antes por falta de SOL.)
+    { pubkey: CONFIG, isSigner: false, isWritable: true },
     { pubkey: epochPda, isSigner: false, isWritable: true },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ...creditPdas.map((p) => ({ pubkey: p, isSigner: false, isWritable: true })),
