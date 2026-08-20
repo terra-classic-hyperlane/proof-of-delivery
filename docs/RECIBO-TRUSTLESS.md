@@ -5,6 +5,9 @@ recibo assinado pelos validadores da ponte; o vault de ORIGEM paga ao receber.
 Nenhum atestador, nenhum agente com poder de decisão — imune a relayer malicioso.
 
 > **Status: PROVADO EM PRODUÇÃO (19/08/2026), corredor TC↔BSC nos 2 sentidos.**
+> Desde 20/08/2026 (code_id 11596): `SendReceipt{gas_limit}` — o recibo saindo do
+> TC paga só o GÁS REAL via metadata do IGP, não a tarifa de usuário de $0,08
+> (que devoraria a comissão). Ver `TARIFAS-E-RECOMPENSAS.md` §recibos.
 > Vaults recibo: TC `terra1gqkrh2…` (code_id 11592) · BSC
 > `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism = ISM do warp; na prova era
 > `0xa82087B8…`, desde 20/08/2026 é o mutável `0xF6b0cDD3…` — `ISM-VALIDADORES.md`).

@@ -71,7 +71,12 @@ Mostra o que ele emitiria (quantos pendentes por chain), sem assinar nada.
 - `--loop 300` → intervalo em segundos (padrão 5 min).
 - `MIN_BATCH=3` → só emite quando juntar ≥ N entregas da mesma origem (amortiza gás).
 - `DISPATCH_PAGES=100` → quantos dispatches recentes varrer.
-- IGP do recibo: constantes `TC.igp` no script (10 LUNC por padrão, com folga).
+- IGP do recibo: **cotado dinamicamente** (desde 20/08/2026 — nada de valor fixo).
+  O agente consulta `quote_gas_payment` do IGP do TC para o gás real de entrega
+  (`RECEIPT_GAS_56=300000` / `RECEIPT_GAS_SOL=500000`, ajustáveis no `.env`) e
+  anexa a cotação +2%; o `send_receipt` passa esse `gas_limit` via metadata, então
+  o recibo paga só o gás real (~100 LUNC p/ BSC, ~20 p/ SOL) e não a tarifa cheia
+  de usuário ($0,08). Detalhes: `TARIFAS-E-RECOMPENSAS.md`.
 
 ## Segurança
 - `.env` é `chmod 600` (só root lê).
