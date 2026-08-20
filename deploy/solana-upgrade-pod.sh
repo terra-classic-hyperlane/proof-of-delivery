@@ -39,8 +39,8 @@ echo "tamanho on-chain: ${CUR:-?} bytes | novo: $(stat -c%s "$SO") bytes"
 read -rp $'\n⚠️  Confirma o UPGRADE do pod no MAINNET? (digite: UPGRADE) ' OK
 [ "$OK" = "UPGRADE" ] || { echo "abortado."; exit 1; }
 
-say "1/3 extend do programData (+8192 bytes de folga; o novo binário é maior)"
-solana program extend "$POD" 8192 -u "$RPC" -k "$KEYPAIR" || echo "  (se já tiver espaço, o extend pode falhar — segue pro deploy)"
+say "1/3 extend do programData (+10240 bytes — mínimo exigido pelo loader; o novo binário é maior)"
+solana program extend "$POD" 10240 -u "$RPC" -k "$KEYPAIR"
 
 say "2/3 deploy do upgrade (buffer + swap atômico — o programa antigo roda até o swap)"
 solana program deploy "$SO" --program-id "$POD" -u "$RPC" -k "$KEYPAIR" --upgrade-authority "$KEYPAIR"
