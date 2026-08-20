@@ -150,13 +150,13 @@ Solana→TC funcionando. Detalhes técnicos: `RECIBO-TRUSTLESS.md`.
 | Item | Endereço | 32 bytes (hex, left-pad) |
 |---|---|---|
 | Vault (recibo) | `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` | `0x00000000000000000000000034e06a7793877ec5251b1dc230ad7cd577d231f4` |
-| ISM do warp (recibos do TC) | `0xa82087B8eea0394B1476f716B91c10531025Ef42` | |
+| ISM do warp (recibos do TC) | `0xF6b0cDD33A7d2895a3F18b85569Ed9A8278cD151` | mutável (endereço definitivo), 4 validadores / threshold 3 — `ISM-VALIDADORES.md` |
 | RPC | `https://bsc-dataseed.bnbchain.org` | |
 
 ### 4.4 Ethereum (domínio 1) — EVM
 | Item | Endereço | Observação |
 |---|---|---|
-| ISM do warp | `0xDe8edEC7207e2dEf9D347Eaa1f6Ee50420bc070b` | vault de recibo **ainda não deployado** (aguardando gás baixo) |
+| ISM do warp | `0x3ba17675f0D319C89D70722f6eb07790DF0B254B` | mutável (endereço definitivo), 4 validadores / threshold 3 — `ISM-VALIDADORES.md`; vault de recibo **ainda não deployado** (aguardando gás baixo) |
 
 ---
 

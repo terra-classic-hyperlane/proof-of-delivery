@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Coin, HexBinary, Uint128};
+use cosmwasm_std::{Addr, Coin, HexBinary, Uint128, Uint256};
 
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -78,7 +78,11 @@ pub enum ExecuteMsg {
     /// AQUI (raw query DELIVERIES por keccak256(msg)) e despacha UM recibo de
     /// volta ao vault de origem — o domínio de origem é LIDO da mensagem (não
     /// forjável). Fundos anexados pagam o hook/IGP do recibo (operador paga).
-    SendReceipt { messages: Vec<HexBinary> },
+    /// `gas_limit`: gás cobrado pelo IGP para ENTREGAR o recibo (via metadata).
+    /// Sem ele o IGP usa o gas_for_domain — que é a TARIFA CHEIA de usuário
+    /// ($0,08); o recibo deve pagar só o gás real (ex.: 300k), senão a comissão
+    /// do operador é devorada pela própria taxa do recibo.
+    SendReceipt { messages: Vec<HexBinary>, gas_limit: Option<Uint256> },
 
     /// PAPEL ORIGEM. Chamado pelo hpl-mailbox ao entregar o recibo. Só aceita do
     /// Mailbox e de um `sender` == router registrado do `origin`. Paga cada id ao

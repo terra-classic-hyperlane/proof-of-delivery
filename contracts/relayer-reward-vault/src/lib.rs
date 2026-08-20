@@ -92,8 +92,8 @@ pub mod entry {
             ExecuteMsg::SetRemoteRouter { domain, address } => {
                 crate::execute::set_remote_router(deps, info, domain, address)
             }
-            ExecuteMsg::SendReceipt { messages } => {
-                crate::execute::send_receipt(deps, env, info, messages)
+            ExecuteMsg::SendReceipt { messages, gas_limit } => {
+                crate::execute::send_receipt(deps, env, info, messages, gas_limit)
             }
             ExecuteMsg::Handle(msg) => crate::execute::handle(deps, env, info, msg),
             ExecuteMsg::AttestRemoteDelivery { domain, message_ids, executor } => {

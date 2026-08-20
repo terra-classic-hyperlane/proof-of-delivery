@@ -35,7 +35,13 @@ const TC = {
   vault32: "402c3ba99da6c0d1fc257e45afe1574750604b9a4e3db6d6df6fc47ff4257579",
   mailbox: "terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9",
   operatorTc: "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp",
-  igp: { 56: "10000000", 1399811149: "10000000" },
+  igpCore: "terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz",
+  // gás de ENTREGA do recibo por domínio de origem (metadata do IGP) — o valor
+  // em uluna é cotado dinamicamente; nada de tarifa fixa (env RECEIPT_GAS_<dom>)
+  receiptGas: {
+    56: Number(process.env.RECEIPT_GAS_56 ?? 300000),
+    1399811149: Number(process.env.RECEIPT_GAS_SOL ?? 500000),
+  },
 };
 const BSC = {
   name: "BSC", domain: 56,
@@ -104,7 +110,7 @@ async function tcEmit() {
     if (!msg) continue;
     if (recipientOf(msg) === TC.vault32) continue;
     const origin = originOf(msg);
-    if (!(origin in TC.igp)) continue;
+    if (!(origin in TC.receiptGas)) continue;
     dels.push({ id: keccakId(msg), message: msg, origin });
   }
   // dedup: BSC→TC pago no BSC (checável); Solana→TC via SEEN local + idempotência
@@ -123,12 +129,22 @@ async function tcEmit() {
   if (wallet) { client = await SigningCosmWasmClient.connectWithSigner(TC.rpc, wallet, { gasPrice: GasPrice.fromString(TC.gasPrice) }); sender = (await wallet.getAccounts())[0].address; }
   for (const [origin, ds] of Object.entries(byO)) {
     if (ds.length < MIN_BATCH) continue;
-    const amount = TC.igp[origin] ?? "10000000";
-    log(`TC send_receipt: origem ${origin}, ${ds.length} id(s) [${ds.map((d) => d.id.slice(0, 10)).join(",")}] IGP ${amount}uluna`);
+    // gás REAL de entrega do recibo no destino (via metadata do IGP) — NUNCA a
+    // tarifa cheia de usuário; a cotação em uluna é DINÂMICA (quote na hora).
+    const gasLimit = TC.receiptGas[origin] ?? 300000;
+    let amount;
+    try {
+      const q = await (await cw()).queryContractSmart(TC.igpCore, {
+        igp: { quote_gas_payment: { dest_domain: Number(origin), gas_amount: String(gasLimit) } },
+      });
+      amount = ((BigInt(q.gas_needed) * 102n) / 100n).toString(); // +2% (excedente reembolsado)
+    } catch (e) { log(`  ✗ quote IGP falhou p/ origem ${origin}: ${String(e).slice(0, 100)}`); continue; }
+    log(`TC send_receipt: origem ${origin}, ${ds.length} id(s) [${ds.map((d) => d.id.slice(0, 10)).join(",")}] gás ${gasLimit} → IGP ${amount}uluna`);
     if (DRY) continue;
     if (!wallet) { log("  ⚠ falta TC_PRIVATE_KEY/TC_MNEMONIC"); continue; }
     try {
-      const res = await client.execute(sender, TC.vault, { send_receipt: { messages: ds.map((d) => d.message) } },
+      const res = await client.execute(sender, TC.vault,
+        { send_receipt: { messages: ds.map((d) => d.message), gas_limit: String(gasLimit) } },
         "auto", "", [{ denom: "uluna", amount }]);
       markSeen(ds.map((d) => d.id));
       log(`  → ${res.transactionHash}`);

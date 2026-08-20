@@ -6,7 +6,8 @@ Nenhum atestador, nenhum agente com poder de decisão — imune a relayer malici
 
 > **Status: PROVADO EM PRODUÇÃO (19/08/2026), corredor TC↔BSC nos 2 sentidos.**
 > Vaults recibo: TC `terra1gqkrh2…` (code_id 11592) · BSC
-> `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism = ISM do warp `0xa82087B8…`).
+> `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism = ISM do warp; na prova era
+> `0xa82087B8…`, desde 20/08/2026 é o mutável `0xF6b0cDD3…` — `ISM-VALIDADORES.md`).
 > Provas: BSC→TC pagou 33 LUNC (tx `F4700EF4…`, msg `974a7e47…`); TC→BSC pagou
 > 2.259.538.750.000 wei BNB (msg `5920d3fb…`, recibo `b6d00d74…`). Detalhes de
 > integração Hyperlane no §F.
@@ -207,15 +208,16 @@ coisas do recipient que os mocks de teste não cobriam:
    usa o ISM DEFAULT da chain — que pode não conhecer a origem. No TC o default
    já conhece a BSC (56); na BSC o default NÃO conhece o TC (132556) → erro
    `No ISM found for origin: 132556`. Solução: apontar para o **mesmo ISM do
-   warp sintético** daquela rota (BSC: `0xa82087B8…`; ETH: `0xDe8edEC7…`), que já
-   valida as mensagens vindas do TC. EVM: `setIsm(<ism_do_warp>)` (owner).
+   warp sintético** daquela rota (desde 20/08/2026: BSC `0xF6b0cDD3…`; ETH
+   `0x3ba17675…` — `ISM-VALIDADORES.md`), que já valida as mensagens vindas do
+   TC. EVM: `setIsm(<ism_do_warp>)` (owner).
 
 Regra geral p/ um corredor novo: o vault de CADA chain que RECEBE recibos aponta
 `ism` para o ISM do warp que valida a origem dos recibos (= os validadores da
 chain de origem). Corredor com warp bidirecional → esse ISM já existe.
 
 Provado em produção 19/08: BSC→TC (recibo → TC, ISM default do TC) e TC→BSC
-(recibo → BSC, `ism` = ISM do warp `0xa82087B8`).
+(recibo → BSC, `ism` = ISM do warp — `0xa82087B8` na época; hoje `0xF6b0cDD3…`).
 
 ---
 

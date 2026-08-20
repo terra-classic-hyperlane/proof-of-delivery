@@ -53,12 +53,12 @@ Token: **IGORFAKE** · 6 decimais · TC = colateral (cw20) · remotas = sintéti
 | Mailbox | `0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4` |
 | IGP (custom TerraClassicIGPStandalone) | `0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923` |
 | Oracle (TerraClassicOracle) | `0x7dE950f8F0a037783989a6BE84B3620916552306` |
-| ISM (messageIdMultisig) | `0xa82087B8eea0394B1476f716B91c10531025Ef42` |
+| ISM (StorageMessageIdMultisigIsm, MUTÁVEL) | `0xF6b0cDD33A7d2895a3F18b85569Ed9A8278cD151` (definitivo desde 20/08/2026 — ver `ISM-VALIDADORES.md`) |
 | Owner (warp/IGP/oracle/beneficiary) | `0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291` |
 
 - `totalSupply` sintético: **3688000000** (3.688 IGORFAKE, 6 dec).
-- **ISM validators:** `0x71B2B8C36a0C76b74Be92eb7915E26A69b3B03eB` · **threshold 1**
-  (multisig do próprio operador — valida msgs vindas do TC).
+- **ISM validators:** 4 validadores (igorveras/tcv/darksun/burnitall) · **threshold 3** —
+  ver `ISM-VALIDADORES.md` (valida msgs vindas do TC).
 - **Oracle (o que o usuário da BSC paga para mandar ao TC):** rate `9047190` · gas_price `1e10`.
 
 ---
@@ -71,11 +71,11 @@ Token: **IGORFAKE** · 6 decimais · TC = colateral (cw20) · remotas = sintéti
 | Mailbox | `0xc005dc82818d67AF737725bD4bf75435d065D239` |
 | IGP (custom) | `0x9650F1f8DB492750323172145e67Df4e89E964Aa` |
 | Oracle | `0x3987cCE8f08037EBF93Ef3a934753540A94196cE` |
-| ISM (messageIdMultisig) | `0xDe8edEC7207e2dEf9D347Eaa1f6Ee50420bc070b` |
+| ISM (StorageMessageIdMultisigIsm, MUTÁVEL) | `0x3ba17675f0D319C89D70722f6eb07790DF0B254B` (definitivo desde 20/08/2026 — ver `ISM-VALIDADORES.md`) |
 | Owner (warp/IGP/oracle/beneficiary) | `0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae` |
 
 - `totalSupply` sintético: **1308000000** (1.308 IGORFAKE).
-- **ISM validators:** `0x71B2B8C36a0C76b74Be92eb7915E26A69b3B03eB` · **threshold 1**.
+- **ISM validators:** 4 validadores (igorveras/tcv/darksun/burnitall) · **threshold 3** — ver `ISM-VALIDADORES.md`.
 - **Oracle:** rate `26585078` · gas_price `1e10` (10 gwei).
 
 ---
@@ -99,7 +99,7 @@ Fonte: log de deploy `WARP-SOLANAMAINNET-IGORFAKE-BUFFER.txt` + `REFERENCE-IGP`
 - **RemoteGasData do TC (132556) no IGP:** exchange_rate `29400000000` · gas_price
   `28325` · token_decimals `6` · gas_overhead `3000000` (o deploy lê o VIGENTE
   on-chain; estes são os valores de referência de 09/07).
-- ISM threshold 1. Há também rota p/ **Solana testnet** (dom 1399811151).
+- ISM: 4 validadores / threshold 3 desde 20/08/2026 (ver `ISM-VALIDADORES.md`). Há também rota p/ **Solana testnet** (dom 1399811151).
 
 > ⚠️ Dois IGP accounts: o **inner `FPTvDso…`** é quem acumula os lamports (é ELE
 > que recebe `beneficiary = vault` e `owner = governor`); o **overhead

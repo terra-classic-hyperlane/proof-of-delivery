@@ -105,7 +105,8 @@ pagamento por entrega é ÚNICO, na origem** — recompensas de destino reduzida
 ## 4c. Recibo trustless (TC↔BSC provado 19/08) — modelo DEFINITIVO
 
 Vaults com `send_receipt`/`handle`: TC `terra1gqkrh2…` (code_id 11592) · BSC
-`0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism=`0xa82087B8…`, o ISM do warp).
+`0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism=`0xa82087B8…`, o ISM do warp;
+desde 20/08/2026 ambos usam o ISM mutável `0xF6b0cDD3…` — ver `ISM-VALIDADORES.md`).
 Router mútuo + de/para operador 0. Pagamento SEM confiança: o destino prova a
 entrega, o recibo é validado pelos validadores da ponte, a origem paga.
 Detalhes: `RECIBO-TRUSTLESS.md`. Vaults de atestação anteriores (BSC 0x1A41144c,

@@ -38,7 +38,8 @@ mod mock_mailbox {
     pub struct InstantiateMsg {}
 
     use cw_storage_plus::Item;
-    pub const LAST_DISPATCH: Item<(u32, HexBinary, HexBinary)> = Item::new("last_dispatch");
+    pub const LAST_DISPATCH: Item<(u32, HexBinary, HexBinary, Option<HexBinary>)> =
+        Item::new("last_dispatch");
 
     #[cw_serde]
     pub struct DispatchMsg {
@@ -93,7 +94,10 @@ mod mock_mailbox {
                 Ok(Response::new())
             }
             ExecuteMsg::Dispatch(d) => {
-                LAST_DISPATCH.save(deps.storage, &(d.dest_domain, d.recipient_addr, d.msg_body))?;
+                LAST_DISPATCH.save(
+                    deps.storage,
+                    &(d.dest_domain, d.recipient_addr, d.msg_body, d.metadata),
+                )?;
                 Ok(Response::new())
             }
         }
@@ -1324,14 +1328,40 @@ fn send_receipt_prova_entrega_e_despacha() {
         &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
     // send_receipt (papel destino) — despacha 1 recibo p/ a BSC
     s.app.execute_contract(relayer.clone(), s.vault.clone(),
-        &ExecuteMsg::SendReceipt { messages: vec![m] }, &[]).unwrap();
+        &ExecuteMsg::SendReceipt { messages: vec![m], gas_limit: None }, &[]).unwrap();
     // o mock mailbox capturou o dispatch: destino 56, corpo de 36 bytes
-    let last: Option<(u32, HexBinary, HexBinary)> = s.app.wrap()
+    let last: Option<(u32, HexBinary, HexBinary, Option<HexBinary>)> = s.app.wrap()
         .query_wasm_smart(&s.mailbox, &mock_mailbox::QueryLastDispatch {}).unwrap();
-    let (dest, _router, body) = last.unwrap();
+    let (dest, _router, body, metadata) = last.unwrap();
     assert_eq!(dest, DOM_BSC_R);
     assert_eq!(body.len(), 36);
     assert_eq!(&body.as_slice()[0..32], id.as_slice()); // id no corpo
+    assert_eq!(metadata, None); // sem gas_limit → sem metadata (IGP usa gas_for_domain)
+}
+
+#[test]
+fn send_receipt_com_gas_limit_vira_metadata_do_igp() {
+    let mut s = setup(1_000_000_000);
+    let owner = s.gov.clone();
+    let relayer = s.relayer_a.clone();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: Some(relayer.to_string()) }, &[]).unwrap();
+    s.app.execute_contract(owner.clone(), s.vault.clone(),
+        &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC_R,
+            address: Some("0x00000000000000000000000000000000000000000000000000000000000000bc".into()) }, &[]).unwrap();
+    let m = hyp_msg(DOM_BSC_R, 3);
+    let id = keccak_id(&m);
+    s.app.execute_contract(relayer.clone(), s.mailbox.clone(),
+        &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
+    // gas_limit → metadata do IGP: 32 bytes BE do valor (recibo paga só gás real)
+    s.app.execute_contract(relayer.clone(), s.vault.clone(),
+        &ExecuteMsg::SendReceipt { messages: vec![m], gas_limit: Some(cosmwasm_std::Uint256::from(300_000u32)) }, &[]).unwrap();
+    let last: Option<(u32, HexBinary, HexBinary, Option<HexBinary>)> = s.app.wrap()
+        .query_wasm_smart(&s.mailbox, &mock_mailbox::QueryLastDispatch {}).unwrap();
+    let (_dest, _router, _body, metadata) = last.unwrap();
+    let md = metadata.expect("gas_limit deve gerar metadata");
+    assert_eq!(md.len(), 32); // só o gas_limit; refund vazio → refund = o vault (pool)
+    assert_eq!(md.as_slice(), cosmwasm_std::Uint256::from(300_000u32).to_be_bytes().as_slice());
 }
 
 #[test]
@@ -1350,10 +1380,10 @@ fn send_receipt_nao_reemite_o_mesmo_id() {
         &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
     // 1ª emissão: ok
     s.app.execute_contract(relayer.clone(), s.vault.clone(),
-        &ExecuteMsg::SendReceipt { messages: vec![m.clone()] }, &[]).unwrap();
+        &ExecuteMsg::SendReceipt { messages: vec![m.clone()], gas_limit: None }, &[]).unwrap();
     // 2ª emissão do MESMO id: recusada (nada novo) — anti-duplo-pagamento no destino
     let err = s.app.execute_contract(relayer.clone(), s.vault.clone(),
-        &ExecuteMsg::SendReceipt { messages: vec![m] }, &[]).unwrap_err();
+        &ExecuteMsg::SendReceipt { messages: vec![m], gas_limit: None }, &[]).unwrap_err();
     assert!(err.root_cause().to_string().contains("nothing new to send"));
 }
 

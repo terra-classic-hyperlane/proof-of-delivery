@@ -550,6 +550,7 @@ pub fn send_receipt(
     env: Env,
     info: MessageInfo,
     messages: Vec<HexBinary>,
+    gas_limit: Option<cosmwasm_std::Uint256>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     ensure!(!config.paused, ContractError::Paused {});
@@ -586,7 +587,11 @@ pub fn send_receipt(
     let router_hex = HexBinary::from(::hex::decode(router.trim_start_matches("0x"))
         .map_err(|_| ContractError::Std(cosmwasm_std::StdError::generic_err("router hex")))?);
 
-    // dispatch no hpl-mailbox (fundos anexados pagam o hook/IGP — operador paga)
+    // dispatch no hpl-mailbox (fundos anexados pagam o hook/IGP — operador paga).
+    // Com `gas_limit`, o metadata do IGP (32B BE do gás + refund vazio → refund =
+    // este contrato, o pool) faz o recibo pagar só o GÁS REAL de entrega, e não a
+    // tarifa cheia de usuário do gas_for_domain.
+    let metadata = gas_limit.map(|g| HexBinary::from(g.to_be_bytes().to_vec()));
     #[derive(serde::Serialize)]
     struct DispatchMsg { dest_domain: u32, recipient_addr: HexBinary, msg_body: HexBinary, hook: Option<String>, metadata: Option<HexBinary> }
     #[derive(serde::Serialize)]
@@ -599,7 +604,7 @@ pub fn send_receipt(
             recipient_addr: router_hex,
             msg_body: HexBinary::from(body),
             hook: None,
-            metadata: None,
+            metadata,
         }))?,
         funds: info.funds,
     });

@@ -60,7 +60,7 @@ const processedPda = (id) => mbPda([Buffer.from("hyperlane"), sep, Buffer.from("
 // ---- 1. buscar a mensagem completa (do dispatch no TC) ----
 async function fetchMessage(idHex) {
   const q = encodeURIComponent(`wasm-mailbox_dispatch_id.message_id='${idHex}'`);
-  const r = await fetch(`https://rpc.terra-classic.hexxagon.io/tx_search?query="${q}"&per_page=1`).then((x) => x.json());
+  const r = await fetch(`${process.env.TC_RPC ?? "https://rpc.terra-classic.hexxagon.io"}/tx_search?query="${q}"&per_page=1`).then((x) => x.json());
   const tx = r.result?.txs?.[0];
   if (!tx) throw new Error("dispatch não encontrado no TC p/ " + idHex);
   for (const e of tx.tx_result.events) {
