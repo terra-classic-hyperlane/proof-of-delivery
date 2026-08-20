@@ -21,9 +21,10 @@ const BSC_RPC = process.env.BSC_RPC ?? "https://bsc-dataseed.bnbchain.org";
 const ETH_RPC = process.env.ETH_RPC ?? "https://ethereum-rpc.publicnode.com";
 
 // os NOSSOS validadores do TC (3-de-4). checkpoint_latest_index.json no S3 anunciado.
+const TC_MAINNET_DOMAIN = 132556;
 const TC_VALIDATORS = [
   { name: "igorveras", url: "https://hyperlane-validator-signatures-igorverasvalidador-terraclassic.s3.us-east-1.amazonaws.com" },
-  { name: "tcv", url: null }, // nunca anunciou storage
+  { name: "tcv", url: "https://hyperlane-validator-signatures-tcv.s3.eu-central-1.amazonaws.com" },
   { name: "darksun", url: "https://hyperlane-validator-signatures-darksun-terraclassic.s3.eu-west-3.amazonaws.com" },
   { name: "burnitall", url: "https://hyperlane-validator-signatures-burnitall-validator.s3.us-east-1.amazonaws.com/terraclassic" },
 ];
@@ -45,12 +46,21 @@ async function validators() {
   const tipIdx = tip != null ? tip - 1 : null;
   const list = await Promise.all(TC_VALIDATORS.map(async (v) => {
     if (!v.url) return { name: v.name, idx: null, st: "offline", note: "não anunciou" };
-    const idx = await fetch(`${v.url}/checkpoint_latest_index.json`, { signal: AbortSignal.timeout(7000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+    const opts = { signal: AbortSignal.timeout(7000) };
+    const [idx, ann] = await Promise.all([
+      fetch(`${v.url}/checkpoint_latest_index.json`, opts).then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch(`${v.url}/announcement.json`, opts).then((r) => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    const dom = ann?.value?.mailbox_domain;
     if (idx == null) return { name: v.name, idx: null, st: "offline", note: "sem resposta" };
+    // rede errada = está assinando outra chain (ex.: testnet 1325) → NÃO vale p/ mainnet
+    if (dom != null && dom !== TC_MAINNET_DOMAIN)
+      return { name: v.name, idx, st: "low", note: `rede errada (dom ${dom})`, wrongNet: true };
     const st = tipIdx == null ? "ok" : idx >= tipIdx - 2 ? "ok" : idx >= tipIdx - 10 ? "warn" : "low";
     return { name: v.name, idx, st, note: tipIdx != null && idx < tipIdx - 2 ? `${tipIdx - idx} atrás` : "atual" };
   }));
-  const online = list.filter((v) => v.st === "ok" || v.st === "warn").length;
+  // só conta como efetivo p/ mainnet quem está na rede certa e em dia
+  const online = list.filter((v) => (v.st === "ok" || v.st === "warn") && !v.wrongNet).length;
   return { tip: tipIdx, list, online, threshold: TC_THRESHOLD, healthy: online >= TC_THRESHOLD };
 }
 
