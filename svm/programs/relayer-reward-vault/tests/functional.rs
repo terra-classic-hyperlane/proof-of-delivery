@@ -472,9 +472,9 @@ async fn remote_credits_via_epoch_report() {
     .await;
 
     // relatório SÓ com créditos remotos (2 entregas no TC)
-    let mut r = report(1, vec![]);
+    let mut r = report(9_990, vec![]);
     r.remote = vec![(DOM_TC, op_a, 2)];
-    let (epoch_acc, _) = epoch_pda(&env.program_id, 1);
+    let (epoch_acc, _) = epoch_pda(&env.program_id, 9_990);
     let (credit_a, _) = credit_pda(&env.program_id, &op_a);
     let signer = env.ops[0].insecure_clone();
     let ix = Instruction {
@@ -502,10 +502,10 @@ async fn remote_sem_reward_ou_binding_rejeitado() {
     let op_a = env.ops[0].pubkey();
     let (rw, _) = remote_reward_pda(&env.program_id, DOM_TC);
     let (bind, _) = remote_binding_pda(&env.program_id, DOM_TC, &op_a);
-    let (epoch_acc, _) = epoch_pda(&env.program_id, 2);
+    let (epoch_acc, _) = epoch_pda(&env.program_id, 9_991);
     let (credit_a, _) = credit_pda(&env.program_id, &op_a);
 
-    let mut r = report(2, vec![]);
+    let mut r = report(9_991, vec![]);
     r.remote = vec![(DOM_TC, op_a, 1)];
     let signer = env.ops[0].insecure_clone();
     let ix = Instruction {
@@ -524,4 +524,140 @@ async fn remote_sem_reward_ou_binding_rejeitado() {
     // sem reward PDA criado → ERR_NO_REMOTE_REWARD (113 = 0x71)
     let err = send(&mut env.ctx, &[ix], &[signer]).await.unwrap_err();
     assert!(err.contains("0x71"), "esperava ERR_NO_REMOTE_REWARD: {err}");
+}
+
+// ===========================================================================
+// SEGURANÇA: guard de replay por bitmap no Config + close/refund do rent.
+// (mudança de 2026-08-20; "dinheiro de terceiros" — foco em não pagar 2×)
+// ===========================================================================
+
+/// Após aplicar (quórum), a conta de época é FECHADA e o rent volta ao operador.
+#[tokio::test]
+async fn epoch_account_closed_and_rent_refunded_on_apply() {
+    let mut env = setup(1).await; // quórum 1: cria+aplica+fecha numa tx
+    let op_a = env.ops[0].pubkey();
+    let (epoch_acc, _) = epoch_pda(&env.program_id, 9_999);
+    let s0 = env.ops[0].insecure_clone();
+
+    // 1ª época: cria o PDA de crédito (rent que PERSISTE — legítimo) + a conta de
+    // época (rent que deve VOLTAR ao fechar).
+    let r1 = report(9_998, vec![(op_a, 2)]);
+    let __ix_a = submit_report_ix(&env, &s0, &r1);
+    send(&mut env.ctx, &[__ix_a], &[s0.insecure_clone()]).await.unwrap();
+    assert!(env.ctx.banks_client.get_account(epoch_pda(&env.program_id, 9_998).0).await.unwrap().is_none(),
+        "a conta de época 1 deveria ter sido fechada");
+
+    // 2ª época: o PDA de crédito JÁ existe → o único rent em jogo é o da conta de
+    // época, que deve ser devolvido. A queda de saldo tem de ser só a fee (~5000).
+    let bal_before = env.ctx.banks_client.get_balance(op_a).await.unwrap();
+    let r2 = report(9_999, vec![(op_a, 2)]);
+    let __ix_b = submit_report_ix(&env, &s0, &r2);
+    send(&mut env.ctx, &[__ix_b], &[s0]).await.unwrap();
+
+    assert!(env.ctx.banks_client.get_account(epoch_acc).await.unwrap().is_none(),
+        "a conta de época 2 deveria ter sido fechada");
+    assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 4 * REWARD);
+    let bal_after = env.ctx.banks_client.get_balance(op_a).await.unwrap();
+    // se o rent da época (~2,4M) tivesse ficado preso, a queda seria enorme.
+    assert!(bal_before - bal_after < 50_000,
+        "rent da época não foi devolvido: perdeu {} lamports", bal_before - bal_after);
+}
+
+/// CRÍTICO: re-submeter uma época JÁ PAGA é rejeitado — mesmo com a conta de
+/// coleta já fechada. Sem duplo-pagamento.
+#[tokio::test]
+async fn replay_after_close_is_rejected() {
+    let mut env = setup(1).await;
+    let op_a = env.ops[0].pubkey();
+    let s0 = env.ops[0].insecure_clone();
+    let r = report(9_999, vec![(op_a, 2)]);
+
+    // 1ª aplicação: paga 2×REWARD e fecha a conta
+    let __ix_1 = submit_report_ix(&env, &s0, &r);
+    send(&mut env.ctx, &[__ix_1], &[s0.insecure_clone()]).await.unwrap();
+    assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 2 * REWARD);
+
+    // 2ª submissão da MESMA época → ERR_APPLIED (105 = 0x69), NÃO paga de novo
+    let r2 = report(9_999, vec![(op_a, 2)]);
+    let __ix_100 = submit_report_ix(&env, &s0, &r2);
+    let err = send(&mut env.ctx, &[__ix_100], &[s0]).await.unwrap_err();
+    assert!(err.contains("0x69"), "esperava ERR_APPLIED no replay: {err}");
+    // crédito inalterado (não dobrou)
+    assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 2 * REWARD);
+}
+
+/// Época < base (fora da janela por trás) é rejeitada com ERR_EPOCH_TOO_OLD(115=0x73).
+#[tokio::test]
+async fn epoch_below_base_rejected() {
+    let mut env = setup(1).await;
+    let op_a = env.ops[0].pubkey();
+    let s0 = env.ops[0].insecure_clone();
+    // base = 10_000 - 256 = 9_744; época 9_000 << base
+    let r = report(9_000, vec![(op_a, 1)]);
+    let __ix_101 = submit_report_ix(&env, &s0, &r);
+    let err = send(&mut env.ctx, &[__ix_101], &[s0]).await.unwrap_err();
+    assert!(err.contains("0x73"), "esperava ERR_EPOCH_TOO_OLD: {err}");
+}
+
+/// Fora-de-ordem DENTRO da janela é aceito (a vantagem sobre marca monotônica).
+#[tokio::test]
+async fn out_of_order_within_window_accepted() {
+    let mut env = setup(1).await;
+    let op_a = env.ops[0].pubkey();
+    let s0 = env.ops[0].insecure_clone();
+    // aplica 9_998 e depois 9_990 (mais antiga, mas dentro da janela)
+    let r_new = report(9_998, vec![(op_a, 1)]);
+    let __ix_2 = submit_report_ix(&env, &s0, &r_new);
+    send(&mut env.ctx, &[__ix_2], &[s0.insecure_clone()]).await.unwrap();
+    let r_old = report(9_990, vec![(op_a, 1)]);
+    let __ix_3 = submit_report_ix(&env, &s0, &r_old);
+    send(&mut env.ctx, &[__ix_3], &[s0]).await.unwrap();
+    // ambas creditadas
+    assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 2 * REWARD);
+}
+
+/// SetAppliedBase é MONOTÔNICO: retroceder é rejeitado (117=0x75); avançar OK,
+/// e o bitmap desliza preservando os bits (uma época recém-paga não reabre).
+#[tokio::test]
+async fn set_applied_base_is_monotonic_and_shifts_bitmap() {
+    let mut env = setup(1).await;
+    let op_a = env.ops[0].pubkey();
+    let s0 = env.ops[0].insecure_clone();
+
+    // paga a época 9_800 (base atual 9_744 → offset 56)
+    let r = report(9_800, vec![(op_a, 1)]);
+    let __ix_4 = submit_report_ix(&env, &s0, &r);
+    send(&mut env.ctx, &[__ix_4], &[s0.insecure_clone()]).await.unwrap();
+
+    // helper p/ admin action SetAppliedBase (captura campos p/ não emprestar env)
+    let (program_id, config) = (env.program_id, env.config);
+    let mk = move |op: &Keypair, base: u64| {
+        let envelope = AdminEnvelope { nonce: base, action: AdminAction::SetAppliedBase(base) };
+        let (prop, _) = proposal_pda(&program_id, &envelope.hash());
+        Instruction {
+            program_id,
+            accounts: vec![
+                AccountMeta::new(op.pubkey(), true),
+                AccountMeta::new(config, false),
+                AccountMeta::new(prop, false),
+                AccountMeta::new_readonly(system_program::id(), false),
+            ],
+            data: borsh::to_vec(&RrvInstruction::SubmitAdminAction { envelope }).unwrap(),
+        }
+    };
+
+    // avança a base p/ 9_790 (desliza 46 bits): a época 9_800 continua marcada
+    let ix = mk(&s0, 9_790);
+    send(&mut env.ctx, &[ix], &[s0.insecure_clone()]).await.unwrap();
+    assert_eq!(get_config(&mut env).await.applied_base, 9_790);
+    // re-submeter 9_800 ainda é replay (bit preservado no slide) → ERR_APPLIED
+    let r2 = report(9_800, vec![(op_a, 1)]);
+    let __ix_102 = submit_report_ix(&env, &s0, &r2);
+    let err = send(&mut env.ctx, &[__ix_102], &[s0.insecure_clone()]).await.unwrap_err();
+    assert!(err.contains("0x69"), "bit deveria sobreviver ao slide: {err}");
+
+    // retroceder a base é REJEITADO (117 = 0x75)
+    let ix = mk(&s0, 9_700);
+    let err = send(&mut env.ctx, &[ix], &[s0]).await.unwrap_err();
+    assert!(err.contains("0x75"), "esperava ERR_BASE_NOT_MONOTONIC: {err}");
 }

@@ -90,11 +90,24 @@ pub fn proposal_pda(program_id: &Pubkey, envelope_hash: &[u8; 32]) -> (Pubkey, u
 // ---------------------------------------------------------------------------
 pub const MAX_OPERATORS: usize = 16;
 pub const CONFIG_SPACE: usize = 1024;
-pub const EPOCH_SPACE: usize = 2048;
 pub const CREDIT_SPACE: usize = 64;
 pub const PROPOSAL_SPACE: usize = 1024;
 
-#[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
+/// Janela do guard anti-replay em BITS (1 bit por época). 512 bits × 6h = 128
+/// dias de folga — muito além do ciclo horário do reporter. NUNCA desliza
+/// sozinho (evita perder crédito silenciosamente); a base só avança por
+/// governança via `SetAppliedBase` (monotônico: só p/ frente).
+pub const APPLIED_WINDOW_BITS: usize = 512;
+pub const APPLIED_WINDOW_BYTES: usize = APPLIED_WINDOW_BITS / 8; // 64
+
+fn bit_get(bm: &[u8; APPLIED_WINDOW_BYTES], i: usize) -> bool {
+    (bm[i / 8] >> (i % 8)) & 1 == 1
+}
+fn bit_set(bm: &mut [u8; APPLIED_WINDOW_BYTES], i: usize) {
+    bm[i / 8] |= 1 << (i % 8);
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub struct Config {
     pub bump: u8,
     pub quorum: u8,
@@ -103,6 +116,20 @@ pub struct Config {
     pub paused: bool,
     pub operators: Vec<Pubkey>,
     pub total_credited: u64,
+    // ---- guard anti-replay de épocas (append-only p/ compat de migração:
+    //      Config antigo deserializa estes campos como zeros) ----
+    /// época mais antiga ainda "lembrável"; épocas < base são REJEITADAS
+    /// (janela passou). Migração: fica 0 até governança chamar SetAppliedBase.
+    pub applied_base: u64,
+    /// 1 bit por época a partir de `applied_base`. bit setado = época já paga.
+    pub applied_bitmap: [u8; APPLIED_WINDOW_BYTES],
+}
+
+/// tamanho exato da conta de coleta de época p/ `n` submissores possíveis
+/// (= nº de operadores). Substitui o EPOCH_SPACE fixo de 2048 — right-sizing.
+pub fn epoch_space(num_operators: usize) -> usize {
+    // bump(1)+epoch(8)+window(16)+veclen(4)+n*(32+32)+applied(1)
+    1 + 8 + 16 + 4 + num_operators * 64 + 1
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
@@ -113,6 +140,8 @@ pub struct EpochState {
     pub window: (u64, u64),
     /// (operador que submeteu, hash do relatório)
     pub submissions: Vec<(Pubkey, [u8; 32])>,
+    /// true só entre marcar o bit e fechar a conta na MESMA tx (não persiste:
+    /// a conta é fechada logo após). O guard de replay real é o bitmap do Config.
     pub applied: bool,
 }
 
@@ -171,6 +200,13 @@ pub enum AdminAction {
     /// v2: vínculo operador local → endereço executor na chain do domínio.
     /// Contas extras: [binding PDA w]
     SetRemoteBinding { domain: u32, operator: Pubkey, remote_address: String },
+    /// Avança a base da janela de replay de épocas. MONOTÔNICO: só p/ frente
+    /// (nunca retrocede — retroceder reabriria épocas já pagas = duplo-pagamento).
+    /// Uso 1 (migração): Config antigo tem base=0; governança seta a base p/ a
+    /// época atual antes das novas submissões. Uso 2: liberar espaço na janela
+    /// quando ela se aproxima do fim (128 dias) — só descartando épocas antigas
+    /// que a governança confirma já liquidadas.
+    SetAppliedBase(u64),
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
@@ -281,6 +317,9 @@ const ERR_TOO_MANY: u32 = 111;
 const ERR_EPOCH_WRONG_REPORT: u32 = 112;
 const ERR_NO_REMOTE_REWARD: u32 = 113;
 const ERR_NO_REMOTE_BINDING: u32 = 114;
+const ERR_EPOCH_TOO_OLD: u32 = 115;    // época < applied_base (janela já passou)
+const ERR_EPOCH_TOO_FUTURE: u32 = 116; // época >= base + janela (governança deve avançar a base)
+const ERR_BASE_NOT_MONOTONIC: u32 = 117; // SetAppliedBase só avança, nunca retrocede
 
 pub(crate) fn custom(code: u32) -> ProgramError {
     ProgramError::Custom(code)
@@ -366,6 +405,15 @@ fn init(
             paused: false,
             operators,
             total_credited: 0,
+            // guard de replay começa VAZIO. A base TRILHA ATRÁS do agora (meia
+            // janela) — senão a última época fechada (corrente−1, a que o
+            // reporter reporta) cairia abaixo da base. Assim ficam ~64 dias de
+            // back-report para trás e ~64 dias de folga para frente.
+            applied_base: {
+                let now = Clock::get()?.unix_timestamp as u64;
+                (now / epoch_duration_secs).saturating_sub((APPLIED_WINDOW_BITS / 2) as u64)
+            },
+            applied_bitmap: [0u8; APPLIED_WINDOW_BYTES],
         },
     )
 }
@@ -408,6 +456,14 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         custom(ERR_WINDOW_MISMATCH),
     )?;
 
+    // ---- GUARD ANTI-REPLAY (bitmap no Config) — verificado ANTES de qualquer
+    //      criação/escrita: uma época já paga é rejeitada de imediato, mesmo que
+    //      sua conta de coleta já tenha sido fechada. ----
+    ensure(report.epoch >= config.applied_base, custom(ERR_EPOCH_TOO_OLD))?;
+    let bit_off = (report.epoch - config.applied_base) as usize;
+    ensure(bit_off < APPLIED_WINDOW_BITS, custom(ERR_EPOCH_TOO_FUTURE))?;
+    ensure(!bit_get(&config.applied_bitmap, bit_off), custom(ERR_APPLIED))?;
+
     let (expected_epoch, epoch_bump) = epoch_pda(program_id, report.epoch);
     ensure(*epoch_info.key == expected_epoch, ProgramError::InvalidSeeds)?;
 
@@ -417,7 +473,8 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
             epoch_info,
             system,
             program_id,
-            EPOCH_SPACE,
+            // right-sizing: cabe exatamente 1 submissão por operador existente
+            epoch_space(config.operators.len()),
             &[
                 SEED_PREFIX,
                 SEED_SEP,
@@ -440,7 +497,8 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         load_streaming(epoch_info)?
     };
 
-    ensure(!state.applied, custom(ERR_APPLIED))?;
+    // state.applied só existe DENTRO da tx de aplicação (a conta é fechada em
+    // seguida); o guard duradouro é o bitmap, já checado acima.
     ensure(
         state.window == (report.window_start_slot, report.window_end_slot),
         custom(ERR_WINDOW_MISMATCH),
@@ -463,8 +521,10 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
     }
 
     // ---- quórum: aplica os créditos DESTE relatório (que gerou o hash) ----
-    state.applied = true;
-    store(epoch_info, &state)?;
+    // Marca o bit de replay no Config ANTES de distribuir. Tudo nesta instrução
+    // é ATÔMICO: se qualquer distribuição/persistência falhar, o bit também
+    // reverte — nunca fica "meio pago". O bit persiste com o store(config) final.
+    bit_set(&mut config.applied_bitmap, bit_off);
 
     for (credited_op, delivered) in report.credits.iter() {
         let credit_info = next_account_info(iter).map_err(|_| custom(ERR_EPOCH_WRONG_REPORT))?;
@@ -576,7 +636,32 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
             .ok_or(ProgramError::ArithmeticOverflow)?;
         store(credit_info, &credit)?;
     }
+
+    // ---- FECHA a conta de coleta e devolve 100% do rent ao operador
+    //      signatário. O guard de replay agora vive no bitmap do Config (setado
+    //      acima), então a conta não precisa mais existir — reclamamos o rent.
+    //      Padrão seguro de close: zera os dados, transfere TODOS os lamports ao
+    //      destino e deixa a conta com 0 lamports (a runtime a coleta ao fim da
+    //      tx). Tudo atômico com a marcação do bit e a distribuição. ----
+    close_account(epoch_info, operator)?;
+
     store(config_info, &config)
+}
+
+/// Fecha `acc` (owned pelo programa) enviando todos os lamports a `dest` e
+/// zerando os dados. A runtime remove contas com 0 lamports ao fim da tx.
+fn close_account(acc: &AccountInfo, dest: &AccountInfo) -> ProgramResult {
+    let mut acc_lamports = acc.try_borrow_mut_lamports()?;
+    let mut dest_lamports = dest.try_borrow_mut_lamports()?;
+    **dest_lamports = dest_lamports
+        .checked_add(**acc_lamports)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    **acc_lamports = 0;
+    // zera os dados (defesa: nada legível/reusável fica pra trás)
+    for b in acc.try_borrow_mut_data()?.iter_mut() {
+        *b = 0;
+    }
+    Ok(())
 }
 
 fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> ProgramResult {
@@ -750,6 +835,27 @@ fn submit_admin_action(
             ensure(amount > 0 && amount <= pool_available, custom(ERR_POOL_RENT))?;
             **config_info.try_borrow_mut_lamports()? -= amount;
             **destination.try_borrow_mut_lamports()? += amount;
+        }
+        AdminAction::SetAppliedBase(new_base) => {
+            // MONOTÔNICO: só avança. Retroceder reabriria épocas já marcadas no
+            // bitmap = risco de duplo-pagamento — proibido.
+            ensure(new_base >= config.applied_base, custom(ERR_BASE_NOT_MONOTONIC))?;
+            // ao avançar a base, o bitmap desloca: os bits das épocas que saíram
+            // da janela são descartados (mas ficam protegidos por ERR_EPOCH_TOO_OLD,
+            // pois agora época < base). Deslocamento por (new_base - base) bits.
+            let shift = (new_base - config.applied_base) as usize;
+            if shift >= APPLIED_WINDOW_BITS {
+                config.applied_bitmap = [0u8; APPLIED_WINDOW_BYTES];
+            } else if shift > 0 {
+                let mut nb = [0u8; APPLIED_WINDOW_BYTES];
+                for i in shift..APPLIED_WINDOW_BITS {
+                    if bit_get(&config.applied_bitmap, i) {
+                        bit_set(&mut nb, i - shift);
+                    }
+                }
+                config.applied_bitmap = nb;
+            }
+            config.applied_base = new_base;
         }
     }
     store(config_info, &config)
