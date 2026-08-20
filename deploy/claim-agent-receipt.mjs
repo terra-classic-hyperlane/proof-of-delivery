@@ -176,7 +176,21 @@ async function evmEmit(chain, dispatches) {
   const vault = new ethers.Contract(chain.vault, VAULT_ABI, new ethers.Wallet(process.env.BSC_PRIVATE_KEY, provider));
   try {
     const tx = await vault.sendReceipt(pend.map((p) => "0x" + p.message), { value: 0n });
-    log(`  → ${tx.hash} (aguardando)…`); await tx.wait(); markSeen(pend.map((p) => p.id)); log("  ✓ confirmado");
+    log(`  → ${tx.hash} (aguardando)…`); const rc = await tx.wait(); markSeen(pend.map((p) => p.id)); log("  ✓ confirmado");
+    // registra o RECIBO despachado na fila do entregador autônomo (deliver-receipts-tc)
+    try {
+      const DISPATCH_TOPIC = "0x769f711d20c679153d382254f59892613b58a97cc876b249134ac25c80f9c814";
+      const PF = new URL("./.receipts-tc-pending.json", import.meta.url).pathname;
+      const list = (() => { try { return JSON.parse(fs.readFileSync(PF, "utf8")); } catch { return []; } })();
+      for (const l of rc.logs ?? []) {
+        if (l.topics?.[0] !== DISPATCH_TOPIC) continue;
+        const d = l.data.slice(2); const len = parseInt(d.slice(64, 128), 16);
+        const m = d.slice(128, 128 + len * 2);
+        const id = ethers.keccak256("0x" + m).slice(2);
+        if (!list.some((x) => x.id === id)) list.push({ msg: m, id, nonce: parseInt(m.slice(2, 10), 16), src: tx.hash });
+      }
+      fs.writeFileSync(PF, JSON.stringify(list, null, 1));
+    } catch (e) { log(`  ⚠ fila do entregador: ${String(e).slice(0, 80)}`); }
   } catch (e) { log(`  ✗ ${String(e).slice(0, 140)}`); }
 }
 
