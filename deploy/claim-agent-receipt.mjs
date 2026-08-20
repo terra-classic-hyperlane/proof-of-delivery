@@ -187,7 +187,7 @@ async function evmEmit(chain, dispatches) {
         const d = l.data.slice(2); const len = parseInt(d.slice(64, 128), 16);
         const m = d.slice(128, 128 + len * 2);
         const id = ethers.keccak256("0x" + m).slice(2);
-        if (!list.some((x) => x.id === id)) list.push({ msg: m, id, nonce: parseInt(m.slice(2, 10), 16), src: tx.hash });
+        if (!list.some((x) => x.id === id)) list.push({ msg: m, id, nonce: parseInt(m.slice(2, 10), 16), src: tx.hash, seenAt: Math.floor(Date.now() / 1000) });
       }
       fs.writeFileSync(PF, JSON.stringify(list, null, 1));
     } catch (e) { log(`  ⚠ fila do entregador: ${String(e).slice(0, 80)}`); }

@@ -1,18 +1,21 @@
-// deliver-receipts-tc — ENTREGA AUTÔNOMA dos recibos BSC→TC no Terra Classic.
+// deliver-receipts-tc — REDE DE SEGURANÇA (plano B) para recibos BSC→TC.
 //
-// Elimina a dependência do relayer para a comissão em LUNC: o próprio agente
-// monta o metadata do ISM (checkpoints públicos em S3 dos validadores oficiais
-// da BSC, 4-de-6) e executa `process` no mailbox do TC via cosmjs — o caminho
-// comprovado em produção (tx 343B58DE…).
+// ⚠️ O transporte primário é o RELAYER OFICIAL da Hyperlane. Este agente NÃO
+// compete com ele: só age sobre um recibo que já esteja PRESO há mais de
+// STUCK_MINUTES (padrão 30) sem ser entregue no TC — dando ao relayer a primeira
+// chance sempre. É uma contingência offline para o caso de o relayer travar.
 //
-// Stateless: varre os Dispatch do mailbox da BSC com sender = vault de recibo,
-// pula os já entregues no TC, entrega os pendentes. Idempotente (o mailbox
-// rejeita "already delivered"; o vault deduplica pagamentos).
+// Quando dispara, faz o que o relayer faria (sem tocar no core): monta o metadata
+// do ISM a partir dos checkpoints públicos em S3 dos validadores OFICIAIS da BSC
+// (4-de-6, verificados por message_id) e executa `process` no mailbox do TC via
+// cosmjs. Idempotente (mailbox rejeita "already delivered"; o vault deduplica).
 //
 //   uso:
-//     DRY=1 node deliver-receipts-tc.mjs      # mostra pendentes e cobertura de sigs
-//     node deliver-receipts-tc.mjs            # entrega (TC_PRIVATE_KEY)
-//   env: TC_PRIVATE_KEY · TC_RPC/TC_LCD/BSC_RPC · LOOKBACK_BLOCKS (padrão 400k)
+//     DRY=1 node deliver-receipts-tc.mjs         # mostra pendentes e cobertura
+//     node deliver-receipts-tc.mjs               # entrega os PRESOS (>30min)
+//     node deliver-receipts-tc.mjs --tx 0x…      # ingere um sendReceipt na fila
+//     FORCE=1 node deliver-receipts-tc.mjs       # ignora a janela dos 30min
+//   env: TC_PRIVATE_KEY · TC_RPC/TC_LCD/BSC_RPC · STUCK_MINUTES (padrão 30)
 import { ethers } from "ethers";
 import { SigningCosmWasmClient, CosmWasmClient } from "@cosmjs/cosmwasm-stargate";
 import { GasPrice } from "@cosmjs/stargate";
@@ -54,10 +57,12 @@ async function ingestTx(provider, txHash) {
     const d = l.data.slice(2);
     const len = parseInt(d.slice(64, 128), 16);
     const msg = d.slice(128, 128 + len * 2);
-    out.push({ msg, id: ethers.keccak256("0x" + msg).slice(2), nonce: parseInt(msg.slice(2, 10), 16), src: txHash });
+    out.push({ msg, id: ethers.keccak256("0x" + msg).slice(2), nonce: parseInt(msg.slice(2, 10), 16), src: txHash, seenAt: nowSec() });
   }
   return out;
 }
+const nowSec = () => Math.floor(Number(process.env.NOW_SEC ?? Date.now() / 1000));
+const STUCK_SECS = Number(process.env.STUCK_MINUTES ?? 30) * 60;
 
 async function pendingReceipts(provider, cw) {
   let list = loadPending();
@@ -67,13 +72,17 @@ async function pendingReceipts(provider, cw) {
     for (const e of extra) if (!list.some((x) => x.id === e.id)) list.push(e);
     savePending(list);
   }
-  const out = [];
+  const stillPending = [], out = [];
   for (const p of list) {
     const r = await cw.queryContractSmart(TC.mailbox, { mailbox: { message_delivered: { id: p.id } } });
-    if (r.delivered) continue; // entregue — sai da fila na gravação final
-    out.push(p);
+    if (r.delivered) continue; // relayer (ou nós) já entregou — some da fila
+    stillPending.push(p);
+    // só entra na lista de AÇÃO se preso além da janela (relayer teve a chance)
+    const age = nowSec() - (p.seenAt ?? nowSec());
+    if (process.env.FORCE === "1" || age >= STUCK_SECS) out.push(p);
+    else log(`  ⏳ ${p.id.slice(0, 10)}… preso há ${Math.floor(age / 60)}min (<${STUCK_SECS / 60}) — aguardando o relayer`);
   }
-  savePending(out.concat([])); // mantém só os pendentes
+  savePending(stillPending); // preserva seenAt dos que seguem pendentes
   return out;
 }
 
