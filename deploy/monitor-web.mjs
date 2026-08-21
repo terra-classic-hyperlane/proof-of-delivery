@@ -122,6 +122,41 @@ async function vpsAll() {
   } catch (e) { return { error: String(e).slice(0, 80) }; }
 }
 
+// ---- operadores registrados nos contratos (oráculo de preço + vault) ----
+async function operators() {
+  const conn = new Connection(HELIUS, "confirmed");
+  const eBsc = new ethers.JsonRpcProvider(BSC_RPC), eEth = new ethers.JsonRpcProvider(ETH_RPC);
+  const GA = ["function quorum() view returns (uint256)", "function operatorCount() view returns (uint256)", "function isOperator(address) view returns (bool)"];
+  const parseSolOps = (d) => { // Config: pula bump+quorum+reward+edur+paused → operators(vec) — layout do rrv
+    let o = 0; o += 1; const q = d[o]; o += 1 + 8 + 8 + 1; const n = d.readUInt32LE(o); o += 4;
+    const ops = []; for (let i = 0; i < n; i++) { ops.push(new PublicKey(d.subarray(o, o + 32)).toBase58()); o += 32; } return { ops, q };
+  };
+  const parseGovOps = (d) => { let o = 1 + 32; const n = d.readUInt32LE(o); o += 4; const ops = []; for (let i = 0; i < n; i++) { ops.push(new PublicKey(d.subarray(o, o + 32)).toBase58()); o += 32; } return { ops, q: d[o] }; };
+  const short = (a) => a.length > 12 ? a.slice(0, 6) + "…" + a.slice(-4) : a;
+  const [tcOps, tcCfg, bscQ, bscN, bscIs, ethQ, ethN, ethIs, rrvAcc, govAcc] = await Promise.all([
+    tcQuery("terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj", { operators: {} }),
+    tcQuery("terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj", { config: {} }),
+    eBsc && new ethers.Contract("0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5", GA, eBsc).quorum().then(Number).catch(() => null),
+    new ethers.Contract("0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5", GA, eBsc).operatorCount().then(Number).catch(() => null),
+    new ethers.Contract("0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5", GA, eBsc).isOperator("0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291").catch(() => false),
+    new ethers.Contract("0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA", GA, eEth).quorum().then(Number).catch(() => null),
+    new ethers.Contract("0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA", GA, eEth).operatorCount().then(Number).catch(() => null),
+    new ethers.Contract("0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA", GA, eEth).isOperator("0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae").catch(() => false),
+    conn.getAccountInfo(new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w")).catch(() => null),
+    conn.getAccountInfo(PublicKey.findProgramAddressSync([Buffer.from("gov"), Buffer.from("-"), Buffer.from("config")], new PublicKey("2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj"))[0]).catch(() => null),
+  ]);
+  const rrv = rrvAcc ? parseSolOps(rrvAcc.data) : { ops: [], q: null };
+  const gov = govAcc ? parseGovOps(govAcc.data) : { ops: [], q: null };
+  const grp = (label, ops, q) => ({ label, who: ops.map(short), n: ops.length, q, healthy: q != null && ops.length >= q });
+  return [
+    grp("Oráculo TC", (tcOps?.operators ?? []), tcCfg?.quorum),
+    { label: "Oráculo BSC", who: bscIs ? ["0x8f08…5291"] : [], n: bscN, q: bscQ, healthy: bscQ != null && bscN >= bscQ, count: true },
+    { label: "Oráculo ETH", who: ethIs ? ["0xEF81…00ae"] : [], n: ethN, q: ethQ, healthy: ethQ != null && ethN >= ethQ, count: true },
+    grp("Oráculo Solana (gov)", gov.ops, gov.q),
+    grp("Vault Solana (rrv)", rrv.ops, rrv.q),
+  ];
+}
+
 async function snapshot() {
   const P = await to(prices(), 6000, { LUNC: 0, BNB: 0, SOL: 0, ETH: 0 });
   const conn = new Connection(HELIUS, "confirmed");
@@ -139,6 +174,7 @@ async function snapshot() {
     to(validators(), 12000, { tip: null, list: [], online: 0, threshold: TC_THRESHOLD, healthy: false }),
     to(rpcs(), 10000, []), to(vpsAll(), 12000, { error: "timeout" }),
   ]);
+  const ops = await to(operators(), 10000, []);
   // preços que o oracle-agent escreveu on-chain (o que o usuário do TC paga)
   const ORACLE = "terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d";
   const oraclePrices = await Promise.all([[1, "→ETH"], [56, "→BSC"], [1399811149, "→SOL"]].map(async ([dom, lbl]) => {
@@ -167,7 +203,7 @@ async function snapshot() {
       { id: "BSC vault", v: bscVault, sym: "BNB", note: "" },
       { id: "SOL pod pool", v: sol?.pool, sym: "SOL", note: sol ? `replay base ${sol.base}/${sol.nowEpoch} ${sol.base > 0 && sol.nowEpoch - sol.base < 512 ? "ok" : "checar"}` : "" },
     ],
-    validators: vals, rpcs: rpcHealth, vps,
+    validators: vals, rpcs: rpcHealth, vps, operators: ops,
     timing: {
       nowEpoch: Math.floor(Date.now() / 1000 / 21600),
       epochClosesAt: (Math.floor(Date.now() / 1000 / 21600) + 1) * 21600, // unix ts do fim da época atual
@@ -212,6 +248,14 @@ function render(d){
     cards.push(card('Validadores TC (checkpoints)',
       V.list.map(v=>row(v.name, v.idx==null?'—':('idx '+v.idx), bdg(v.st==='ok'?'ok':v.st, v.st==='offline'?'OFFLINE':v.st==='low'?'ATRASADO':v.note))),
       'tip '+(V.tip??'?')+' · '+bdg(V.healthy?'ok':'low', V.online+'/'+V.list.length+' (min '+V.threshold+')')));
+    // Operadores (por contrato)
+    if(d.operators&&d.operators.length){
+      cards.push(card('Operadores (oráculo + vault)', d.operators.map(g=>{
+        const who = g.who&&g.who.length ? g.who.join(', ') : (g.count?(g.n+' registrado(s)'):'—');
+        const q = g.q!=null ? (g.q+'-de-'+(g.n??'?')) : '?';
+        return row(g.label, who, bdg(g.healthy?'ok':'low', q));
+      })));
+    }
     // RPCs
     cards.push(card('RPCs (saúde + latência)',
       d.rpcs.map(r=>row(r.name, r.up?('bloco '+r.height):bdg('low','DOWN'), r.up?'<span class="note">'+r.ms+'ms</span>':''))));
