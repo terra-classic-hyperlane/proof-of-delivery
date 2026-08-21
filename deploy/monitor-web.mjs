@@ -22,13 +22,20 @@ const ETH_RPC = process.env.ETH_RPC ?? "https://ethereum-rpc.publicnode.com";
 
 // os NOSSOS validadores do TC (3-de-4). checkpoint_latest_index.json no S3 anunciado.
 const TC_MAINNET_DOMAIN = 132556;
+const VALIDATOR_ANNOUNCE = "terra1gtnmdevekgxpvzej3wfy20e2n335gm3muwj6geduxxa86j3x70cq00asmy";
+// os 4 validadores do ISM 3-de-4 (só p/ rótulo; o storage vem do on-chain)
 const TC_VALIDATORS = [
-  { name: "igorveras", url: "https://hyperlane-validator-signatures-igorverasvalidador-terraclassic.s3.us-east-1.amazonaws.com" },
-  { name: "tcv", url: "https://hyperlane-validator-signatures-tcv.s3.eu-central-1.amazonaws.com" },
-  { name: "darksun", url: "https://hyperlane-validator-signatures-darksun-terraclassic.s3.eu-west-3.amazonaws.com" },
-  { name: "burnitall", url: "https://hyperlane-validator-signatures-burnitall-validator.s3.us-east-1.amazonaws.com/terraclassic" },
+  { name: "igorveras", addr: "71b2b8c36a0c76b74be92eb7915e26a69b3b03eb" },
+  { name: "tcv", addr: "1afd3d07abd2aaa19a9f7993f334a926e253b90c" },
+  { name: "darksun", addr: "e6bb040164a0ebbcb7e2d584f066c8b57dd74383" },
+  { name: "burnitall", addr: "5c374754892ebac52702475726b67f822efdfacc" },
 ];
 const TC_THRESHOLD = 3;
+// s3://bucket/region[/prefixo] → https base
+function s3http(loc) {
+  const m = String(loc).match(/^s3:\/\/([^/]+)\/([^/]+)(?:\/(.*))?$/);
+  return m ? `https://${m[1]}.s3.${m[2]}.amazonaws.com${m[3] ? "/" + m[3] : ""}` : null;
+}
 
 const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch { return { v: null, ms: Date.now() - t }; } };
 
@@ -44,23 +51,22 @@ async function tcQuery(c, m) { const q = Buffer.from(JSON.stringify(m)).toString
 async function validators() {
   const tip = (await tcQuery("terra183lq6yqp8km3p34cxgk6k3u78uy4plqahey6rne7n9gy98delr9qyp0n2p", { merkle_hook: { count: {} } }))?.count;
   const tipIdx = tip != null ? tip - 1 : null;
+  // storage locations ANUNCIADAS na MAINNET (fonte da verdade) p/ os 4 validadores
+  const ann = await tcQuery(VALIDATOR_ANNOUNCE, { get_announce_storage_locations: { validators: TC_VALIDATORS.map((v) => v.addr) } });
+  const locByAddr = Object.fromEntries((ann?.storage_locations ?? []).map(([a, locs]) => [a.toLowerCase(), locs]));
   const list = await Promise.all(TC_VALIDATORS.map(async (v) => {
-    if (!v.url) return { name: v.name, idx: null, st: "offline", note: "não anunciou" };
-    const opts = { signal: AbortSignal.timeout(7000) };
-    const [idx, ann] = await Promise.all([
-      fetch(`${v.url}/checkpoint_latest_index.json`, opts).then((r) => r.ok ? r.json() : null).catch(() => null),
-      fetch(`${v.url}/announcement.json`, opts).then((r) => r.ok ? r.json() : null).catch(() => null),
-    ]);
-    const dom = ann?.value?.mailbox_domain;
-    if (idx == null) return { name: v.name, idx: null, st: "offline", note: "sem resposta" };
-    // rede errada = está assinando outra chain (ex.: testnet 1325) → NÃO vale p/ mainnet
-    if (dom != null && dom !== TC_MAINNET_DOMAIN)
-      return { name: v.name, idx, st: "low", note: `rede errada (dom ${dom})`, wrongNet: true };
-    const st = tipIdx == null ? "ok" : idx >= tipIdx - 2 ? "ok" : idx >= tipIdx - 10 ? "warn" : "low";
-    return { name: v.name, idx, st, note: tipIdx != null && idx < tipIdx - 2 ? `${tipIdx - idx} atrás` : "atual" };
+    const locs = locByAddr[v.addr] ?? [];
+    if (!locs.length) return { name: v.name, idx: null, st: "offline", note: "não anunciou (mainnet)" };
+    // usa o local anunciado mais recente que responder
+    for (const base of [...locs].reverse().map(s3http).filter(Boolean)) {
+      const idx = await fetch(`${base}/checkpoint_latest_index.json`, { signal: AbortSignal.timeout(7000) }).then((r) => r.ok ? r.json() : null).catch(() => null);
+      if (idx == null) continue;
+      const st = tipIdx == null ? "ok" : idx >= tipIdx - 2 ? "ok" : idx >= tipIdx - 10 ? "warn" : "low";
+      return { name: v.name, idx, st, note: tipIdx != null && idx < tipIdx - 2 ? `${tipIdx - idx} atrás` : "atual" };
+    }
+    return { name: v.name, idx: null, st: "offline", note: "anunciou mas sem resposta" };
   }));
-  // só conta como efetivo p/ mainnet quem está na rede certa e em dia
-  const online = list.filter((v) => (v.st === "ok" || v.st === "warn") && !v.wrongNet).length;
+  const online = list.filter((v) => v.st === "ok" || v.st === "warn").length;
   return { tip: tipIdx, list, online, threshold: TC_THRESHOLD, healthy: online >= TC_THRESHOLD };
 }
 
