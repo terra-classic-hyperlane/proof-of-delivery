@@ -1,4 +1,4 @@
-// deliver-receipts-tc — REDE DE SEGURANÇA (plano B) para recibos BSC→TC.
+// deliver-receipts-tc — ENTREGADOR PRIMÁRIO dos recibos BSC→TC no TC.
 //
 // ⚠️ O transporte primário é o RELAYER OFICIAL da Hyperlane. Este agente NÃO
 // compete com ele: só age sobre um recibo que já esteja PRESO há mais de
@@ -62,7 +62,7 @@ async function ingestTx(provider, txHash) {
   return out;
 }
 const nowSec = () => Math.floor(Number(process.env.NOW_SEC ?? Date.now() / 1000));
-const STUCK_SECS = Number(process.env.STUCK_MINUTES ?? 30) * 60;
+const STUCK_SECS = Number(process.env.STUCK_MINUTES ?? 3) * 60;
 
 async function pendingReceipts(provider, cw) {
   let list = loadPending();

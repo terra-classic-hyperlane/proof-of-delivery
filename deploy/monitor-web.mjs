@@ -94,8 +94,9 @@ async function vpsAll() {
     const svcs = ["hyperlane-relayer", "hyperlane-validator", "oracle-agent", "claim-agent", "epoch-reporter", "deliver-receipts.timer"];
     const cmd =
       `for s in ${svcs.join(" ")}; do echo "svc $s $(systemctl is-active $s 2>/dev/null)"; done; ` +
-      `echo "panics $(journalctl -u hyperlane-relayer --since '-30 min' --no-pager 2>/dev/null | grep -c panicked)"; ` +
       `echo "fds $(ls /proc/$(systemctl show hyperlane-relayer -p MainPID --value)/fd 2>/dev/null | wc -l)"; ` +
+      // panics: últimas 400 linhas (rápido) em vez de varrer 30 min de journal
+      `echo "panics $(journalctl -u hyperlane-relayer -n 400 --no-pager 2>/dev/null | grep -c panicked)"; ` +
       // última atividade (unix ts) dos agentes de tempo — p/ calcular a próxima
       `echo "oracle_last $(stat -c %Y /root/oracle-agent/logs/agent.log 2>/dev/null || echo 0)"; ` +
       `echo "reporter_last $(journalctl -u epoch-reporter -o short-unix --no-pager 2>/dev/null | tail -1 | awk '{print int($1)}')"; ` +
@@ -106,7 +107,13 @@ async function vpsAll() {
       `echo "processed $(echo \"$M\" | grep '^hyperlane_messages_processed_count' | awk '{s+=$NF} END{print s+0}')"; ` +
       // cursor tip por chain (merkle_tree_insertion)
       `echo "$M" | grep '^hyperlane_cursor_max_sequence' | grep 'merkle_tree_insertion' | sed -E 's/.*chain=\"([^\"]+)\".* ([0-9.e+]+)$/cursor \\1 \\2/'`;
-    const { stdout } = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", VPS, cmd]);
+    // multiplexação: reusa UMA conexão SSH persistente (ControlPersist) — sem
+    // isso o painel abre um handshake novo a cada push (~4s) e estoura o timeout.
+    const { stdout } = await exec("ssh", [
+      "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+      "-o", "ControlMaster=auto", "-o", `ControlPath=/tmp/tcpod-mon-%r@%h:%p`, "-o", "ControlPersist=120",
+      "-o", "ServerAliveInterval=15", VPS, cmd,
+    ], { timeout: 15000 });
     const out = { services: {}, queues: [], cursors: {}, panics: 0, fds: 0, processed: 0 };
     for (const line of stdout.trim().split("\n")) {
       const p = line.split(" ");
@@ -215,7 +222,8 @@ async function snapshot() {
     to(conn.getBalance(new PublicKey("BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j")).then((b) => b / 1e9).catch(() => null)),
     to(conn.getAccountInfo(new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w")).catch(() => null)),
     to(validators(), 12000, { tip: null, list: [], online: 0, threshold: TC_THRESHOLD, healthy: false }),
-    to(rpcs(), 10000, []), to(vpsAll(), 12000, { error: "timeout" }),
+    to(rpcs(), 10000, []),
+    Promise.resolve(vpsCache), // VPS vem do loop próprio (cache) — NÃO bloqueia o snapshot
   ]);
   const ops = await to(operators(), 10000, []);
   // preços que o oracle-agent escreveu on-chain (o que o usuário do TC paga)
@@ -361,14 +369,23 @@ setInterval(()=>{ const a=document.getElementById('age'); if(!lastAt){a.textCont
 },1000);
 </script></body></html>`;
 
-// ---- push contínuo: um snapshot novo é calculado em loop e enviado a todos os
-//      clientes SSE assim que fica pronto (min ~4s entre um e outro) ----
+// ---- VPS/SSH num loop PRÓPRIO (~15s): a parte lenta nunca trava a rápida ----
+let vpsCache = NO_VPS ? { skipped: true } : { error: "iniciando…" };
+async function vpsLoop() {
+  for (;;) {
+    if (!NO_VPS) { const r = await to(vpsAll(), 14000, null); if (r) vpsCache = r; else vpsCache = { error: "timeout" }; }
+    await new Promise((r) => setTimeout(r, 15000));
+  }
+}
+vpsLoop();
+
+// ---- push contínuo dos dados RÁPIDOS (~3s): on-chain, empurrado via SSE ----
 let latest = null, clients = new Set();
 async function pump() {
   for (;;) {
     const t = Date.now();
     try { latest = await snapshot(); const line = `data: ${JSON.stringify(latest)}\n\n`; for (const c of clients) c.write(line); } catch { /* segue */ }
-    await new Promise((r) => setTimeout(r, Math.max(0, 4000 - (Date.now() - t)))); // ~4s de piso
+    await new Promise((r) => setTimeout(r, Math.max(0, 3000 - (Date.now() - t)))); // ~3s de piso
   }
 }
 pump();

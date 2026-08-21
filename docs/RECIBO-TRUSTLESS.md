@@ -312,3 +312,18 @@ global** (o mesmo no TC e no `SetOperatorSol` da Solana).
 > - `send_receipt` (TC, 2 ids `d5e2ab02…`/`d039daa1…`): tx `FD720251DAA642AC7EE65C36BC7AFB977BD4C9729007D82204AA9AE23CBF67A3` (bloco 30021581) → recibo `5f67d0f7eec906e72bf724f1333b1657b6c924773ee88a6e33a62706a421158a`
 > - recibo entregue na Solana: `ProcessedMessage` PDA `pFtaCoYr9UQaMLjVwD5SGp8KZeVDXnH8vqYxhDzmgZ6` existe → `handle` creditou 2×499000 = 998000 lamports em `opsol(0)` (`8pz9ToVy…`)
 > - saque do operador: `7mf9HE9Ck5fYqRg2XnLt9VoArFw3HBYUjhsZmsY2GLh5yk79mnDNy8XDaqsCdvQ18NiXwQFT8XYXLEGcMqUecU5`
+
+## Recibos BSC→TC: entregador é o cosmjs, não o relayer (chave compartilhada)
+
+Descoberto em 21/08/2026: a conta `terra1run9wz…` é assinada pelo RELAYER, pelo
+claim-agent (emite recibo a cada 5 min) e pelos scripts. O relayer CACHEIA a
+sequence; quando outro signatário usa a conta, a sequence do relayer envelhece e
+TODA tx dele no TC falha no CheckTx (`executed:false, gas_used:0` — sem gasto,
+mas sem entrega). Como a chave é a mesma por decisão do projeto, o relayer NÃO
+entrega recibos no TC de forma confiável.
+
+Solução: `deploy/deliver-receipts-tc.mjs` (cosmjs, busca a sequence FRESCA a cada
+assinatura → imune) é o entregador PRIMÁRIO dos recibos BSC→TC — timer de 3 min,
+STUCK_MINUTES=3. O relayer segue tentando (falha inócua, 0 gás) e continua
+primário p/ TC→remota (transferências, que assinam nas chains remotas, sem
+contenção). Comissões BSC→TC caem em ~3-6 min.
