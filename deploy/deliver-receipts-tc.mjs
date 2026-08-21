@@ -1,21 +1,23 @@
 // deliver-receipts-tc — ENTREGADOR PRIMÁRIO dos recibos BSC→TC no TC.
 //
-// ⚠️ O transporte primário é o RELAYER OFICIAL da Hyperlane. Este agente NÃO
-// compete com ele: só age sobre um recibo que já esteja PRESO há mais de
-// STUCK_MINUTES (padrão 30) sem ser entregue no TC — dando ao relayer a primeira
-// chance sempre. É uma contingência offline para o caso de o relayer travar.
+// ⚠️ POR QUE PRIMÁRIO (não o relayer): a conta terra1run9wz é assinada pelo
+// relayer, pelo claim-agent e por scripts. O relayer CACHEIA a sequence e falha
+// (executed:false, gas_used:0) sempre que outro assina — então NÃO entrega
+// recibos no TC de forma confiável. Este agente usa cosmjs, que busca a sequence
+// FRESCA a cada assinatura → imune à contenção. Por isso é o entregador primário
+// dos recibos BSC→TC (timer de 3 min). O relayer segue primário p/ TC→remota.
 //
-// Quando dispara, faz o que o relayer faria (sem tocar no core): monta o metadata
-// do ISM a partir dos checkpoints públicos em S3 dos validadores OFICIAIS da BSC
-// (4-de-6, verificados por message_id) e executa `process` no mailbox do TC via
-// cosmjs. Idempotente (mailbox rejeita "already delivered"; o vault deduplica).
+// Faz o que o relayer faria (sem tocar no core): monta o metadata do ISM a partir
+// dos checkpoints públicos em S3 dos validadores OFICIAIS da BSC (4-de-6,
+// verificados por message_id) e executa `process` no mailbox do TC via cosmjs.
+// Idempotente (mailbox rejeita "already delivered"; o vault deduplica).
 //
 //   uso:
 //     DRY=1 node deliver-receipts-tc.mjs         # mostra pendentes e cobertura
-//     node deliver-receipts-tc.mjs               # entrega os PRESOS (>30min)
+//     node deliver-receipts-tc.mjs               # entrega os presos (>STUCK_MINUTES)
 //     node deliver-receipts-tc.mjs --tx 0x…      # ingere um sendReceipt na fila
-//     FORCE=1 node deliver-receipts-tc.mjs       # ignora a janela dos 30min
-//   env: TC_PRIVATE_KEY · TC_RPC/TC_LCD/BSC_RPC · STUCK_MINUTES (padrão 30)
+//     FORCE=1 node deliver-receipts-tc.mjs       # entrega já (ignora a janela)
+//   env: TC_PRIVATE_KEY · TC_RPC/TC_LCD/BSC_RPC · STUCK_MINUTES (padrão 3)
 import { ethers } from "ethers";
 import { SigningCosmWasmClient, CosmWasmClient } from "@cosmjs/cosmwasm-stargate";
 import { GasPrice } from "@cosmjs/stargate";
