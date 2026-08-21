@@ -6,6 +6,7 @@
 //   uso:  node deploy/monitor-web.mjs           # http://localhost:8787
 //         PORT=9000 / --no-vps
 import http from "node:http";
+import fs from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const exec = promisify(execFile);
@@ -122,6 +123,32 @@ async function vpsAll() {
   } catch (e) { return { error: String(e).slice(0, 80) }; }
 }
 
+// ---- atividade por operador: última tx on-chain (liveness) ----
+// EVM não dá "hora da última tx" em RPC público → rastreamos o nonce e marcamos
+// a hora só quando ele MUDA (persistido em disco entre reinícios).
+const NCACHE = new URL("./.op-nonce.json", import.meta.url).pathname;
+let nonceCache = {}; try { nonceCache = JSON.parse(fs.readFileSync(NCACHE, "utf8")); } catch { /* vazio */ }
+async function lastActivity(addr, conn, eBsc, eEth) {
+  try {
+    if (addr.startsWith("terra")) {
+      const r = await jget(`${TC_LCD}/cosmos/tx/v1beta1/txs?query=${encodeURIComponent(`message.sender='${addr}'`)}&order_by=ORDER_BY_DESC&limit=1`, 6000);
+      const h = r?.tx_responses?.[0]?.timestamp;
+      return { ts: h ? Math.floor(Date.parse(h) / 1000) : null };
+    }
+    if (addr.startsWith("0x")) {
+      const prov = addr.toLowerCase() === "0xef8181201ce6c83120035ffbcc11945e67ba00ae" ? eEth : eBsc;
+      const nonce = await prov.getTransactionCount(addr);
+      const c = nonceCache[addr];
+      if (!c) nonceCache[addr] = { nonce, ts: null };           // 1ª vez: só registra, sem cravar hora
+      else if (c.nonce !== nonce) nonceCache[addr] = { nonce, ts: Math.floor(Date.now() / 1000) }; // mudou → agora
+      try { fs.writeFileSync(NCACHE, JSON.stringify(nonceCache)); } catch { /* ok */ }
+      return { ts: nonceCache[addr].ts, nonce }; // ts = quando o nonce mudou (ou null se ainda não vimos)
+    }
+    const sigs = await conn.getSignaturesForAddress(new PublicKey(addr), { limit: 1 });
+    return { ts: sigs?.[0]?.blockTime ?? null };
+  } catch { return { ts: null }; }
+}
+
 // ---- operadores registrados nos contratos (oráculo de preço + vault) ----
 async function operators() {
   const conn = new Connection(HELIUS, "confirmed");
@@ -147,14 +174,30 @@ async function operators() {
   ]);
   const rrv = rrvAcc ? parseSolOps(rrvAcc.data) : { ops: [], q: null };
   const gov = govAcc ? parseGovOps(govAcc.data) : { ops: [], q: null };
-  const grp = (label, ops, q) => ({ label, who: ops.map(short), n: ops.length, q, healthy: q != null && ops.length >= q });
-  return [
-    grp("Oráculo TC", (tcOps?.operators ?? []), tcCfg?.quorum),
-    { label: "Oráculo BSC", who: bscIs ? ["0x8f08…5291"] : [], n: bscN, q: bscQ, healthy: bscQ != null && bscN >= bscQ, count: true },
-    { label: "Oráculo ETH", who: ethIs ? ["0xEF81…00ae"] : [], n: ethN, q: ethQ, healthy: ethQ != null && ethN >= ethQ, count: true },
-    grp("Oráculo Solana (gov)", gov.ops, gov.q),
-    grp("Vault Solana (rrv)", rrv.ops, rrv.q),
+  // grupos com endereços COMPLETOS
+  const groups = [
+    { label: "Oráculo TC", addrs: tcOps?.operators ?? [], q: tcCfg?.quorum },
+    { label: "Oráculo BSC", addrs: bscIs ? ["0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291"] : [], q: bscQ, n: bscN },
+    { label: "Oráculo ETH", addrs: ethIs ? ["0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae"] : [], q: ethQ, n: ethN },
+    { label: "Oráculo Solana (gov)", addrs: gov.ops, q: gov.q },
+    { label: "Vault Solana (rrv)", addrs: rrv.ops, q: rrv.q },
   ];
+  // atividade dos endereços ÚNICOS (uma consulta por endereço)
+  const uniq = [...new Set(groups.flatMap((g) => g.addrs))];
+  const act = {};
+  await Promise.all(uniq.map(async (a) => { act[a] = await lastActivity(a, conn, eBsc, eEth); }));
+  const now = Math.floor(Date.now() / 1000);
+  return groups.map((g) => ({
+    label: g.label, q: g.q, n: g.n ?? g.addrs.length,
+    healthy: g.q != null && (g.n ?? g.addrs.length) >= g.q,
+    ops: g.addrs.map((a) => {
+      const r = act[a] ?? {}; const ts = r.ts; const ageH = ts ? (now - ts) / 3600 : null;
+      // ativo: atividade < 26h (oráculo 4h / época 6h dão folga). EVM sem hora
+      // ainda (só nonce, RPC respondeu) = neutro "ok" até observar 1ª mudança.
+      const st = ageH != null ? (ageH < 26 ? "ok" : ageH < 72 ? "warn" : "low") : (r.nonce != null ? "ok" : "warn");
+      return { who: short(a), st, ageH: ageH == null ? null : Math.round(ageH * 10) / 10, nonce: r.nonce };
+    }),
+  }));
 }
 
 async function snapshot() {
@@ -248,13 +291,18 @@ function render(d){
     cards.push(card('Validadores TC (checkpoints)',
       V.list.map(v=>row(v.name, v.idx==null?'—':('idx '+v.idx), bdg(v.st==='ok'?'ok':v.st, v.st==='offline'?'OFFLINE':v.st==='low'?'ATRASADO':v.note))),
       'tip '+(V.tip??'?')+' · '+bdg(V.healthy?'ok':'low', V.online+'/'+V.list.length+' (min '+V.threshold+')')));
-    // Operadores (por contrato)
+    // Operadores (por contrato) — com atividade individual
     if(d.operators&&d.operators.length){
-      cards.push(card('Operadores (oráculo + vault)', d.operators.map(g=>{
-        const who = g.who&&g.who.length ? g.who.join(', ') : (g.count?(g.n+' registrado(s)'):'—');
-        const q = g.q!=null ? (g.q+'-de-'+(g.n??'?')) : '?';
-        return row(g.label, who, bdg(g.healthy?'ok':'low', q));
-      })));
+      const rows=[];
+      const fmtAge=(h)=>h==null?'—':h<1?Math.round(h*60)+'m':h<48?h.toFixed(1)+'h':Math.round(h/24)+'d';
+      d.operators.forEach(g=>{
+        rows.push(row('<b>'+g.label+'</b>', '', bdg(g.healthy?'ok':'low', (g.q!=null?g.q+'-de-'+g.n:'?'))));
+        if(!g.ops.length) rows.push(row('&nbsp;&nbsp;—','','<span class="note">nenhum</span>'));
+        g.ops.forEach(o=>rows.push(row('&nbsp;&nbsp;'+o.who,
+          bdg(o.st, o.st==='ok'?'ativo':o.st==='warn'?'lento':'inativo'),
+          '<span class="note">'+(o.ageH!=null?'há '+fmtAge(o.ageH):(o.nonce!=null?'nonce '+o.nonce:'sem tx'))+'</span>')));
+      });
+      cards.push(card('Operadores (atividade)', rows));
     }
     // RPCs
     cards.push(card('RPCs (saúde + latência)',
