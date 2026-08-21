@@ -38,14 +38,17 @@ function s3http(loc) {
 }
 
 const timed = async (fn) => { const t = Date.now(); try { const v = await fn(); return { v, ms: Date.now() - t }; } catch { return { v: null, ms: Date.now() - t }; } };
+// toda fonte tem timeout — uma lenta NUNCA trava o resto do snapshot
+const to = (p, ms = 9000, dflt = null) => Promise.race([p, new Promise((r) => setTimeout(() => r(dflt), ms))]);
+const jget = (url, ms = 8000) => fetch(url, { signal: AbortSignal.timeout(ms) }).then((r) => r.ok ? r.json() : null).catch(() => null);
 
 async function prices() {
-  const g = async (s) => Number((await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`).then((r) => r.json())).price || 0);
+  const g = async (s) => Number((await jget(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`, 5000))?.price || 0);
   const [LUNC, BNB, SOL, ETH] = await Promise.all([g("LUNCUSDT"), g("BNBUSDT"), g("SOLUSDT"), g("ETHUSDT")]);
   return { LUNC, BNB, SOL, ETH };
 }
-async function tcBalance(a) { const r = await fetch(`${TC_LCD}/cosmos/bank/v1beta1/balances/${a}/by_denom?denom=uluna`).then((x) => x.json()).catch(() => null); return Number(r?.balance?.amount ?? 0) / 1e6; }
-async function tcQuery(c, m) { const q = Buffer.from(JSON.stringify(m)).toString("base64"); return (await fetch(`${TC_LCD}/cosmwasm/wasm/v1/contract/${c}/smart/${q}`).then((x) => x.json()).catch(() => null))?.data; }
+async function tcBalance(a) { const r = await jget(`${TC_LCD}/cosmos/bank/v1beta1/balances/${a}/by_denom?denom=uluna`); return Number(r?.balance?.amount ?? 0) / 1e6; }
+async function tcQuery(c, m) { const q = Buffer.from(JSON.stringify(m)).toString("base64"); return (await jget(`${TC_LCD}/cosmwasm/wasm/v1/contract/${c}/smart/${q}`))?.data; }
 
 // ---- validadores TC: índice assinado vs tip da árvore ----
 async function validators() {
@@ -120,20 +123,21 @@ async function vpsAll() {
 }
 
 async function snapshot() {
-  const P = await prices();
+  const P = await to(prices(), 6000, { LUNC: 0, BNB: 0, SOL: 0, ETH: 0 });
   const conn = new Connection(HELIUS, "confirmed");
   const eBsc = new ethers.JsonRpcProvider(BSC_RPC), eEth = new ethers.JsonRpcProvider(ETH_RPC);
   const [tcOp, vaultPool, tcIgp, bscOp, bscVault, ethOp, pbeo, birx, poolInfo, vals, rpcHealth, vps] = await Promise.all([
-    tcBalance("terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp"),
-    tcQuery("terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q", { solvency: {} }),
-    tcBalance("terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz"),
-    eBsc.getBalance("0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291").then((b) => Number(b) / 1e18).catch(() => null),
-    eBsc.getBalance("0x34E06a7793877EC5251b1dC230aD7cD577d231f4").then((b) => Number(b) / 1e18).catch(() => null),
-    eEth.getBalance("0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae").then((b) => Number(b) / 1e18).catch(() => null),
-    conn.getBalance(new PublicKey("PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS")).then((b) => b / 1e9).catch(() => null),
-    conn.getBalance(new PublicKey("BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j")).then((b) => b / 1e9).catch(() => null),
-    conn.getAccountInfo(new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w")).catch(() => null),
-    validators(), rpcs(), vpsAll(),
+    to(tcBalance("terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp")),
+    to(tcQuery("terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q", { solvency: {} })),
+    to(tcBalance("terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz")),
+    to(eBsc.getBalance("0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291").then((b) => Number(b) / 1e18).catch(() => null)),
+    to(eBsc.getBalance("0x34E06a7793877EC5251b1dC230aD7cD577d231f4").then((b) => Number(b) / 1e18).catch(() => null)),
+    to(eEth.getBalance("0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae").then((b) => Number(b) / 1e18).catch(() => null)),
+    to(conn.getBalance(new PublicKey("PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS")).then((b) => b / 1e9).catch(() => null)),
+    to(conn.getBalance(new PublicKey("BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j")).then((b) => b / 1e9).catch(() => null)),
+    to(conn.getAccountInfo(new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w")).catch(() => null)),
+    to(validators(), 12000, { tip: null, list: [], online: 0, threshold: TC_THRESHOLD, healthy: false }),
+    to(rpcs(), 10000, []), to(vpsAll(), 12000, { error: "timeout" }),
   ]);
   // preços que o oracle-agent escreveu on-chain (o que o usuário do TC paga)
   const ORACLE = "terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d";
@@ -190,17 +194,16 @@ main{padding:18px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,mi
 .warn{background:rgba(210,153,34,.15);color:var(--warn)}.note{color:var(--dim);font-size:11px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}#err{color:var(--low);padding:0 20px}
 </style></head><body>
-<header><h1>▓ tc-proof-of-delivery · operação</h1><div class="px"><span id="pulse"></span><span id="px">carregando…</span></div></header>
+<header><h1>▓ tc-proof-of-delivery · operação</h1><div class="px"><span id="pulse"></span><span id="px">conectando…</span> <span id="age" class="note"></span></div></header>
 <div id="err"></div><main id="main"></main>
 <script>
 const money=(v,s)=>v==null?'<span class="badge err">err</span>':Number(v).toFixed(s==='LUNC'?2:s==='SOL'?4:6)+' '+s;
 const row=(l,v,x='')=>\`<div class="rowi"><span class="lbl">\${l}</span><span class="val">\${v} \${x}</span></div>\`;
 const card=(t,rows,sub='')=>\`<div class="card"><h2><span>\${t}</span><span class="note">\${sub}</span></h2>\${rows.join('')}</div>\`;
 const bdg=(s,txt)=>'<span class="badge '+s+'">'+(txt||s)+'</span>';
-async function tick(){
-  const pulse=document.getElementById('pulse'); pulse.style.opacity=.3;
-  try{
-    const d=await (await fetch('/api')).json(); const P=d.prices;
+function render(d){
+    const pulse=document.getElementById('pulse'); pulse.style.opacity=.3; setTimeout(()=>pulse.style.opacity=1,200);
+    const P=d.prices;
     document.getElementById('px').textContent=\`LUNC $\${P.LUNC.toFixed(8)} · BNB $\${P.BNB.toFixed(2)} · SOL $\${P.SOL.toFixed(2)} · ETH $\${P.ETH.toFixed(2)} · \${d.ts.slice(0,19).replace('T',' ')} UTC\`;
     document.getElementById('err').textContent='';
     const cards=[];
@@ -250,15 +253,43 @@ async function tick(){
     }
     cards.push(card('Serviços (VPS)', sv));
     document.getElementById('main').innerHTML=cards.join('');
-  }catch(e){ document.getElementById('err').textContent='erro: '+e.message; }
-  finally{ pulse.style.opacity=1; }
 }
-tick(); setInterval(tick, 10000);
+// SSE: o servidor empurra um snapshot novo assim que fica pronto (~4s)
+let lastAt=0;
+function connect(){
+  const es=new EventSource('/stream');
+  es.onmessage=(ev)=>{ try{ render(JSON.parse(ev.data)); lastAt=Date.now(); document.getElementById('err').textContent=''; }catch(e){} };
+  es.onerror=()=>{ document.getElementById('err').textContent='reconectando…'; es.close(); setTimeout(connect,3000); };
+}
+connect();
+// contador "há Xs" ao vivo (prova visual de que está fluindo)
+setInterval(()=>{ const a=document.getElementById('age'); if(!lastAt){a.textContent='';return;}
+  const s=Math.round((Date.now()-lastAt)/1000); a.textContent='· atualizado há '+s+'s'; a.style.color=s>15?'var(--low)':'var(--dim)';
+  document.getElementById('px').textContent||(document.getElementById('px').textContent='ao vivo');
+},1000);
 </script></body></html>`;
 
+// ---- push contínuo: um snapshot novo é calculado em loop e enviado a todos os
+//      clientes SSE assim que fica pronto (min ~4s entre um e outro) ----
+let latest = null, clients = new Set();
+async function pump() {
+  for (;;) {
+    const t = Date.now();
+    try { latest = await snapshot(); const line = `data: ${JSON.stringify(latest)}\n\n`; for (const c of clients) c.write(line); } catch { /* segue */ }
+    await new Promise((r) => setTimeout(r, Math.max(0, 4000 - (Date.now() - t)))); // ~4s de piso
+  }
+}
+pump();
+
 http.createServer(async (req, res) => {
-  if (req.url === "/api") {
-    try { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(await snapshot())); }
+  if (req.url === "/stream") {
+    res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+    clients.add(res);
+    if (latest) res.write(`data: ${JSON.stringify(latest)}\n\n`);
+    const ka = setInterval(() => res.write(": ka\n\n"), 15000); // keep-alive
+    req.on("close", () => { clearInterval(ka); clients.delete(res); });
+  } else if (req.url === "/api") {
+    try { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(latest ?? await snapshot())); }
     catch (e) { res.writeHead(500); res.end(JSON.stringify({ error: String(e) })); }
   } else { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(HTML); }
-}).listen(PORT, () => console.log(`\n  painel em → http://localhost:${PORT}  (refresh 10s)\n`));
+}).listen(PORT, () => console.log(`\n  painel em → http://localhost:${PORT}  (tempo real via SSE)\n`));
