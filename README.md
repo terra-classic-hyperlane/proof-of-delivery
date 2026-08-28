@@ -1,6 +1,10 @@
 # tc-proof-of-delivery
 
 Remuneration of multiple relayers on the Hyperlane bridge (Terra Classic · BSC · Ethereum · Solana).
+
+> **Start here:** 📋 [`docs/install/AUDIT.md`](docs/install/AUDIT.md) — consolidated audit (contracts,
+> hashes, powers, how to verify) · 🛠️ [`docs/install/INSTALL.md`](docs/install/INSTALL.md) — operator
+> install guide (architecture + one-shot installer `deploy/install-operator.sh`).
 Specification: `SPEC.html` (v3) · **IGORFAKE warp map** (addresses/IGP/oracle/ISM/prices of the 4 legs): `docs/WARP-IGORFAKE.md` · **Architecture with diagrams**: `docs/ARCHITECTURE.md` · **Installation/execution**: `docs/INSTALL-AND-RUN.md` · Repo skills in `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Each network has a Vault as beneficiary of the local IGP; the operator
 gets paid for what it DELIVERED, proven by the execution record of the chain itself (TC via raw query
 of the storage, EVM via processor(), Solana via epoch quorum).

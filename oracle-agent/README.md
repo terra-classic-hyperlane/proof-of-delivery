@@ -1,53 +1,56 @@
 # oracle-agent
 
-O lado **off-chain do operador de relayer**: observa o preço dos tokens nativos
-(CoinGecko) e o gás dos domínios remotos, e submete `SubmitPrice` ao **governor
-de cada chain** da ponte — Terra Classic (CosmWasm), BSC e Ethereum (EVM) e
-Solana. É genérico: qualquer chain nova entra por configuração.
+The **off-chain side of the relayer operator**: it watches the native-token
+prices (CoinGecko) and the gas price of the remote domains, and submits
+`SubmitPrice` to the **governor of each chain** of the bridge — Terra Classic
+(CosmWasm), BSC and Ethereum (EVM) and Solana. It is generic: any new chain is
+added through configuration.
 
-O agente **não tem poder**: quem aplica é o governor on-chain, com quórum entre
-os operadores, **mediana** (menor dos centrais), **faixa** definida pela
-governança/multisig e **delta máximo** por época. Um agente comprometido, no
-pior caso, submete um número que os outros operadores não confirmam.
+The agent **has no power**: the on-chain governor is what applies values, with
+a quorum among operators, the **median** (lower of the central pair), a
+**range** defined by governance/multisig and a **maximum delta** per epoch. A
+compromised agent, at worst, submits a number the other operators do not
+confirm.
 
-## Como funciona
+## How it works
 
-1. A cada rodada (padrão 1h): busca os preços USD de todos os tokens de uma vez;
-2. Para cada chain local habilitada, para cada domínio remoto:
-   `token_exchange_rate = preço(remoto)/preço(local) × scale` — **scale por VM**:
-   `1e10` (CosmWasm/EVM) e `1e19` (Solana), como a spec §08 exige;
-3. Gas price do remoto: `eth_gasPrice` via RPC (EVM) ou valor fixo configurado;
-4. Submete ao governor da chain local (CosmWasm execute · EVM `submitPrice` ·
-   Solana instrução borsh com as PDAs derivadas).
+1. Each round (default 1h): fetches the USD prices of all tokens at once;
+2. For each enabled local chain, for each remote domain:
+   `token_exchange_rate = price(remote)/price(local) × scale` — **scale per VM**:
+   `1e10` (CosmWasm/EVM) and `1e19` (Solana), as spec §08 requires;
+3. Remote gas price: `eth_gasPrice` via RPC (EVM) or a configured fixed value;
+4. Submits to the local chain's governor (CosmWasm execute · EVM `submitPrice` ·
+   Solana borsh instruction with the derived PDAs).
 
-## Uso
+## Usage
 
 ```bash
 npm install
-cp config.example.json config.json   # preencha governors/RPCs/domínios
+cp config.example.json config.json   # fill in governors/RPCs/domains
 
-# ver o que seria submetido, sem assinar nada:
+# see what would be submitted, without signing anything:
 npm run dry-run
 
-# uma rodada real (bom para cron):
+# one real round (good for cron):
 TC_MNEMONIC="..." EVM_PRIVATE_KEY="0x..." SOLANA_KEYPAIR_PATH=~/keypair.json npm run once
 
-# loop contínuo:
+# continuous loop:
 npm start
 ```
 
-Chaves só por variável de ambiente (`mnemonicEnv` / `privateKeyEnv` /
-`keypairEnv` no config dizem QUAL env ler) — nada de segredo em arquivo de
-configuração.
+Keys only via environment variables (`mnemonicEnv` / `privateKeyEnv` /
+`keypairEnv` in the config say WHICH env to read) — no secrets in configuration
+files.
 
-## Testes
+## Tests
 
 ```bash
-npm test    # node:test — matemática do exchange_rate e escalas por VM
+npm test    # node:test — exchange_rate math and per-VM scales
 ```
 
-## Operação (vários operadores)
+## Operation (multiple operators)
 
-Cada operador roda o **seu** agente com a **sua** chave. Não há coordenação:
-todos observam o mercado de forma independente e o governor converge pela
-mediana. Recomenda-se cron a cada época (6h) com pequeno jitter por operador.
+Each operator runs **their own** agent with **their own** key. There is no
+coordination: everyone observes the market independently and the governor
+converges through the median. A cron per epoch (6h) with a small per-operator
+jitter is recommended.
