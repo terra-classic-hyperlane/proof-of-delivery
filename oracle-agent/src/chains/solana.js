@@ -57,7 +57,7 @@ export function pdas(programId, domain, epoch) {
     programId,
   );
   const [round] = PublicKey.findProgramAddressSync(
-    [gov, sep, Buffer.from("price"), sep, u32le(domain), sep, u64le(epoch)],
+    [gov, sep, Buffer.from("price"), sep, u32le(domain)],
     programId,
   );
   return { config, domainPda, round };
