@@ -4,22 +4,22 @@ use cw_storage_plus::{Item, Map};
 
 #[cw_serde]
 pub struct Config {
-    /// Governança on-chain do Terra Classic. Define faixa, operadores e quórum —
-    /// nunca os próprios operadores (é a trava do conflito de interesse, spec §10).
+    /// On-chain governance of Terra Classic. Defines bounds, operators and quorum —
+    /// never the operators themselves (this is the conflict-of-interest lock, spec §10).
     pub owner: Addr,
-    /// hpl-igp-oracle do qual este contrato é (ou será) o owner.
+    /// hpl-igp-oracle of which this contract is (or will be) the owner.
     pub oracle: Addr,
-    /// Duração da época em segundos (sugestão da spec: 6h = 21_600).
+    /// Epoch duration in seconds (spec suggestion: 6h = 21_600).
     pub epoch_duration_secs: u64,
-    /// Variação máxima por aplicação, em bps sobre o último valor aplicado
-    /// (sugestão da spec: 2000 = 20%). Vale para os dois campos.
+    /// Maximum variation per application, in bps over the last applied value
+    /// (spec suggestion: 2000 = 20%). Applies to both fields.
     pub max_delta_bps: u64,
-    /// Quantas submissões idênticas de época são necessárias para aplicar.
+    /// How many identical epoch submissions are required to apply.
     pub quorum: u32,
 }
 
-/// Faixa [min, max] por domínio remoto — definida pela governança. Sem faixa
-/// cadastrada, NENHUMA submissão para o domínio é aceita.
+/// Bounds [min, max] per remote domain — defined by governance. Without
+/// registered bounds, NO submission for the domain is accepted.
 #[cw_serde]
 pub struct Bounds {
     pub min_exchange_rate: Uint128,
@@ -34,28 +34,28 @@ pub struct PriceSubmission {
     pub gas_price: Uint128,
 }
 
-/// O que foi aplicado no oracle para (domínio, época) + valores correntes.
+/// What was applied to the oracle for (domain, epoch) + current values.
 #[cw_serde]
 pub struct AppliedGasData {
     pub token_exchange_rate: Uint128,
     pub gas_price: Uint128,
     pub epoch: u64,
-    /// true quando veio do caminho de emergência (ForceSetRemoteGasData).
+    /// true when it came from the emergency path (ForceSetRemoteGasData).
     pub forced: bool,
 }
 
 pub const CONFIG: Item<Config> = Item::new("config");
-/// domínio → faixa vigente (só a governança escreve).
+/// domain → current bounds (only governance writes).
 pub const BOUNDS: Map<u32, Bounds> = Map::new("bounds");
 pub const OPERATORS: Map<&Addr, ()> = Map::new("operators");
 pub const OPERATOR_COUNT: Item<u32> = Item::new("operator_count");
 
-/// (domínio, época, operador) → submissão. O operador pode sobrescrever a própria
-/// submissão enquanto a época não foi aplicada.
+/// (domain, epoch, operator) → submission. The operator can overwrite their own
+/// submission while the epoch has not been applied.
 pub const SUBMISSIONS: Map<(u32, u64, &Addr), PriceSubmission> = Map::new("submissions");
 
-/// (domínio, época) → aplicado? Uma aplicação por época por domínio.
+/// (domain, epoch) → applied? One application per epoch per domain.
 pub const APPLIED: Map<(u32, u64), AppliedGasData> = Map::new("applied");
 
-/// domínio → último valor efetivamente aplicado (base do delta de variação).
+/// domain → last value effectively applied (base of the variation delta).
 pub const LAST_APPLIED: Map<u32, AppliedGasData> = Map::new("last_applied");

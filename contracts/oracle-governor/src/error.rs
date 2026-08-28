@@ -30,8 +30,8 @@ pub enum ContractError {
     #[error("epoch {epoch} for domain {domain} already applied — submit on the next epoch")]
     EpochAlreadyApplied { domain: u32, epoch: u64 },
 
-    // A mediana saltou mais que o limite por época. Nada é aplicado; a governança
-    // resolve pelo caminho de emergência (ForceSetRemoteGasData) ou ajustando a faixa.
+    // The median jumped more than the per-epoch limit. Nothing is applied; governance
+    // resolves it via the emergency path (ForceSetRemoteGasData) or by adjusting the bounds.
     #[error("{field} delta too large for domain {domain}: last {last}, median {median}, limit {max_delta_bps} bps")]
     DeltaExceeded {
         field: String,

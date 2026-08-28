@@ -1,18 +1,18 @@
 //! # oracle-governor
 //!
-//! Governor do StorageGasOracle (hpl-igp-oracle) no Terra Classic — spec §01/§10.
+//! Governor of the StorageGasOracle (hpl-igp-oracle) on Terra Classic — spec §01/§10.
 //!
-//! Separação de poderes:
-//! - A GOVERNANÇA (owner) define faixa [min,max] por domínio, variação máxima
-//!   (bps), operadores e quórum — e mantém dois caminhos de emergência: escrita
-//!   direta no oracle (`ForceSetRemoteGasData`) e devolução da posse
+//! Separation of powers:
+//! - GOVERNANCE (owner) defines the [min,max] bounds per domain, maximum variation
+//!   (bps), operators and quorum — and keeps two emergency paths: direct write
+//!   to the oracle (`ForceSetRemoteGasData`) and handing back ownership
 //!   (`InitOracleOwnershipTransfer`).
-//! - Os OPERADORES apenas submetem o preço observado; ao atingir o quórum, a
-//!   MEDIANA (menor dos centrais em empate par — na dúvida cobra menos do
-//!   usuário) é validada contra faixa + delta e aplicada no oracle por CPI.
+//! - The OPERATORS only submit the observed price; once quorum is reached, the
+//!   MEDIAN (lower of the central ones on an even tie — when in doubt charge the
+//!   user less) is validated against bounds + delta and applied to the oracle via CPI.
 //!
-//! O conflito de interesse (operadores controlam o preço que financia a própria
-//! remuneração) é neutralizado porque a FAIXA é definida por quem não opera.
+//! The conflict of interest (operators control the price that funds their own
+//! reward) is neutralized because the BOUNDS are defined by those who do not operate.
 
 pub mod error;
 pub mod execute;

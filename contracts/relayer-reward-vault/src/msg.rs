@@ -3,31 +3,31 @@ use cosmwasm_std::{Addr, Coin, HexBinary, Uint128, Uint256};
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// Governança on-chain do Terra Classic (endereço do módulo gov) — nunca multisig.
+    /// On-chain governance of Terra Classic (gov module address) — never a multisig.
     pub owner: String,
-    /// hpl-mailbox em produção (fonte da prova de entrega).
+    /// hpl-mailbox in production (source of the delivery proof).
     pub mailbox: String,
-    /// hpl-igp do qual este vault é beneficiary (alvo do Sweep).
+    /// hpl-igp of which this vault is the beneficiary (target of the Sweep).
     pub igp: String,
-    /// Denom do pool e das recompensas (Terra Classic: "uluna").
+    /// Denom of the pool and of the rewards (Terra Classic: "uluna").
     pub denom: String,
-    /// Tarifa fixa paga por entrega comprovada.
+    /// Fixed fee paid per proven delivery.
     pub reward_per_delivery: Uint128,
-    /// Janela de resgate em blocos, contada do bloco da entrega.
+    /// Claim window in blocks, counted from the delivery block.
     pub claim_window_blocks: u64,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    /// Resgata a recompensa das entregas comprovadas. ATÔMICO: qualquer id inválido
-    /// (não entregue, de outro relayer, expirado, duplicado ou já pago) reverte o lote.
+    /// Claims the reward for proven deliveries. ATOMIC: any invalid id
+    /// (not delivered, from another relayer, expired, duplicated or already paid) reverts the batch.
     Claim { message_ids: Vec<HexBinary> },
 
-    /// Permissionless: manda o vault puxar o saldo acumulado do IGP
-    /// (o `claim()` do IGP só aceita o beneficiary — este contrato).
+    /// Permissionless: makes the vault pull the accumulated IGP balance
+    /// (the IGP's `claim()` only accepts the beneficiary — this contract).
     Sweep {},
 
-    /// Só o owner (governança).
+    /// Owner only (governance).
     UpdateConfig {
         owner: Option<String>,
         mailbox: Option<String>,
@@ -36,63 +36,63 @@ pub enum ExecuteMsg {
         claim_window_blocks: Option<u64>,
     },
 
-    /// Só o owner (governança).
+    /// Owner only (governance).
     SetPause { paused: bool },
 
-    /// Só o owner (governança): retira excedente do pool.
+    /// Owner only (governance): withdraws surplus from the pool.
     WithdrawSurplus { to: String, amount: Uint128 },
 
-    // ---- v2 ClaimRemote: taxa de origem paga por entrega REMOTA atestada ----
-    /// Só o owner: define os atestadores de entregas remotas e o quórum de
-    /// atestações concordantes (com 1 operador o quórum é 1 = auto-atestação;
-    /// subir p/ >= 2 quando houver operadores independentes).
+    // ---- v2 ClaimRemote: origin fee paid per attested REMOTE delivery ----
+    /// Owner only: defines the attestors of remote deliveries and the quorum of
+    /// agreeing attestations (with 1 operator the quorum is 1 = self-attestation;
+    /// raise to >= 2 when there are independent operators).
     SetRemoteOperators { attestors: Vec<String>, quorum: u32 },
 
-    /// Só o owner: vincula o endereço REMOTO do operador num domínio
-    /// (`None` remove). É o elo de identidade TC ↔ chain remota.
+    /// Owner only: binds the operator's REMOTE address on a domain
+    /// (`None` removes). It is the TC ↔ remote chain identity link.
     SetRemoteBinding {
         operator: String,
         domain: u32,
         remote_address: Option<String>,
     },
 
-    /// Só o owner: recompensa fixa por entrega remota no domínio (0 desativa).
+    /// Owner only: fixed reward per remote delivery on the domain (0 disables).
     SetRemoteReward { domain: u32, reward: Uint128 },
 
-    // ---- Fase 1 (recibo trustless): registro de/para global de operadores ----
-    /// Só o owner: grava o endereço do operador `index` no `domain` (`None`
-    /// remove). Quando `domain` = ESTE domínio, também alimenta o reverse-lookup
-    /// (executor local → índice) usado pelo papel DESTINO.
+    // ---- Phase 1 (trustless receipt): global operator lookup registry ----
+    /// Owner only: writes the address of operator `index` on `domain` (`None`
+    /// removes). When `domain` = THIS domain, it also feeds the reverse-lookup
+    /// (local executor → index) used by the DESTINATION role.
     SetOperatorAddress {
         index: u32,
         domain: u32,
         address: Option<String>,
     },
 
-    /// Só o owner: registra/atualiza o router (nosso vault) de um domínio (`None`
-    /// remove). `address` no formato hex-32 da convenção Hyperlane.
+    /// Owner only: registers/updates the router (our vault) of a domain (`None`
+    /// removes). `address` in the hex-32 format of the Hyperlane convention.
     SetRemoteRouter { domain: u32, address: Option<String> },
 
-    // ---- Fase 2/3 (recibo trustless) ----
-    /// PAPEL DESTINO. Prova que estas MENSAGENS (bytes completos) foram entregues
-    /// AQUI (raw query DELIVERIES por keccak256(msg)) e despacha UM recibo de
-    /// volta ao vault de origem — o domínio de origem é LIDO da mensagem (não
-    /// forjável). Fundos anexados pagam o hook/IGP do recibo (operador paga).
-    /// `gas_limit`: gás cobrado pelo IGP para ENTREGAR o recibo (via metadata).
-    /// Sem ele o IGP usa o gas_for_domain — que é a TARIFA CHEIA de usuário
-    /// ($0,08); o recibo deve pagar só o gás real (ex.: 300k), senão a comissão
-    /// do operador é devorada pela própria taxa do recibo.
+    // ---- Phase 2/3 (trustless receipt) ----
+    /// DESTINATION ROLE. Proves that these MESSAGES (full bytes) were delivered
+    /// HERE (raw query DELIVERIES by keccak256(msg)) and dispatches ONE receipt
+    /// back to the origin vault — the origin domain is READ from the message (not
+    /// forgeable). Attached funds pay the receipt's hook/IGP (the operator pays).
+    /// `gas_limit`: gas charged by the IGP to DELIVER the receipt (via metadata).
+    /// Without it the IGP uses gas_for_domain — which is the FULL user TARIFF
+    /// ($0.08); the receipt should pay only the real gas (e.g.: 300k), otherwise the
+    /// operator's commission is eaten by the receipt's own fee.
     SendReceipt { messages: Vec<HexBinary>, gas_limit: Option<Uint256> },
 
-    /// PAPEL ORIGEM. Chamado pelo hpl-mailbox ao entregar o recibo. Só aceita do
-    /// Mailbox e de um `sender` == router registrado do `origin`. Paga cada id ao
-    /// endereço do operador N no NOSSO registro local. Idempotente.
+    /// ORIGIN ROLE. Called by the hpl-mailbox when delivering the receipt. Only accepts from
+    /// the Mailbox and from a `sender` == the registered router of `origin`. Pays each id to
+    /// the address of operator N in OUR local registry. Idempotent.
     Handle(HandleMsg),
 
-    /// Atestador: afirma que as mensagens (despachadas DESTE mailbox p/ `domain`
-    /// — o message_id é o MESMO nas duas chains) foram entregues lá pelo endereço
-    /// vinculado ao `executor` (default: o próprio atestador). Ao atingir o
-    /// quórum de atestações CONCORDANTES paga a recompensa — UMA vez por id.
+    /// Attestor: asserts that the messages (dispatched FROM THIS mailbox to `domain`
+    /// — the message_id is the SAME on both chains) were delivered there by the address
+    /// bound to `executor` (default: the attestor itself). Upon reaching the
+    /// quorum of AGREEING attestations it pays the reward — ONCE per id.
     AttestRemoteDelivery {
         domain: u32,
         message_ids: Vec<HexBinary>,
@@ -106,16 +106,16 @@ pub enum QueryMsg {
     #[returns(ConfigResponse)]
     Config {},
 
-    /// Status de resgate de uma mensagem.
+    /// Claim status of a message.
     #[returns(ClaimedResponse)]
     Claimed { message_id: HexBinary },
 
-    /// Leitura direta (raw query) do DELIVERIES do Mailbox para uma mensagem.
+    /// Direct read (raw query) of the Mailbox's DELIVERIES for a message.
     #[returns(DeliveryResponse)]
     Delivery { message_id: HexBinary },
 
-    /// Sonda o layout do storage do Mailbox contra uma mensagem SABIDAMENTE entregue.
-    /// Monitorar após qualquer migrate do Mailbox (spec §06).
+    /// Probes the Mailbox storage layout against a message KNOWN to be delivered.
+    /// Monitor after any Mailbox migrate (spec §06).
     #[returns(LayoutCheckResponse)]
     LayoutCheck { message_id: HexBinary },
 
@@ -132,35 +132,35 @@ pub enum QueryMsg {
     #[returns(RemoteRewardResponse)]
     RemoteReward { domain: u32 },
 
-    /// Status do pagamento remoto de uma mensagem.
+    /// Remote payment status of a message.
     #[returns(RemoteClaimedResponse)]
     RemoteClaimed { message_id: HexBinary },
 
-    /// Atestações pendentes de uma mensagem (auditoria pública).
+    /// Pending attestations of a message (public audit).
     #[returns(RemoteAttestationsResponse)]
     RemoteAttestations { message_id: HexBinary },
 
-    /// Quanto estes ids PAGARIAM se confirmados (ainda não pagos) — decidir se
-    /// vale o gás de enviar o recibo. amount = payable_count × recompensa do domínio.
+    /// How much these ids WOULD PAY if confirmed (not yet paid) — to decide whether
+    /// it is worth the gas of sending the receipt. amount = payable_count × domain reward.
     #[returns(QuoteRemoteResponse)]
     QuoteRemote { domain: u32, message_ids: Vec<HexBinary> },
 
-    // ---- Fase 1: registro de/para ----
-    /// Endereço do operador `index` no `domain` (registro de/para).
+    // ---- Phase 1: lookup registry ----
+    /// Address of operator `index` on `domain` (lookup registry).
     #[returns(OperatorAddressResponse)]
     OperatorAddress { index: u32, domain: u32 },
 
-    /// Índice do operador dono de um endereço LOCAL (reverse-lookup).
+    /// Index of the operator owning a LOCAL address (reverse-lookup).
     #[returns(OperatorOfLocalResponse)]
     OperatorOfLocal { address: String },
 
-    /// Router (nosso vault) registrado para um domínio.
+    /// Router (our vault) registered for a domain.
     #[returns(RemoteRouterResponse)]
     RemoteRouter { domain: u32 },
 
-    /// Hyperlane: o Mailbox pergunta o ISM do recipient ao entregar (o recibo).
-    /// Espelha `hpl_interface::ism::IsmSpecifierQueryMsg` — retornamos `None`
-    /// (usa o ISM default do Mailbox, que já valida o corredor TC↔BSC).
+    /// Hyperlane: the Mailbox asks the recipient's ISM when delivering (the receipt).
+    /// Mirrors `hpl_interface::ism::IsmSpecifierQueryMsg` — we return `None`
+    /// (uses the Mailbox's default ISM, which already validates the TC↔BSC corridor).
     #[returns(InterchainSecurityModuleResponse)]
     IsmSpecifier(IsmSpecifierQueryMsg),
 }
@@ -177,7 +177,7 @@ pub struct InterchainSecurityModuleResponse {
     pub ism: Option<Addr>,
 }
 
-/// Espelha `hpl_interface::core::HandleMsg` (o que o Mailbox envia ao recipient).
+/// Mirrors `hpl_interface::core::HandleMsg` (what the Mailbox sends to the recipient).
 #[cw_serde]
 pub struct HandleMsg {
     pub origin: u32,
@@ -212,14 +212,14 @@ pub struct ClaimedResponse {
 #[cw_serde]
 pub struct DeliveryResponse {
     pub delivered: bool,
-    /// Quem executou o process() — o dono econômico da entrega.
+    /// Who executed process() — the economic owner of the delivery.
     pub processor: Option<Addr>,
     pub delivered_at_block: Option<u64>,
 }
 
 #[cw_serde]
 pub struct LayoutCheckResponse {
-    /// true = a chave existe e o valor parseia estritamente como `Delivery`.
+    /// true = the key exists and the value parses strictly as `Delivery`.
     pub ok: bool,
     pub detail: String,
 }
@@ -228,7 +228,7 @@ pub struct LayoutCheckResponse {
 pub struct SolvencyResponse {
     pub pool: Coin,
     pub reward_per_delivery: Uint128,
-    /// Quantas entregas o pool atual consegue pagar.
+    /// How many deliveries the current pool can pay.
     pub claims_payable: Uint128,
 }
 
@@ -261,7 +261,7 @@ pub struct RemoteClaimedResponse {
 
 #[cw_serde]
 pub struct RemoteAttestationsResponse {
-    /// (atestador, executor apontado)
+    /// (attestor, pointed executor)
     pub attestations: Vec<(Addr, Addr)>,
 }
 
@@ -271,7 +271,7 @@ pub struct QuoteRemoteResponse {
     pub payable_count: u32,
 }
 
-// ---- Fase 1: registro de/para ----
+// ---- Phase 1: lookup registry ----
 #[cw_serde]
 pub struct OperatorAddressResponse {
     pub address: Option<String>,

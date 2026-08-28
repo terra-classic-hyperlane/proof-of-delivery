@@ -1,7 +1,7 @@
-//! Espelho mínimo da interface do hpl-igp-oracle (tc-cw-hyperlane,
-//! `packages/interface/src/igp/oracle.rs` e `ownable.rs`). Duplicado aqui de
-//! propósito: os nomes serde precisam bater byte a byte com o contrato em
-//! produção, e importar o workspace inteiro do hpl só para 4 tipos não vale.
+//! Minimal mirror of the hpl-igp-oracle interface (tc-cw-hyperlane,
+//! `packages/interface/src/igp/oracle.rs` and `ownable.rs`). Duplicated here on
+//! purpose: the serde names must match byte for byte with the contract in
+//! production, and importing the whole hpl workspace just for 4 types is not worth it.
 
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::Uint128;
@@ -13,7 +13,7 @@ pub struct RemoteGasDataConfig {
     pub gas_price: Uint128,
 }
 
-/// hpl_interface::ownable::OwnableMsg — posse em DOIS passos.
+/// hpl_interface::ownable::OwnableMsg — ownership in TWO steps.
 #[cw_serde]
 pub enum OwnableMsg {
     InitOwnershipTransfer { next_owner: String },
@@ -21,7 +21,7 @@ pub enum OwnableMsg {
     ClaimOwnership {},
 }
 
-/// hpl_interface::igp::oracle::ExecuteMsg (subset usado pelo governor).
+/// hpl_interface::igp::oracle::ExecuteMsg (subset used by the governor).
 #[cw_serde]
 pub enum OracleExecuteMsg {
     Ownership(OwnableMsg),

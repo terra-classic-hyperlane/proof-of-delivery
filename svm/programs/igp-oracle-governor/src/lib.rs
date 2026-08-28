@@ -1,21 +1,21 @@
 //! # IgpOracleGovernor (Solana / Sealevel) — spec §08/§10
 //!
-//! Em Solana o oracle NÃO é conta separada: `Igp { owner, beneficiary,
-//! gas_oracles }`, e `SetGasOracleConfigs` exige o owner como signer. Este
-//! programa torna a sua PDA de config o **owner do IGP** e reconstrói a
-//! separação de poderes com duas portas:
+//! On Solana the oracle is NOT a separate account: `Igp { owner, beneficiary,
+//! gas_oracles }`, and `SetGasOracleConfigs` requires the owner as signer. This
+//! program makes its config PDA the **owner of the IGP** and reconstructs the
+//! separation of powers with two gates:
 //!
-//! - **PORTA 1 — operadores** (quórum + mediana + faixa): `SubmitPrice`; ao
-//!   bater o quórum na época, a mediana (menor dos centrais no empate par)
-//!   validada contra faixa + delta vira CPI `SetGasOracleConfigs` assinada
-//!   pela PDA de config.
-//! - **PORTA 2 — multisig** (assinatura única): faixa/`token_decimals` por
-//!   domínio, operadores, quórum, delta, `ForceSetGasData`,
-//!   `SetIgpBeneficiary` e `TransferIgpOwnership` — a SAÍDA DE EMERGÊNCIA que
-//!   a spec manda testar antes do deploy.
+//! - **GATE 1 — operators** (quorum + median + bounds): `SubmitPrice`; when
+//!   the quorum is reached in the epoch, the median (lower of the central ones on an even tie)
+//!   validated against bounds + delta becomes a `SetGasOracleConfigs` CPI signed
+//!   by the config PDA.
+//! - **GATE 2 — multisig** (single signature): bounds/`token_decimals` per
+//!   domain, operators, quorum, delta, `ForceSetGasData`,
+//!   `SetIgpBeneficiary` and `TransferIgpOwnership` — the EMERGENCY EXIT that
+//!   the spec requires testing before deploy.
 //!
-//! A PDA de config precisa manter lamports: o realloc do IGP cobra do owner.
-//! A autoridade de upgrade DESTE programa deve ser o multisig (spec §08).
+//! The config PDA must keep lamports: the IGP realloc charges the owner.
+//! The upgrade authority of THIS program must be the multisig (spec §08).
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -52,8 +52,8 @@ pub fn domain_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
         program_id,
     )
 }
-// UMA conta round por DOMÍNIO (reusada em toda época). O rent é pago só na 1ª criação e
-// reaproveitado pra sempre — sem novo PDA por época (elimina o acúmulo de rent nos rounds).
+// ONE round account per DOMAIN (reused every epoch). The rent is paid only on the 1st creation and
+// reused forever — no new PDA per epoch (eliminates rent accumulation across rounds).
 pub fn price_round_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
@@ -73,7 +73,7 @@ pub const DOMAIN_SPACE: usize = 256;
 pub const ROUND_SPACE: usize = 2048;
 
 // ---------------------------------------------------------------------------
-// Estado
+// State
 // ---------------------------------------------------------------------------
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct Config {
@@ -100,7 +100,7 @@ pub struct DomainState {
     pub bump: u8,
     pub domain: u32,
     pub bounds: Bounds,
-    /// constante da rede — fica com o multisig, FORA do quórum (spec §08)
+    /// network constant — stays with the multisig, OUTSIDE the quorum (spec §08)
     pub token_decimals: u8,
     pub last_rate: u128,
     pub last_gas: u128,
@@ -118,7 +118,7 @@ pub struct PriceRound {
 }
 
 // ---------------------------------------------------------------------------
-// Instruções
+// Instructions
 // ---------------------------------------------------------------------------
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 pub enum Instruction {
@@ -132,46 +132,46 @@ pub enum Instruction {
         igp_program: Pubkey,
         igp: Pubkey,
     },
-    /// PORTA 1 · [operator s w (payer), config w, domain w, round w, system,
+    /// GATE 1 · [operator s w (payer), config w, domain w, round w, system,
     ///            igp_program, igp w]
     SubmitPrice {
         domain: u32,
         token_exchange_rate: u128,
         gas_price: u128,
     },
-    /// PORTA 2 · [multisig s w (payer), config, domain w, system]
+    /// GATE 2 · [multisig s w (payer), config, domain w, system]
     SetDomainConfig {
         domain: u32,
         bounds: Bounds,
         token_decimals: u8,
     },
-    /// PORTA 2 · [multisig s, config w]
+    /// GATE 2 · [multisig s, config w]
     SetOperators { add: Vec<Pubkey>, remove: Vec<Pubkey> },
-    /// PORTA 2 · [multisig s, config w]
+    /// GATE 2 · [multisig s, config w]
     SetQuorum(u8),
-    /// PORTA 2 · [multisig s, config w]
+    /// GATE 2 · [multisig s, config w]
     SetEpochDuration(u64),
-    /// PORTA 2 · [multisig s, config w]
+    /// GATE 2 · [multisig s, config w]
     SetMaxDeltaBps(u64),
-    /// PORTA 2 · [multisig s, config w]
+    /// GATE 2 · [multisig s, config w]
     SetMultisig(Pubkey),
-    /// PORTA 2 (emergência) · [multisig s, config w, domain w, igp_program, igp w, system]
+    /// GATE 2 (emergency) · [multisig s, config w, domain w, igp_program, igp w, system]
     ForceSetGasData {
         domain: u32,
         token_exchange_rate: u128,
         gas_price: u128,
     },
-    /// PORTA 2 · [multisig s, config, igp_program, igp w]
+    /// GATE 2 · [multisig s, config, igp_program, igp w]
     SetIgpBeneficiary(Pubkey),
-    /// PORTA 2 (SAÍDA DE EMERGÊNCIA) · [multisig s, config, igp_program, igp w]
+    /// GATE 2 (EMERGENCY EXIT) · [multisig s, config, igp_program, igp w]
     TransferIgpOwnership(Option<Pubkey>),
-    /// PORTA 1 (LIMPEZA) · [operator s w (recebe o rent), config, round w]
-    /// Fecha uma conta `round` ÓRFÃ (das antigas por-época) e devolve 100% do rent ao operador.
-    /// NUNCA fecha a conta viva do domínio (a única por-domínio) — guard por endereço.
+    /// GATE 1 (CLEANUP) · [operator s w (receives the rent), config, round w]
+    /// Closes an ORPHAN `round` account (from the old per-epoch ones) and returns 100% of the rent to the operator.
+    /// NEVER closes the live account of the domain (the only per-domain one) — guard by address.
     CloseRound,
 }
 
-// ---- espelho do wire-format do IGP real (índices 5/7/9) ----
+// ---- mirror of the real IGP wire-format (indices 5/7/9) ----
 #[derive(BorshSerialize, Debug)]
 struct RemoteGasData {
     token_exchange_rate: u128,
@@ -190,7 +190,7 @@ struct GasOracleConfig {
     gas_oracle: Option<GasOracle>,
 }
 
-/// Serializa a instrução do IGP com o índice de variante correto.
+/// Serializes the IGP instruction with the correct variant index.
 fn igp_instruction_data(variant: u8, payload: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(1 + payload.len());
     out.push(variant);
@@ -203,7 +203,7 @@ const IGP_SET_BENEFICIARY: u8 = 7;
 const IGP_SET_GAS_ORACLE_CONFIGS: u8 = 9;
 
 // ---------------------------------------------------------------------------
-// Erros
+// Errors
 // ---------------------------------------------------------------------------
 const ERR_NOT_OPERATOR: u32 = 200;
 const ERR_NOT_MULTISIG: u32 = 201;
@@ -229,7 +229,7 @@ fn ensure(cond: bool, err: ProgramError) -> ProgramResult {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers de conta
+// Account helpers
 // ---------------------------------------------------------------------------
 fn load_streaming<T: BorshDeserialize>(info: &AccountInfo) -> Result<T, ProgramError> {
     let data = info.data.borrow();
@@ -266,19 +266,19 @@ fn create_pda<'a>(
     )
 }
 
-/// mediana com desempate "menor dos centrais": ordena e pega (n-1)/2
+/// median with "lower of the central ones" tie-break: sorts and takes (n-1)/2
 fn lower_median(values: &mut [u128]) -> u128 {
     values.sort_unstable();
     values[(values.len() - 1) / 2]
 }
 
-/// |novo − último| * 10_000 <= último * max_delta_bps (em u256 improvisado via
-/// checked u128: os valores reais cabem com folga, mas protegemos com checked)
+/// |new − last| * 10_000 <= last * max_delta_bps (in improvised u256 via
+/// checked u128: the real values fit with room to spare, but we protect with checked)
 fn delta_ok(last: u128, new: u128, max_delta_bps: u64) -> bool {
     let diff = last.abs_diff(new);
     match (diff.checked_mul(10_000), last.checked_mul(max_delta_bps as u128)) {
         (Some(lhs), Some(rhs)) => lhs <= rhs,
-        _ => false, // overflow em qualquer lado → rejeita (conservador)
+        _ => false, // overflow on either side → reject (conservative)
     }
 }
 
@@ -357,11 +357,11 @@ pub fn process_instruction(
     }
 }
 
-/// Fecha uma conta `round` ÓRFÃ (das antigas por-época) e devolve o rent ao operador signatário.
-/// Guard: nunca fecha a conta VIVA do domínio (a única por-domínio, no PDA sem época).
+/// Closes an ORPHAN `round` account (from the old per-epoch ones) and returns the rent to the signing operator.
+/// Guard: never closes the LIVE account of the domain (the only per-domain one, in the epoch-less PDA).
 fn close_round(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     let iter = &mut accounts.iter();
-    let operator = next_account_info(iter)?; // signer, recebe o rent
+    let operator = next_account_info(iter)?; // signer, receives the rent
     let config_info = next_account_info(iter)?;
     let round_info = next_account_info(iter)?;
 
@@ -375,15 +375,15 @@ fn close_round(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
 
     ensure(round_info.owner == program_id, ProgramError::IncorrectProgramId)?;
     let round: PriceRound = load_streaming(round_info)?;
-    // a conta viva do domínio fica no PDA SEM época — protegida; só fechamos as órfãs.
+    // the live account of the domain stays in the epoch-LESS PDA — protected; we only close the orphans.
     let (live, _) = price_round_pda(program_id, round.domain);
     ensure(*round_info.key != live, custom(ERR_ROUND_LIVE))?;
 
     close_round_account(round_info, operator)
 }
 
-/// Fecha `acc` (owned pelo programa): manda TODOS os lamports a `dest` e zera os dados.
-/// A runtime coleta contas com 0 lamports ao fim da tx. (Mesmo padrão seguro do vault.)
+/// Closes `acc` (owned by the program): sends ALL lamports to `dest` and zeroes the data.
+/// The runtime collects accounts with 0 lamports at the end of the tx. (Same safe pattern as the vault.)
 fn close_round_account(acc: &AccountInfo, dest: &AccountInfo) -> ProgramResult {
     let mut acc_lamports = acc.try_borrow_mut_lamports()?;
     let mut dest_lamports = dest.try_borrow_mut_lamports()?;
@@ -474,7 +474,7 @@ fn submit_price(
     ensure(*igp_program_info.key == config.igp_program, custom(ERR_BAD_IGP))?;
     ensure(*igp_info.key == config.igp, custom(ERR_BAD_IGP))?;
 
-    // faixa do multisig — sem ela o domínio está travado
+    // multisig bounds — without them the domain is locked
     ensure(domain_info.owner == program_id, custom(ERR_NO_BOUNDS))?;
     let mut domain_state: DomainState = load_streaming(domain_info)?;
     ensure(domain_state.domain == domain, ProgramError::InvalidSeeds)?;
@@ -492,7 +492,7 @@ fn submit_price(
     ensure(*round_info.key == expected_round, ProgramError::InvalidSeeds)?;
 
     let mut round: PriceRound = if round_info.data_is_empty() {
-        // 1ª vez para o domínio: cria a conta única (rent pago só aqui, reaproveitado sempre).
+        // 1st time for the domain: creates the unique account (rent paid only here, reused always).
         create_pda(
             operator,
             round_info,
@@ -520,8 +520,8 @@ fn submit_price(
         load_streaming(round_info)?
     };
 
-    // Nova época → reseta a janela na MESMA conta (sem criar PDA novo). O relógio on-chain só
-    // avança, então round.epoch nunca fica à frente de `epoch` (defensivo contra isso).
+    // New epoch → resets the window in the SAME account (without creating a new PDA). The on-chain clock only
+    // advances, so round.epoch never gets ahead of `epoch` (defensive against that).
     if round.epoch < epoch {
         round.epoch = epoch;
         round.submissions.clear();
@@ -540,7 +540,7 @@ fn submit_price(
         return store(round_info, &round);
     }
 
-    // ---- quórum: mediana campo a campo ----
+    // ---- quorum: field-by-field median ----
     let mut rates: Vec<u128> = round.submissions.iter().map(|(_, r, _)| *r).collect();
     let mut gases: Vec<u128> = round.submissions.iter().map(|(_, _, g)| *g).collect();
     let median_rate = lower_median(&mut rates);
@@ -601,7 +601,7 @@ fn cpi_set_gas_oracle<'a>(
     let payload = borsh::to_vec(&configs).map_err(|_| ProgramError::InvalidInstructionData)?;
     let instruction = SolInstruction {
         program_id: config.igp_program,
-        // accounts do IGP real: [0 system, 1 igp w, 2 owner signer]
+        // accounts of the real IGP: [0 system, 1 igp w, 2 owner signer]
         accounts: vec![
             AccountMeta::new_readonly(system_program::id(), false),
             AccountMeta::new(*igp_info.key, false),
@@ -699,7 +699,7 @@ fn set_operators(
     })
 }
 
-/// [multisig s, config w] + mutação validada
+/// [multisig s, config w] + validated mutation
 fn admin_config<F>(program_id: &Pubkey, accounts: &[AccountInfo], mutate: F) -> ProgramResult
 where
     F: FnOnce(&mut Config) -> ProgramResult,
@@ -763,7 +763,7 @@ fn force_set(
     )
 }
 
-/// CPI administrativa (variantes 5 e 7): [0 igp w, 1 owner=config PDA signer]
+/// administrative CPI (variants 5 and 7): [0 igp w, 1 owner=config PDA signer]
 fn igp_admin_cpi(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

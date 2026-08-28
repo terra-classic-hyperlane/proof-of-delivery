@@ -4,8 +4,8 @@ pragma solidity ^0.8.22;
 import {Test} from "forge-std/Test.sol";
 import {GasOracleGovernor, IStorageGasOracle} from "../src/GasOracleGovernor.sol";
 
-/// Mock do TerraClassicOracle real: setRemoteGasData FLAT (selector 0x666af432,
-/// como no bytecode on-chain) + Ownable de passo único.
+/// Mock of the real TerraClassicOracle: setRemoteGasData FLAT (selector 0x666af432,
+/// as in the on-chain bytecode) + single-step Ownable.
 contract MockStorageGasOracle {
     address public owner;
     mapping(uint32 => uint128) public rates;
@@ -66,17 +66,17 @@ contract GasOracleGovernorTest is Test {
             EPOCH,
             DELTA_BPS
         );
-        // posse do oracle → governor (checklist da spec §13)
+        // oracle ownership → governor (spec checklist §13)
         oracle.transferOwnership(address(governor));
 
-        // faixa definida pelo multisig
+        // bounds set by the multisig
         vm.prank(multisig);
         governor.setBounds(
             DOMAIN,
             GasOracleGovernor.Bounds(10, 1_000, 1, 10_000, true)
         );
 
-        vm.warp(1_700_000_000); // timestamp realista
+        vm.warp(1_700_000_000); // realistic timestamp
     }
 
     function _submit(address op, uint128 rate, uint128 gas) internal {
@@ -130,7 +130,7 @@ contract GasOracleGovernorTest is Test {
         _submit(opC, 200, 20);
 
         (uint128 rate, uint128 gas) = oracle.get(DOMAIN);
-        assertEq(rate, 200); // mediana {100,200,300}
+        assertEq(rate, 200); // median {100,200,300}
         assertEq(gas, 20);
     }
 
@@ -138,13 +138,13 @@ contract GasOracleGovernorTest is Test {
         _submit(opA, 100, 10);
         _submit(opB, 200, 40);
         (uint128 rate, uint128 gas) = oracle.get(DOMAIN);
-        assertEq(rate, 100); // menor dos centrais — na dúvida cobra menos
+        assertEq(rate, 100); // lower of the central values — when in doubt, charge less
         assertEq(gas, 10);
     }
 
     function test_epoch_already_applied_rejects() public {
         _submit(opA, 100, 10);
-        _submit(opB, 100, 10); // aplica
+        _submit(opB, 100, 10); // applies
 
         uint256 epoch = governor.currentEpoch();
         vm.prank(opC);
@@ -155,11 +155,11 @@ contract GasOracleGovernorTest is Test {
     }
 
     function test_delta_exceeded_blocks_then_within_passes() public {
-        // época 1: base 100
+        // epoch 1: base 100
         _submit(opA, 100, 100);
         _submit(opB, 100, 100);
 
-        // época 2: salto de 30% > 20% → bloqueia na submissão que fecharia o quórum
+        // epoch 2: 30% jump > 20% → blocks on the submission that would close the quorum
         vm.warp(block.timestamp + EPOCH);
         _submit(opA, 130, 100);
         vm.prank(opB);
@@ -174,7 +174,7 @@ contract GasOracleGovernorTest is Test {
         );
         governor.submitPrice(DOMAIN, 130, 100);
 
-        // 19% passa (opA sobrescreve a própria submissão)
+        // 19% passes (opA overwrites its own submission)
         _submit(opA, 119, 100);
         _submit(opB, 119, 100);
         (uint128 rate, ) = oracle.get(DOMAIN);
@@ -183,7 +183,7 @@ contract GasOracleGovernorTest is Test {
 
     function test_operator_overwrites_own_submission() public {
         _submit(opA, 100, 10);
-        _submit(opA, 150, 15); // sobrescreve, não fecha quórum
+        _submit(opA, 150, 15); // overwrites, does not close quorum
         (uint128 rate, ) = oracle.get(DOMAIN);
         assertEq(rate, 0);
         assertEq(governor.submitterCount(DOMAIN, governor.currentEpoch()), 1);
@@ -198,11 +198,11 @@ contract GasOracleGovernorTest is Test {
         vm.warp(block.timestamp + EPOCH);
         _submit(opB, 100, 10);
         (uint128 rate, ) = oracle.get(DOMAIN);
-        assertEq(rate, 0); // 1 submissão em cada época — nenhum quórum
+        assertEq(rate, 0); // 1 submission in each epoch — no quorum
     }
 
     function test_admin_is_owner_only() public {
-        vm.startPrank(opA); // operador NÃO é multisig
+        vm.startPrank(opA); // operator is NOT multisig
         vm.expectRevert(GasOracleGovernor.NotOwner.selector);
         governor.setQuorum(1);
         vm.expectRevert(GasOracleGovernor.NotOwner.selector);

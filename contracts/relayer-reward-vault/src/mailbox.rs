@@ -1,13 +1,13 @@
-//! Prova de entrega: leitura BRUTA do storage do hpl-mailbox.
+//! Delivery proof: RAW read of the hpl-mailbox storage.
 //!
-//! O Mailbox grava `DELIVERIES: Map<Vec<u8>, Delivery>` (cw-storage-plus). A chave
-//! bruta de um `Map` com namespace `"deliveries"` é:
+//! The Mailbox writes `DELIVERIES: Map<Vec<u8>, Delivery>` (cw-storage-plus). The raw
+//! key of a `Map` with namespace `"deliveries"` is:
 //!
 //!   `u16_be(len("deliveries")) + b"deliveries" + message_id`
 //!    = `[0x00, 0x0A] + b"deliveries" + 32 bytes`
 //!
-//! e o valor é o JSON de `Delivery { sender: Addr, block_number: u64 }`.
-//! Formato CONFIRMADO contra o contrato em produção (code_id 11371) — ver README.
+//! and the value is the JSON of `Delivery { sender: Addr, block_number: u64 }`.
+//! Format CONFIRMED against the contract in production (code_id 11371) — see README.
 
 use cosmwasm_std::{Addr, QuerierWrapper};
 use serde::Deserialize;
@@ -16,10 +16,10 @@ use crate::error::ContractError;
 
 pub const DELIVERIES_NAMESPACE: &[u8] = b"deliveries";
 
-/// Espelho ESTRITO do `Delivery` do hpl-mailbox. `deny_unknown_fields` + campos
-/// obrigatórios: se um migrate acrescentar, remover ou renomear campos, o parse
-/// falha e o vault erra com `MailboxLayoutMismatch` — nunca paga com base em dado
-/// que não entende (spec §06).
+/// STRICT mirror of hpl-mailbox's `Delivery`. `deny_unknown_fields` + required
+/// fields: if a migrate adds, removes or renames fields, the parse
+/// fails and the vault errors with `MailboxLayoutMismatch` — it never pays based on data
+/// it does not understand (spec §06).
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Delivery {
@@ -27,7 +27,7 @@ pub struct Delivery {
     pub block_number: u64,
 }
 
-/// Chave bruta da entrada de `message_id` no DELIVERIES do Mailbox.
+/// Raw key of the `message_id` entry in the Mailbox's DELIVERIES.
 pub fn deliveries_key(message_id: &[u8]) -> Vec<u8> {
     let mut key = Vec::with_capacity(2 + DELIVERIES_NAMESPACE.len() + message_id.len());
     key.extend_from_slice(&(DELIVERIES_NAMESPACE.len() as u16).to_be_bytes());
@@ -36,10 +36,10 @@ pub fn deliveries_key(message_id: &[u8]) -> Vec<u8> {
     key
 }
 
-/// Lê a entrega de `message_id` direto do storage do Mailbox.
-/// - `Ok(None)`               → mensagem não entregue (chave ausente)
-/// - `Ok(Some(delivery))`     → entregue; `sender` é o executor
-/// - `Err(MailboxLayoutMismatch)` → chave existe mas o valor não parseia (migrate?)
+/// Reads the delivery of `message_id` directly from the Mailbox storage.
+/// - `Ok(None)`               → message not delivered (key absent)
+/// - `Ok(Some(delivery))`     → delivered; `sender` is the executor
+/// - `Err(MailboxLayoutMismatch)` → key exists but the value does not parse (migrate?)
 pub fn load_delivery(
     querier: &QuerierWrapper,
     mailbox: &Addr,
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn deliveries_key_matches_mainnet_layout() {
-        // [0x00, 0x0A] + b"deliveries" + message_id — igual ao dump de mainnet.
+        // [0x00, 0x0A] + b"deliveries" + message_id — same as the mainnet dump.
         let id = [0xAB_u8; 32];
         let key = deliveries_key(&id);
         assert_eq!(&key[..2], &[0x00, 0x0A]);
@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn strict_parse_accepts_production_shape() {
-        // Valor real observado em mainnet (message d039daa1…4f04).
+        // Real value observed on mainnet (message d039daa1…4f04).
         let raw = br#"{"sender":"terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp","block_number":29422362}"#;
         let d: Delivery = cosmwasm_std::from_json(raw.as_slice()).unwrap();
         assert_eq!(d.sender.as_str(), "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp");

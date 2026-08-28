@@ -1,18 +1,18 @@
-//! Recibo trustless na Solana — sentido **Solana→TC**, SEM keeper.
+//! Trustless receipt on Solana — direction **Solana→TC**, WITHOUT a keeper.
 //!
-//! O `pod` é um **recipient** Hyperlane que RECEBE o recibo (mensagem que o vault
-//! do TC despachou de volta depois de provar a entrega Solana→TC) e paga SOL ao
-//! operador. Quem entrega o recibo é o **relayer nativo**, sem alteração.
+//! The `pod` is a Hyperlane **recipient** that RECEIVES the receipt (message that the TC
+//! vault dispatched back after proving the Solana→TC delivery) and pays SOL to the
+//! operator. The one that delivers the receipt is the **native relayer**, unchanged.
 //!
-//! Como o Mailbox nativo, ao chamar `handle`, NÃO passa um payer (só antepõe o
-//! `process_authority`), o `handle`:
-//!   - não pode criar contas (não há quem pague o rent) → o pagamento vai para a
-//!     PDA `operator_sol(index)`, que é DERIVÁVEL só a partir da mensagem (o índice
-//!     está no corpo do recibo). O operador saca depois via `withdraw_operator_sol`.
-//!   - não deduplica por id → a idempotência mora no `send_receipt` do TC (o
-//!     destino que emite o recibo). O Mailbox já garante entrega única por mensagem.
+//! Since the native Mailbox, when calling `handle`, does NOT pass a payer (it only prepends the
+//! `process_authority`), `handle`:
+//!   - cannot create accounts (there is no one to pay the rent) → the payment goes to the
+//!     `operator_sol(index)` PDA, which is DERIVABLE only from the message (the index
+//!     is in the receipt body). The operator withdraws later via `withdraw_operator_sol`.
+//!   - does not dedup by id → idempotency lives in the TC `send_receipt` (the
+//!     destination that emits the receipt). The Mailbox already guarantees a single delivery per message.
 //!
-//! Este programa NÃO toca no Mailbox, ISM, IGP ou warp nativos.
+//! This program does NOT touch the native Mailbox, ISM, IGP, or warp.
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
@@ -25,22 +25,22 @@ use solana_program::{
 
 use crate::{create_pda, custom, ensure, load_streaming, Config, SEED_PREFIX, SEED_SEP};
 
-// ---- endereços de produção (Solana mainnet) ----
-/// Mailbox Sealevel em produção.
+// ---- production addresses (Solana mainnet) ----
+/// Sealevel Mailbox in production.
 pub const MAILBOX_PROGRAM: Pubkey =
     solana_program::pubkey!("E588QtVUvresuXq2KoNEwAmoifCzYGpRBdHByN9KQMbi");
-/// ISM do warp sintético IGORFAKE (valida mensagens vindas do TC).
+/// ISM of the IGORFAKE synthetic warp (validates messages coming from TC).
 pub const WARP_ISM: Pubkey = solana_program::pubkey!("4MzF7HCfxuwj4EFHqZSEpvkcZZvv1mF37DP4pDHwR5VQ");
-/// Domínio local (Solana).
+/// Local domain (Solana).
 pub const SOLANA_DOMAIN: u32 = 1399811149;
 
-// ---- discriminadores da interface MessageRecipient (hyperlane) ----
+// ---- discriminators of the MessageRecipient interface (hyperlane) ----
 pub const HANDLE_DISC: [u8; 8] = [33, 210, 5, 66, 196, 212, 239, 142];
 pub const ISM_DISC: [u8; 8] = [45, 18, 245, 87, 234, 46, 246, 15];
 pub const ISM_METAS_DISC: [u8; 8] = [190, 214, 218, 129, 67, 97, 4, 76];
 pub const HANDLE_METAS_DISC: [u8; 8] = [194, 141, 30, 82, 241, 41, 169, 52];
 
-// ---- erros ----
+// ---- errors ----
 pub const ERR_NOT_PROCESS_AUTH: u32 = 200;
 pub const ERR_UNTRUSTED_ROUTER: u32 = 201;
 pub const ERR_MALFORMED_RECEIPT: u32 = 202;
@@ -49,21 +49,21 @@ pub const ERR_UNKNOWN_EXECUTOR: u32 = 206;
 pub const ERR_INSUFFICIENT_BALANCE: u32 = 209;
 
 // ---- PDAs ----
-/// operador (índice) → pubkey de pagamento na Solana; ACUMULA o SOL a sacar.
+/// operator (index) → payment pubkey on Solana; ACCUMULATES the SOL to withdraw.
 pub fn operator_sol_pda(program_id: &Pubkey, index: u32) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_SEP, b"opsol", SEED_SEP, &index.to_le_bytes()],
         program_id,
     )
 }
-/// reverse-lookup: pubkey local (executor) → índice do operador.
+/// reverse-lookup: local pubkey (executor) → operator index.
 pub fn operator_of_local_pda(program_id: &Pubkey, local: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_SEP, b"oploc", SEED_SEP, local.as_ref()],
         program_id,
     )
 }
-/// router confiável (vault do TC) por domínio — 32 bytes (convenção Hyperlane).
+/// trusted router (TC vault) per domain — 32 bytes (Hyperlane convention).
 pub fn remote_router_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_SEP, b"rrout", SEED_SEP, &domain.to_le_bytes()],
@@ -85,9 +85,9 @@ pub struct Bytes32Val {
     pub value: [u8; 32],
 }
 
-// ---- formato de retorno da interface MessageRecipient (borsh) ----
-// espelha `serializable_account_meta::{SerializableAccountMeta, SimulationReturnData}`
-// do monorepo (mesmos campos, mesma ordem) — inlined p/ não puxar dependência.
+// ---- return format of the MessageRecipient interface (borsh) ----
+// mirrors `serializable_account_meta::{SerializableAccountMeta, SimulationReturnData}`
+// from the monorepo (same fields, same order) — inlined so as not to pull in the dependency.
 #[derive(BorshSerialize)]
 struct SerAccountMeta {
     pubkey: Pubkey,
@@ -97,7 +97,7 @@ struct SerAccountMeta {
 #[derive(BorshSerialize)]
 struct SimReturn {
     metas: Vec<SerAccountMeta>,
-    /// workaround do truncamento de zeros à direita em return_data simulado.
+    /// workaround for the truncation of trailing zeros in simulated return_data.
     trailing: u8,
 }
 impl SimReturn {
@@ -111,13 +111,13 @@ impl SimReturn {
     }
 }
 
-/// domínio de origem da msg Hyperlane: version(1)+nonce(4) → origin em [5..9].
+/// origin domain of the Hyperlane msg: version(1)+nonce(4) → origin at [5..9].
 pub fn origin_of(msg: &[u8]) -> Result<u32, ProgramError> {
     ensure(msg.len() >= 9, ProgramError::InvalidInstructionData)?;
     Ok(u32::from_be_bytes([msg[5], msg[6], msg[7], msg[8]]))
 }
 
-/// É uma instrução da interface MessageRecipient? (o Mailbox chama assim.)
+/// Is it a MessageRecipient interface instruction? (the Mailbox calls this way.)
 pub fn recipient_discriminator(data: &[u8]) -> Option<[u8; 8]> {
     if data.len() >= 8 {
         let d: [u8; 8] = data[0..8].try_into().unwrap();
@@ -129,14 +129,14 @@ pub fn recipient_discriminator(data: &[u8]) -> Option<[u8; 8]> {
 }
 
 // ===========================================================================
-// handle — o Mailbox nativo entrega o recibo; pagamos SOL (creditamos a PDA)
+// handle — the native Mailbox delivers the receipt; we pay SOL (credit the PDA)
 // ===========================================================================
-// Contas (o Mailbox antepõe o process_authority; o resto vem do HandleAccountMetas):
-//  0 process_authority (signer, PDA do Mailbox p/ este recipient)
-//  1 config (w) — o pool
-//  2 router PDA do `origin` (ro) — confere sender == router (vault do TC)
-//  3 reward PDA do `origin` (ro) — lamports por entrega
-//  4.. para cada (id,index) no corpo: operator_sol PDA(index) (w) — recebe o SOL
+// Accounts (the Mailbox prepends the process_authority; the rest comes from HandleAccountMetas):
+//  0 process_authority (signer, Mailbox PDA for this recipient)
+//  1 config (w) — the pool
+//  2 router PDA of `origin` (ro) — checks sender == router (TC vault)
+//  3 reward PDA of `origin` (ro) — lamports per delivery
+//  4.. for each (id,index) in the body: operator_sol PDA(index) (w) — receives the SOL
 pub fn handle(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -146,7 +146,7 @@ pub fn handle(
 ) -> Result<(), ProgramError> {
     let iter = &mut accounts.iter();
     let process_auth = next_account_info(iter)?;
-    // só o Mailbox (via sua process authority p/ este recipient) pode chamar
+    // only the Mailbox (via its process authority for this recipient) may call
     let (expected_auth, _) = Pubkey::find_program_address(
         &[b"hyperlane", b"-", b"process_authority", b"-", program_id.as_ref()],
         &MAILBOX_PROGRAM,
@@ -176,7 +176,7 @@ pub fn handle(
     let rent_floor = Rent::get()?.minimum_balance(config_info.data_len());
     for chunk in body.chunks(36) {
         let index = u32::from_be_bytes([chunk[32], chunk[33], chunk[34], chunk[35]]);
-        // PDA do operador N (derivável do índice) — recebe o crédito em lamports
+        // PDA of operator N (derivable from the index) — receives the credit in lamports
         let opsol_info = next_account_info(iter)?;
         let (exp_opsol, _) = operator_sol_pda(program_id, index);
         ensure(
@@ -188,7 +188,7 @@ pub fn handle(
         }
         let pool_avail = config_info.lamports().saturating_sub(rent_floor);
         if reward > pool_avail {
-            continue; // pool sem fundo — pula (semear o pool)
+            continue; // pool with no funds — skip (seed the pool)
         }
         **config_info.try_borrow_mut_lamports()? -= reward;
         **opsol_info.try_borrow_mut_lamports()? += reward;
@@ -196,24 +196,24 @@ pub fn handle(
     Ok(())
 }
 
-/// Responde a query InterchainSecurityModule do Mailbox.
-/// O Mailbox lê como `Option::<Pubkey>::try_from_slice` (processor.rs) → devolvemos
-/// `Some(WARP_ISM)` em borsh (33 bytes: [1] + pubkey).
+/// Responds to the Mailbox's InterchainSecurityModule query.
+/// The Mailbox reads it as `Option::<Pubkey>::try_from_slice` (processor.rs) → we return
+/// `Some(WARP_ISM)` in borsh (33 bytes: [1] + pubkey).
 pub fn ism_response() -> ProgramResult {
     let data = borsh::to_vec(&Some(WARP_ISM))?;
     solana_program::program::set_return_data(&data);
     Ok(())
 }
 
-/// IsmAccountMetas: nosso ISM é constante (não lê conta) → vec vazio.
+/// IsmAccountMetas: our ISM is constant (does not read an account) → empty vec.
 pub fn ism_account_metas() -> ProgramResult {
     SimReturn::new(vec![]).emit()
 }
 
-/// HandleAccountMetas: as contas que `handle` usa (após o process_authority que o
-/// Mailbox antepõe), TODAS derivadas só da mensagem (por isso o pagamento vai p/ a
-/// PDA operator_sol(index), e não p/ uma carteira externa que o relayer não teria
-/// como descobrir ao simular).
+/// HandleAccountMetas: the accounts that `handle` uses (after the process_authority that the
+/// Mailbox prepends), ALL derived only from the message (that is why the payment goes to the
+/// operator_sol(index) PDA, and not to an external wallet that the relayer would have
+/// no way of discovering when simulating).
 pub fn handle_account_metas(program_id: &Pubkey, origin: u32, body: &[u8]) -> ProgramResult {
     ensure(!body.is_empty() && body.len() % 36 == 0, custom(ERR_MALFORMED_RECEIPT))?;
     let (config, _) = crate::config_pda(program_id);
@@ -233,9 +233,9 @@ pub fn handle_account_metas(program_id: &Pubkey, origin: u32, body: &[u8]) -> Pr
 }
 
 // ===========================================================================
-// withdraw_operator_sol — o operador saca o SOL acumulado na sua PDA
+// withdraw_operator_sol — the operator withdraws the SOL accumulated in its PDA
 // ===========================================================================
-/// [signer(payout) w, opsol PDA(index) w] — o signer TEM de ser o pubkey registrado.
+/// [signer(payout) w, opsol PDA(index) w] — the signer MUST be the registered pubkey.
 pub fn withdraw_operator_sol(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -253,7 +253,7 @@ pub fn withdraw_operator_sol(
     )?;
     let payout: PubkeyVal = load_streaming(opsol_info)?;
     ensure(payout.value == *signer.key, custom(ERR_UNKNOWN_EXECUTOR))?;
-    // só o excedente ao rent-exempt da própria PDA pode sair
+    // only the surplus above the PDA's own rent-exempt floor may leave
     let rent_floor = Rent::get()?.minimum_balance(opsol_info.data_len());
     let avail = opsol_info.lamports().saturating_sub(rent_floor);
     ensure(amount > 0 && amount <= avail, custom(ERR_INSUFFICIENT_BALANCE))?;
@@ -263,7 +263,7 @@ pub fn withdraw_operator_sol(
 }
 
 // ===========================================================================
-// Admin (registry) — gated por operador (config)
+// Admin (registry) — gated by operator (config)
 // ===========================================================================
 fn require_operator(config_info: &AccountInfo, signer: &AccountInfo, program_id: &Pubkey) -> ProgramResult {
     ensure(signer.is_signer, ProgramError::MissingRequiredSignature)?;

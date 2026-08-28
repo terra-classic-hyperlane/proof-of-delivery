@@ -1,13 +1,13 @@
-//! Mock do hyperlane-sealevel-igp para os testes do governor.
+//! Mock of the hyperlane-sealevel-igp for the governor tests.
 //!
-//! Espelha o que importa do programa real:
-//! - enum de instruções com os MESMOS índices borsh
+//! Mirrors what matters from the real program:
+//! - instruction enum with the SAME borsh indices
 //!   (TransferIgpOwnership=5 · SetIgpBeneficiary=7 · SetGasOracleConfigs=9);
-//! - layout de contas idêntico ao processor.rs real:
+//! - account layout identical to the real processor.rs:
 //!   5/7: [0 igp w, 1 owner signer] · 9: [0 system, 1 igp w, 2 owner signer];
-//! - `ensure_owner_signer`: o signer tem de ser o `owner` gravado no estado.
+//! - `ensure_owner_signer`: the signer must be the `owner` stored in the state.
 //!
-//! O estado do mock é próprio (o governor nunca lê o estado do IGP, só faz CPI).
+//! The mock's state is its own (the governor never reads the IGP state, only does CPI).
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -20,7 +20,7 @@ use solana_program::{
 #[cfg(not(feature = "no-entrypoint"))]
 solana_program::entrypoint!(process_instruction);
 
-// ---- tipos com o mesmo wire-format do programa real ----
+// ---- types with the same wire-format as the real program ----
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct RemoteGasData {
@@ -40,7 +40,7 @@ pub struct GasOracleConfig {
     pub gas_oracle: Option<GasOracle>,
 }
 
-// placeholders só para manter os índices das variantes não usadas
+// placeholders just to keep the indices of the unused variants
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct Unused;
 
@@ -59,7 +59,7 @@ pub enum Instruction {
     Claim,                                       // 10
 }
 
-/// Estado do IGP mockado (a conta é pré-populada pelos testes).
+/// State of the mocked IGP (the account is pre-populated by the tests).
 #[derive(BorshSerialize, BorshDeserialize, Debug, Default)]
 pub struct MockIgpState {
     pub owner: Option<Pubkey>,

@@ -45,9 +45,9 @@ pub fn instantiate(
         .add_attribute("igp", config.igp))
 }
 
-/// Resgate em lote, ATÔMICO. Para cada id: prova por raw query no Mailbox,
-/// autoria (`sender == info.sender`), janela, e não-duplicidade. Grava o registro
-/// (effects) ANTES do BankMsg e checa a solvência do pool contra o total do lote.
+/// Batch claim, ATOMIC. For each id: proof via raw query on the Mailbox,
+/// authorship (`sender == info.sender`), window, and non-duplication. Writes the record
+/// (effects) BEFORE the BankMsg and checks pool solvency against the batch total.
 pub fn claim(
     deps: DepsMut,
     env: Env,
@@ -58,8 +58,8 @@ pub fn claim(
     ensure!(!config.paused, ContractError::Paused {});
     ensure!(!message_ids.is_empty(), ContractError::EmptyBatch {});
 
-    // duplicata dentro do próprio lote também é rejeitada (o segundo save passaria
-    // pelo CLAIMED.has feito antes — por isso o guard explícito).
+    // a duplicate within the batch itself is also rejected (the second save would pass
+    // the CLAIMED.has done earlier — hence the explicit guard).
     let mut seen: BTreeSet<Vec<u8>> = BTreeSet::new();
 
     let mut events_ids: Vec<String> = Vec::with_capacity(message_ids.len());
@@ -121,8 +121,8 @@ pub fn claim(
         .checked_mul(count)
         .map_err(cosmwasm_std::StdError::overflow)?;
 
-    // Solvência: o pool (saldo próprio) precisa cobrir o lote inteiro. O Sweep do
-    // IGP pode ir na MESMA transação, antes do Claim, para engordar o saldo.
+    // Solvency: the pool (own balance) must cover the entire batch. The IGP Sweep
+    // can go in the SAME transaction, before the Claim, to fatten the balance.
     let pool = deps
         .querier
         .query_balance(&env.contract.address, &config.denom)?;
@@ -157,8 +157,8 @@ pub fn claim(
         .add_attribute("message_ids", events_ids.join(",")))
 }
 
-/// Permissionless: manda o vault chamar `claim()` no IGP. O IGP exige que o caller
-/// seja o beneficiary — que é ESTE contrato — e transfere todo o saldo para cá.
+/// Permissionless: makes the vault call `claim()` on the IGP. The IGP requires the caller
+/// to be the beneficiary — which is THIS contract — and transfers the entire balance here.
 pub fn sweep(deps: DepsMut, _env: Env, _info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
 
@@ -257,7 +257,7 @@ pub fn withdraw_surplus(
 }
 
 // ---------------------------------------------------------------------------
-// v2 — ClaimRemote (taxa de origem por entrega remota atestada)
+// v2 — ClaimRemote (origin fee per attested remote delivery)
 // ---------------------------------------------------------------------------
 
 pub fn set_remote_operators(
@@ -298,7 +298,7 @@ pub fn set_remote_binding(
                 !addr.is_empty() && addr.len() <= 100,
                 ContractError::Std(cosmwasm_std::StdError::generic_err("invalid remote address"))
             );
-            // EVM: normaliza p/ minúsculo; base58 (Solana) é case-sensitive
+            // EVM: normalize to lowercase; base58 (Solana) is case-sensitive
             let normalized = if addr.starts_with("0x") { addr.to_lowercase() } else { addr.clone() };
             REMOTE_BINDINGS.save(deps.storage, (&operator, domain), &normalized)?;
         }
@@ -330,8 +330,8 @@ pub fn set_remote_reward(
         .add_attribute("reward", reward))
 }
 
-/// Atesta entregas remotas e paga quando o quórum concorda. ATÔMICO como o
-/// `Claim`: id inválido/duplicado/já pago reverte o lote inteiro.
+/// Attests remote deliveries and pays when the quorum agrees. ATOMIC like
+/// `Claim`: an invalid/duplicated/already-paid id reverts the entire batch.
 pub fn attest_remote_delivery(
     deps: DepsMut,
     env: Env,
@@ -351,7 +351,7 @@ pub fn attest_remote_delivery(
         Some(a) => deps.api.addr_validate(&a)?,
         None => info.sender.clone(),
     };
-    // o executor precisa de vínculo p/ o domínio — é o elo de identidade
+    // the executor needs a binding for the domain — it is the identity link
     REMOTE_BINDINGS
         .may_load(deps.storage, (&executor, domain))?
         .ok_or_else(|| ContractError::NoBinding {
@@ -386,14 +386,14 @@ pub fn attest_remote_delivery(
         );
         atts.push((info.sender.clone(), executor.clone()));
 
-        // ANTI-AUTOPAGAMENTO: com quórum >= 2, atestações onde o atestador é o
-        // PRÓPRIO beneficiário não contam — exige `quorum` operadores independentes.
+        // ANTI-SELF-PAYMENT: with quorum >= 2, attestations where the attestor is the
+        // beneficiary ITSELF do not count — requires `quorum` independent operators.
         let agree = atts
             .iter()
             .filter(|(a, e)| *e == executor && !(rc.quorum >= 2 && *a == executor))
             .count() as u32;
         if agree >= rc.quorum {
-            // effects-first: marca pago ANTES do BankMsg
+            // effects-first: mark paid BEFORE the BankMsg
             REMOTE_CLAIMED.save(
                 deps.storage,
                 id.to_vec(),
@@ -455,10 +455,10 @@ pub fn attest_remote_delivery(
 }
 
 // ---------------------------------------------------------------------------
-// Fase 1 (recibo trustless) — registro de/para global de operadores + routers
+// Phase 1 (trustless receipt) — global operator + router mapping registry
 // ---------------------------------------------------------------------------
 
-/// Domínio DESTE vault (chain local). TC = 132556.
+/// Domain of THIS vault (local chain). TC = 132556.
 pub const LOCAL_DOMAIN: u32 = 132556;
 
 pub fn set_operator_address(
@@ -471,10 +471,10 @@ pub fn set_operator_address(
     let config = CONFIG.load(deps.storage)?;
     ensure!(info.sender == config.owner, ContractError::Unauthorized {});
 
-    // normaliza EVM p/ minúsculo; endereços de outras VMs são case-sensitive
+    // normalize EVM to lowercase; addresses from other VMs are case-sensitive
     let norm = |a: &String| if a.starts_with("0x") { a.to_lowercase() } else { a.clone() };
 
-    // remove o reverse-lookup antigo (se este é o domínio local e havia valor)
+    // remove the old reverse-lookup (if this is the local domain and there was a value)
     if domain == LOCAL_DOMAIN {
         if let Some(old) = OPERATOR_ADDR.may_load(deps.storage, (index, domain))? {
             OPERATOR_OF_LOCAL.remove(deps.storage, norm(&old));
@@ -528,7 +528,7 @@ pub fn set_remote_router(
 }
 
 // ---------------------------------------------------------------------------
-// Fase 2/3 — recibo trustless (papel DESTINO: send_receipt · ORIGEM: handle)
+// Phase 2/3 — trustless receipt (DESTINATION role: send_receipt · ORIGIN: handle)
 // ---------------------------------------------------------------------------
 
 fn keccak256(bz: &[u8]) -> Vec<u8> {
@@ -538,13 +538,13 @@ fn keccak256(bz: &[u8]) -> Vec<u8> {
     h.finalize().to_vec()
 }
 
-/// domínio de origem da msg Hyperlane: version(1)+nonce(4) → origin em [5..9].
+/// origin domain of the Hyperlane msg: version(1)+nonce(4) → origin at [5..9].
 fn origin_of(msg: &[u8]) -> Result<u32, ContractError> {
-    ensure!(msg.len() >= 9, ContractError::Std(cosmwasm_std::StdError::generic_err("msg curta")));
+    ensure!(msg.len() >= 9, ContractError::Std(cosmwasm_std::StdError::generic_err("msg too short")));
     Ok(u32::from_be_bytes([msg[5], msg[6], msg[7], msg[8]]))
 }
 
-/// PAPEL DESTINO: prova as entregas e despacha UM recibo ao vault de origem.
+/// DESTINATION ROLE: proves the deliveries and dispatches ONE receipt to the origin vault.
 pub fn send_receipt(
     deps: DepsMut,
     env: Env,
@@ -561,18 +561,18 @@ pub fn send_receipt(
     for m in &messages {
         let bytes = m.as_slice();
         ensure!(origin_of(bytes)? == origin, ContractError::Std(
-            cosmwasm_std::StdError::generic_err("origens misturadas")));
+            cosmwasm_std::StdError::generic_err("mixed origins")));
         let id = keccak256(bytes);
-        // idempotência no DESTINO: um id só gera recibo UMA vez. Já-enviados (nesta
-        // chamada ou em outra) são PULADOS — evita duplo-pagamento no lado que paga
-        // (essencial p/ Solana, que não deduplica no handle). Marcado na MESMA tx
-        // do dispatch: se o dispatch reverter, a marca também reverte (atômico).
+        // idempotency at the DESTINATION: an id generates a receipt only ONCE. Already-sent
+        // ones (in this call or another) are SKIPPED — avoids double-payment on the paying
+        // side (essential for Solana, which does not dedupe in handle). Marked in the SAME tx
+        // as the dispatch: if the dispatch reverts, the mark reverts too (atomic).
         if SENT_RECEIPT.may_load(deps.storage, id.to_vec())?.is_some() {
             continue;
         }
         let delivery = load_delivery(&deps.querier, &config.mailbox, &id)?
             .ok_or_else(|| ContractError::NotDelivered { id: hex(&id) })?;
-        // executor local = quem processou (delivery.sender)
+        // local executor = whoever processed (delivery.sender)
         let idx = OPERATOR_OF_LOCAL
             .may_load(deps.storage, delivery.sender.to_string())?
             .ok_or_else(|| ContractError::NoBinding { operator: delivery.sender.to_string(), domain: origin })?;
@@ -580,17 +580,17 @@ pub fn send_receipt(
         body.extend_from_slice(&id);
         body.extend_from_slice(&idx.to_be_bytes());
     }
-    // todos já haviam sido enviados → nada novo a despachar (não gasta gás à toa)
+    // all had already been sent → nothing new to dispatch (no wasted gas)
     ensure!(!body.is_empty(), ContractError::NothingNewToSend {});
     let router = REMOTE_ROUTER.may_load(deps.storage, origin)?
         .ok_or(ContractError::NoRemoteReward { domain: origin })?;
     let router_hex = HexBinary::from(::hex::decode(router.trim_start_matches("0x"))
         .map_err(|_| ContractError::Std(cosmwasm_std::StdError::generic_err("router hex")))?);
 
-    // dispatch no hpl-mailbox (fundos anexados pagam o hook/IGP — operador paga).
-    // Com `gas_limit`, o metadata do IGP (32B BE do gás + refund vazio → refund =
-    // este contrato, o pool) faz o recibo pagar só o GÁS REAL de entrega, e não a
-    // tarifa cheia de usuário do gas_for_domain.
+    // dispatch on hpl-mailbox (attached funds pay the hook/IGP — operator pays).
+    // With `gas_limit`, the IGP metadata (32B BE of gas + empty refund → refund =
+    // this contract, the pool) makes the receipt pay only the REAL delivery GAS, and not the
+    // full user tariff of gas_for_domain.
     let metadata = gas_limit.map(|g| HexBinary::from(g.to_be_bytes().to_vec()));
     #[derive(serde::Serialize)]
     struct DispatchMsg { dest_domain: u32, recipient_addr: HexBinary, msg_body: HexBinary, hook: Option<String>, metadata: Option<HexBinary> }
@@ -615,7 +615,7 @@ pub fn send_receipt(
         .add_attribute("count", messages.len().to_string()))
 }
 
-/// PAPEL ORIGEM: recebe o recibo do Mailbox e paga os operadores do registro local.
+/// ORIGIN ROLE: receives the receipt from the Mailbox and pays the operators from the local registry.
 pub fn handle(
     deps: DepsMut,
     env: Env,
@@ -623,9 +623,9 @@ pub fn handle(
     msg: HandleMsg,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
-    // SÓ o mailbox pode chamar handle
+    // ONLY the mailbox can call handle
     ensure!(info.sender == config.mailbox, ContractError::Unauthorized {});
-    // sender (dispatcher remoto) deve ser o router registrado do origin
+    // sender (remote dispatcher) must be the registered router of the origin
     let router = REMOTE_ROUTER.may_load(deps.storage, msg.origin)?
         .ok_or(ContractError::Unauthorized {})?;
     let sender_hex = format!("0x{}", hex(msg.sender.as_slice()));
@@ -641,7 +641,7 @@ pub fn handle(
         let id = &chunk[0..32];
         if REMOTE_CLAIMED.may_load(deps.storage, id.to_vec())?.is_some() { continue; }
         let idx = u32::from_be_bytes([chunk[32], chunk[33], chunk[34], chunk[35]]);
-        // paga o operador N pelo endereço no NOSSO domínio local
+        // pays operator N by the address in OUR local domain
         let payout = match OPERATOR_ADDR.may_load(deps.storage, (idx, LOCAL_DOMAIN))? {
             Some(a) => a, None => continue,
         };

@@ -1,4 +1,4 @@
-//! Testes funcionais do RelayerRewardVault com solana-program-test.
+//! Functional tests of the RelayerRewardVault with solana-program-test.
 
 use borsh::BorshDeserialize;
 use rrv::{
@@ -17,8 +17,8 @@ use solana_sdk::{
 };
 
 const EPOCH_SECS: u64 = 1_000;
-const REWARD: u64 = 1_000_000; // lamports por entrega
-const NOW: i64 = 10_000_000; // → época corrente 10_000
+const REWARD: u64 = 1_000_000; // lamports per delivery
+const NOW: i64 = 10_000_000; // → current epoch 10_000
 
 struct Env {
     ctx: ProgramTestContext,
@@ -32,7 +32,7 @@ async fn setup(quorum: u8) -> Env {
     let pt = ProgramTest::new("rrv", program_id, processor!(rrv::process_instruction));
     let mut ctx = pt.start_with_context().await;
 
-    // relógio determinístico
+    // deterministic clock
     let mut clock: Clock = ctx.banks_client.get_sysvar().await.unwrap();
     clock.unix_timestamp = NOW;
     ctx.set_sysvar(&clock);
@@ -40,7 +40,7 @@ async fn setup(quorum: u8) -> Env {
     let ops: Vec<Keypair> = (0..3).map(|_| Keypair::new()).collect();
     let (config, _) = config_pda(&program_id);
 
-    // financia os operadores
+    // funds the operators
     for op in &ops {
         transfer(&mut ctx, &op.pubkey(), 5_000_000_000).await;
     }
@@ -64,7 +64,7 @@ async fn setup(quorum: u8) -> Env {
     };
     send(&mut ctx, &[ix], &[]).await.unwrap();
 
-    // semeia o pool (como o Claim do IGP faria)
+    // seeds the pool (as the IGP Claim would)
     transfer(&mut ctx, &config, 100 * REWARD).await;
 
     Env {
@@ -185,7 +185,7 @@ async fn quorum_applies_credits() {
     let (s0, s1) = (env.ops[0].insecure_clone(), env.ops[1].insecure_clone());
     let ix = submit_report_ix(&env, &s0, &r);
     send(&mut env.ctx, &[ix], &[s0]).await.unwrap();
-    assert!(get_credit(&mut env, &op_a).await.is_none()); // abaixo do quórum
+    assert!(get_credit(&mut env, &op_a).await.is_none()); // below quorum
 
     let ix = submit_report_ix(&env, &s1, &r);
     send(&mut env.ctx, &[ix], &[s1]).await.unwrap();
@@ -202,7 +202,7 @@ async fn divergent_report_does_not_apply() {
     let mut env = setup(2).await;
     let op_a = env.ops[0].pubkey();
     let r1 = report(9_999, vec![(op_a, 3)]);
-    let r2 = report(9_999, vec![(op_a, 99)]); // divergente
+    let r2 = report(9_999, vec![(op_a, 99)]); // divergent
 
     let (s0, s1) = (env.ops[0].insecure_clone(), env.ops[1].insecure_clone());
     let ix = submit_report_ix(&env, &s0, &r1);
@@ -210,7 +210,7 @@ async fn divergent_report_does_not_apply() {
     let ix = submit_report_ix(&env, &s1, &r2);
     send(&mut env.ctx, &[ix], &[s1]).await.unwrap();
 
-    // 2 submissões, hashes diferentes → época NÃO fecha (travada p/ alarme)
+    // 2 submissions, different hashes → epoch does NOT close (locked for alarm)
     assert!(get_credit(&mut env, &op_a).await.is_none());
 }
 
@@ -220,14 +220,14 @@ async fn window_locked_by_first_submission() {
     let op_a = env.ops[0].pubkey();
     let r1 = report(9_999, vec![(op_a, 1)]);
     let mut r2 = r1.clone();
-    r2.window_end_slot = 999; // janela diferente
+    r2.window_end_slot = 999; // different window
 
     let (s0, s1) = (env.ops[0].insecure_clone(), env.ops[1].insecure_clone());
     let ix = submit_report_ix(&env, &s0, &r1);
     send(&mut env.ctx, &[ix], &[s0]).await.unwrap();
     let ix = submit_report_ix(&env, &s1, &r2);
     let err = send(&mut env.ctx, &[ix], &[s1]).await.unwrap_err();
-    assert!(err.contains("0x66"), "esperava ERR_WINDOW_MISMATCH(102=0x66): {err}");
+    assert!(err.contains("0x66"), "expected ERR_WINDOW_MISMATCH(102=0x66): {err}");
 }
 
 #[tokio::test]
@@ -236,24 +236,24 @@ async fn unsorted_credits_rejected() {
     let op_a = env.ops[0].pubkey();
     let op_b = env.ops[1].pubkey();
     let mut credits = sorted_pair(op_a, 1, op_b, 1);
-    credits.reverse(); // fora de ordem
+    credits.reverse(); // out of order
     let r = report(9_999, credits);
 
     let s0 = env.ops[0].insecure_clone();
     let ix = submit_report_ix(&env, &s0, &r);
     let err = send(&mut env.ctx, &[ix], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x67"), "esperava ERR_UNSORTED(103=0x67): {err}");
+    assert!(err.contains("0x67"), "expected ERR_UNSORTED(103=0x67): {err}");
 }
 
 #[tokio::test]
 async fn open_epoch_rejected() {
     let mut env = setup(2).await;
     let op_a = env.ops[0].pubkey();
-    let r = report(10_000, vec![(op_a, 1)]); // época CORRENTE (aberta)
+    let r = report(10_000, vec![(op_a, 1)]); // CURRENT epoch (open)
     let s0 = env.ops[0].insecure_clone();
     let ix = submit_report_ix(&env, &s0, &r);
     let err = send(&mut env.ctx, &[ix], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x68"), "esperava ERR_EPOCH_OPEN(104=0x68): {err}");
+    assert!(err.contains("0x68"), "expected ERR_EPOCH_OPEN(104=0x68): {err}");
 }
 
 #[tokio::test]
@@ -264,7 +264,7 @@ async fn non_operator_rejected() {
     let r = report(9_999, vec![(outsider.pubkey(), 1)]);
     let ix = submit_report_ix(&env, &outsider, &r);
     let err = send(&mut env.ctx, &[ix], &[outsider]).await.unwrap_err();
-    assert!(err.contains("0x64"), "esperava ERR_NOT_OPERATOR(100=0x64): {err}");
+    assert!(err.contains("0x64"), "expected ERR_NOT_OPERATOR(100=0x64): {err}");
 }
 
 #[tokio::test]
@@ -309,7 +309,7 @@ async fn withdraw_pays_and_respects_credit() {
         .lamports;
     assert_eq!(after - before, 2 * REWARD);
 
-    // segundo saque acima do crédito falha
+    // second withdrawal above the credit fails
     let wd2 = Instruction {
         program_id: env.program_id,
         accounts: vec![
@@ -320,7 +320,7 @@ async fn withdraw_pays_and_respects_credit() {
         data: borsh::to_vec(&RrvInstruction::Withdraw { amount: 1 }).unwrap(),
     };
     let err = send(&mut env.ctx, &[wd2], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x6b"), "esperava ERR_INSUFFICIENT_CREDIT(107=0x6b): {err}");
+    assert!(err.contains("0x6b"), "expected ERR_INSUFFICIENT_CREDIT(107=0x6b): {err}");
 }
 
 #[tokio::test]
@@ -350,18 +350,18 @@ async fn admin_proposal_pause_via_quorum() {
     let (s0, s1) = (env.ops[0].insecure_clone(), env.ops[1].insecure_clone());
     let ix = admin_ix(&s0);
     send(&mut env.ctx, &[ix], &[s0.insecure_clone()]).await.unwrap();
-    assert!(!get_config(&mut env).await.paused); // 1 aprovação < quórum
+    assert!(!get_config(&mut env).await.paused); // 1 approofl < quorum
 
     let ix = admin_ix(&s1);
     send(&mut env.ctx, &[ix], &[s1]).await.unwrap();
-    assert!(get_config(&mut env).await.paused); // quórum → executou
+    assert!(get_config(&mut env).await.paused); // quorum → executed
 
-    // pausado bloqueia relatórios
+    // paused blocks reports
     let op_a = env.ops[0].pubkey();
     let r = report(9_999, vec![(op_a, 1)]);
     let ix = submit_report_ix(&env, &s0, &r);
     let err = send(&mut env.ctx, &[ix], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x65"), "esperava ERR_PAUSED(101=0x65): {err}");
+    assert!(err.contains("0x65"), "expected ERR_PAUSED(101=0x65): {err}");
 }
 
 #[tokio::test]
@@ -397,13 +397,13 @@ async fn withdraw_surplus_enforces_destination_in_hash() {
     let ix = mk(&s0, treasury);
     send(&mut env.ctx, &[ix], &[s0]).await.unwrap();
 
-    // o executor tenta REDIRECIONAR para outra conta → o hash trava
+    // the executor tries to REDIRECT to another account → the hash locks it
     let attacker_dest = Pubkey::new_unique();
     let ix = mk(&s1, attacker_dest);
     let err = send(&mut env.ctx, &[ix], &[s1.insecure_clone()]).await.unwrap_err();
-    assert!(err.contains("0x6e"), "esperava ERR_BAD_DESTINATION(110=0x6e): {err}");
+    assert!(err.contains("0x6e"), "expected ERR_BAD_DESTINATION(110=0x6e): {err}");
 
-    // com o destino aprovado, executa
+    // with the approved destination, executes
     let ix = mk(&s1, treasury);
     send(&mut env.ctx, &[ix], &[s1]).await.unwrap();
     let bal = env
@@ -418,14 +418,14 @@ async fn withdraw_surplus_enforces_destination_in_hash() {
 }
 
 // ===========================================================================
-// v2 — créditos REMOTOS no relatório de época (ClaimRemote)
+// v2 — REMOTE credits in the epoch report (ClaimRemote)
 // ===========================================================================
 use rrv::{remote_binding_pda, remote_reward_pda};
 
 const DOM_TC: u32 = 132_556;
 const RREWARD: u64 = 499_000;
 
-/// aprova (quórum 1) uma AdminAction com contas extras
+/// approves (quorum 1) an AdminAction with extra accounts
 async fn admin_exec(env: &mut Env, action: AdminAction, nonce: u64, extras: Vec<AccountMeta>) {
     let envelope = AdminEnvelope { nonce, action };
     let (prop, _) = proposal_pda(&env.program_id, &envelope.hash());
@@ -471,7 +471,7 @@ async fn remote_credits_via_epoch_report() {
     )
     .await;
 
-    // relatório SÓ com créditos remotos (2 entregas no TC)
+    // report with ONLY remote credits (2 deliveries on TC)
     let mut r = report(9_990, vec![]);
     r.remote = vec![(DOM_TC, op_a, 2)];
     let (epoch_acc, _) = epoch_pda(&env.program_id, 9_990);
@@ -497,7 +497,7 @@ async fn remote_credits_via_epoch_report() {
 }
 
 #[tokio::test]
-async fn remote_sem_reward_ou_binding_rejeitado() {
+async fn remote_without_reward_or_binding_rejected() {
     let mut env = setup(1).await;
     let op_a = env.ops[0].pubkey();
     let (rw, _) = remote_reward_pda(&env.program_id, DOM_TC);
@@ -521,50 +521,50 @@ async fn remote_sem_reward_ou_binding_rejeitado() {
         ],
         data: borsh::to_vec(&RrvInstruction::SubmitEpochReport { report: r }).unwrap(),
     };
-    // sem reward PDA criado → ERR_NO_REMOTE_REWARD (113 = 0x71)
+    // no reward PDA created → ERR_NO_REMOTE_REWARD (113 = 0x71)
     let err = send(&mut env.ctx, &[ix], &[signer]).await.unwrap_err();
-    assert!(err.contains("0x71"), "esperava ERR_NO_REMOTE_REWARD: {err}");
+    assert!(err.contains("0x71"), "expected ERR_NO_REMOTE_REWARD: {err}");
 }
 
 // ===========================================================================
-// SEGURANÇA: guard de replay por bitmap no Config + close/refund do rent.
-// (mudança de 2026-08-20; "dinheiro de terceiros" — foco em não pagar 2×)
+// SECURITY: bitmap replay guard in Config + close/refund of rent.
+// (change of 2026-08-20; "third-party money" — focus on not paying 2×)
 // ===========================================================================
 
-/// Após aplicar (quórum), a conta de época é FECHADA e o rent volta ao operador.
+/// After applying (quorum), the epoch account is CLOSED and the rent returns to the operator.
 #[tokio::test]
 async fn epoch_account_closed_and_rent_refunded_on_apply() {
-    let mut env = setup(1).await; // quórum 1: cria+aplica+fecha numa tx
+    let mut env = setup(1).await; // quorum 1: creates+applies+closes in one tx
     let op_a = env.ops[0].pubkey();
     let (epoch_acc, _) = epoch_pda(&env.program_id, 9_999);
     let s0 = env.ops[0].insecure_clone();
 
-    // 1ª época: cria o PDA de crédito (rent que PERSISTE — legítimo) + a conta de
-    // época (rent que deve VOLTAR ao fechar).
+    // 1st epoch: creates the credit PDA (rent that PERSISTS — legitimate) + the epoch
+    // account (rent that must RETURN on close).
     let r1 = report(9_998, vec![(op_a, 2)]);
     let __ix_a = submit_report_ix(&env, &s0, &r1);
     send(&mut env.ctx, &[__ix_a], &[s0.insecure_clone()]).await.unwrap();
     assert!(env.ctx.banks_client.get_account(epoch_pda(&env.program_id, 9_998).0).await.unwrap().is_none(),
-        "a conta de época 1 deveria ter sido fechada");
+        "epoch 1 account should have been closed");
 
-    // 2ª época: o PDA de crédito JÁ existe → o único rent em jogo é o da conta de
-    // época, que deve ser devolvido. A queda de saldo tem de ser só a fee (~5000).
+    // 2nd epoch: the credit PDA ALREADY exists → the only rent at stake is that of the epoch
+    // account, which must be refunded. The balance drop must be only the fee (~5000).
     let bal_before = env.ctx.banks_client.get_balance(op_a).await.unwrap();
     let r2 = report(9_999, vec![(op_a, 2)]);
     let __ix_b = submit_report_ix(&env, &s0, &r2);
     send(&mut env.ctx, &[__ix_b], &[s0]).await.unwrap();
 
     assert!(env.ctx.banks_client.get_account(epoch_acc).await.unwrap().is_none(),
-        "a conta de época 2 deveria ter sido fechada");
+        "epoch 2 account should have been closed");
     assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 4 * REWARD);
     let bal_after = env.ctx.banks_client.get_balance(op_a).await.unwrap();
-    // se o rent da época (~2,4M) tivesse ficado preso, a queda seria enorme.
+    // if the epoch rent (~2.4M) had stayed stuck, the drop would be enormous.
     assert!(bal_before - bal_after < 50_000,
-        "rent da época não foi devolvido: perdeu {} lamports", bal_before - bal_after);
+        "epoch rent was not refunded: lost {} lamports", bal_before - bal_after);
 }
 
-/// CRÍTICO: re-submeter uma época JÁ PAGA é rejeitado — mesmo com a conta de
-/// coleta já fechada. Sem duplo-pagamento.
+/// CRITICAL: re-submitting an ALREADY-PAID epoch is rejected — even with the
+/// collection account already closed. No double-payment.
 #[tokio::test]
 async fn replay_after_close_is_rejected() {
     let mut env = setup(1).await;
@@ -572,64 +572,64 @@ async fn replay_after_close_is_rejected() {
     let s0 = env.ops[0].insecure_clone();
     let r = report(9_999, vec![(op_a, 2)]);
 
-    // 1ª aplicação: paga 2×REWARD e fecha a conta
+    // 1st application: pays 2×REWARD and closes the account
     let __ix_1 = submit_report_ix(&env, &s0, &r);
     send(&mut env.ctx, &[__ix_1], &[s0.insecure_clone()]).await.unwrap();
     assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 2 * REWARD);
 
-    // 2ª submissão da MESMA época → ERR_APPLIED (105 = 0x69), NÃO paga de novo
+    // 2nd submission of the SAME epoch → ERR_APPLIED (105 = 0x69), does NOT pay again
     let r2 = report(9_999, vec![(op_a, 2)]);
     let __ix_100 = submit_report_ix(&env, &s0, &r2);
     let err = send(&mut env.ctx, &[__ix_100], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x69"), "esperava ERR_APPLIED no replay: {err}");
-    // crédito inalterado (não dobrou)
+    assert!(err.contains("0x69"), "expected ERR_APPLIED on replay: {err}");
+    // credit unchanged (did not double)
     assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 2 * REWARD);
 }
 
-/// Época < base (fora da janela por trás) é rejeitada com ERR_EPOCH_TOO_OLD(115=0x73).
+/// Epoch < base (out of the window behind) is rejected with ERR_EPOCH_TOO_OLD(115=0x73).
 #[tokio::test]
 async fn epoch_below_base_rejected() {
     let mut env = setup(1).await;
     let op_a = env.ops[0].pubkey();
     let s0 = env.ops[0].insecure_clone();
-    // base = 10_000 - 256 = 9_744; época 9_000 << base
+    // base = 10_000 - 256 = 9_744; epoch 9_000 << base
     let r = report(9_000, vec![(op_a, 1)]);
     let __ix_101 = submit_report_ix(&env, &s0, &r);
     let err = send(&mut env.ctx, &[__ix_101], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x73"), "esperava ERR_EPOCH_TOO_OLD: {err}");
+    assert!(err.contains("0x73"), "expected ERR_EPOCH_TOO_OLD: {err}");
 }
 
-/// Fora-de-ordem DENTRO da janela é aceito (a vantagem sobre marca monotônica).
+/// Out-of-order WITHIN the window is accepted (the advantage over a monotonic marker).
 #[tokio::test]
 async fn out_of_order_within_window_accepted() {
     let mut env = setup(1).await;
     let op_a = env.ops[0].pubkey();
     let s0 = env.ops[0].insecure_clone();
-    // aplica 9_998 e depois 9_990 (mais antiga, mas dentro da janela)
+    // applies 9_998 and then 9_990 (older, but within the window)
     let r_new = report(9_998, vec![(op_a, 1)]);
     let __ix_2 = submit_report_ix(&env, &s0, &r_new);
     send(&mut env.ctx, &[__ix_2], &[s0.insecure_clone()]).await.unwrap();
     let r_old = report(9_990, vec![(op_a, 1)]);
     let __ix_3 = submit_report_ix(&env, &s0, &r_old);
     send(&mut env.ctx, &[__ix_3], &[s0]).await.unwrap();
-    // ambas creditadas
+    // both credited
     assert_eq!(get_credit(&mut env, &op_a).await.unwrap().credited, 2 * REWARD);
 }
 
-/// SetAppliedBase é MONOTÔNICO: retroceder é rejeitado (117=0x75); avançar OK,
-/// e o bitmap desliza preservando os bits (uma época recém-paga não reabre).
+/// SetAppliedBase is MONOTONIC: going back is rejected (117=0x75); advancing is OK,
+/// and the bitmap slides preserving the bits (a just-paid epoch does not reopen).
 #[tokio::test]
 async fn set_applied_base_is_monotonic_and_shifts_bitmap() {
     let mut env = setup(1).await;
     let op_a = env.ops[0].pubkey();
     let s0 = env.ops[0].insecure_clone();
 
-    // paga a época 9_800 (base atual 9_744 → offset 56)
+    // pays epoch 9_800 (current base 9_744 → offset 56)
     let r = report(9_800, vec![(op_a, 1)]);
     let __ix_4 = submit_report_ix(&env, &s0, &r);
     send(&mut env.ctx, &[__ix_4], &[s0.insecure_clone()]).await.unwrap();
 
-    // helper p/ admin action SetAppliedBase (captura campos p/ não emprestar env)
+    // helper for the SetAppliedBase admin action (captures fields so as not to borrow env)
     let (program_id, config) = (env.program_id, env.config);
     let mk = move |op: &Keypair, base: u64| {
         let envelope = AdminEnvelope { nonce: base, action: AdminAction::SetAppliedBase(base) };
@@ -646,18 +646,18 @@ async fn set_applied_base_is_monotonic_and_shifts_bitmap() {
         }
     };
 
-    // avança a base p/ 9_790 (desliza 46 bits): a época 9_800 continua marcada
+    // advances the base to 9_790 (slides 46 bits): epoch 9_800 stays marked
     let ix = mk(&s0, 9_790);
     send(&mut env.ctx, &[ix], &[s0.insecure_clone()]).await.unwrap();
     assert_eq!(get_config(&mut env).await.applied_base, 9_790);
-    // re-submeter 9_800 ainda é replay (bit preservado no slide) → ERR_APPLIED
+    // re-submitting 9_800 is still a replay (bit preserved in the slide) → ERR_APPLIED
     let r2 = report(9_800, vec![(op_a, 1)]);
     let __ix_102 = submit_report_ix(&env, &s0, &r2);
     let err = send(&mut env.ctx, &[__ix_102], &[s0.insecure_clone()]).await.unwrap_err();
-    assert!(err.contains("0x69"), "bit deveria sobreviver ao slide: {err}");
+    assert!(err.contains("0x69"), "bit should survive the slide: {err}");
 
-    // retroceder a base é REJEITADO (117 = 0x75)
+    // going back on the base is REJECTED (117 = 0x75)
     let ix = mk(&s0, 9_700);
     let err = send(&mut env.ctx, &[ix], &[s0]).await.unwrap_err();
-    assert!(err.contains("0x75"), "esperava ERR_BASE_NOT_MONOTONIC: {err}");
+    assert!(err.contains("0x75"), "expected ERR_BASE_NOT_MONOTONIC: {err}");
 }

@@ -1,22 +1,22 @@
 //! # RelayerRewardVault (Solana / Sealevel) — spec §08/§09
 //!
-//! A PDA de config **é** o pool: registre-a como `beneficiary` do IGP e os
-//! lamports do `Claim` do IGP se acumulam nela. Como o Mailbox de Solana NÃO
-//! grava quem executou o `process()` (a `ProcessedMessage` não tem campo de
-//! executor), a autoria vem de **quórum de operadores por época**:
+//! The config PDA **is** the pool: register it as the IGP `beneficiary` and the
+//! lamports from the IGP `Claim` accumulate in it. Since the Solana Mailbox does NOT
+//! record who executed `process()` (the `ProcessedMessage` has no executor
+//! field), authorship comes from a **per-epoch operator quorum**:
 //!
-//! - Cada operador submete o MESMO relatório da época (lista de créditos
-//!   ordenada por chave — regra de convergência da spec §09); o hash do borsh
-//!   é comparado; quórum de hashes idênticos → créditos atribuídos.
-//! - A janela de slots fica **imutável** após a primeira submissão.
-//! - Divergência → época simplesmente não fecha (alarme é off-chain).
-//! - Saque: débito direto de lamports do pool, respeitando o rent-exempt.
-//! - Administração SEM admin único: `AdminEnvelope { nonce, action }`, com a
-//!   PDA da proposta semeada pelo hash do envelope (todos convergem na mesma
-//!   conta) e execução no quórum. Em `WithdrawSurplus` o destino faz parte do
-//!   hash — aprova-se AQUELE destino.
+//! - Each operator submits the SAME epoch report (credit list
+//!   sorted by key — convergence rule of spec §09); the borsh hash
+//!   is compared; a quorum of identical hashes → credits attributed.
+//! - The slot window becomes **immutable** after the first submission.
+//! - Divergence → the epoch simply does not close (the alarm is off-chain).
+//! - Withdrawal: direct debit of pool lamports, respecting the rent-exempt floor.
+//! - Administration WITHOUT a single admin: `AdminEnvelope { nonce, action }`, with the
+//!   proposal PDA seeded by the envelope hash (everyone converges on the same
+//!   account) and execution at quorum. In `WithdrawSurplus` the destination is part of the
+//!   hash — THAT destination is what gets approved.
 //!
-//! Este programa NÃO toca no Mailbox nem no IGP.
+//! This program does NOT touch the Mailbox nor the IGP.
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
@@ -62,7 +62,7 @@ pub fn credit_pda(program_id: &Pubkey, operator: &Pubkey) -> (Pubkey, u8) {
         program_id,
     )
 }
-/// recompensa por entrega remota (lamports), por domínio de ENTREGA
+/// reward per remote delivery (lamports), per DELIVERY domain
 pub fn remote_reward_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_SEP, b"rrew", SEED_SEP, &domain.to_le_bytes()],
@@ -70,7 +70,7 @@ pub fn remote_reward_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
     )
 }
 
-/// vínculo de identidade: (domínio de entrega, operador local) → endereço remoto
+/// identity binding: (delivery domain, local operator) → remote address
 pub fn remote_binding_pda(program_id: &Pubkey, domain: u32, operator: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_SEP, b"rbind", SEED_SEP, &domain.to_le_bytes(), SEED_SEP, operator.as_ref()],
@@ -86,17 +86,17 @@ pub fn proposal_pda(program_id: &Pubkey, envelope_hash: &[u8; 32]) -> (Pubkey, u
 }
 
 // ---------------------------------------------------------------------------
-// Estado (espaço fixo com folga — sem realloc)
+// State (fixed space with slack — no realloc)
 // ---------------------------------------------------------------------------
 pub const MAX_OPERATORS: usize = 16;
 pub const CONFIG_SPACE: usize = 1024;
 pub const CREDIT_SPACE: usize = 64;
 pub const PROPOSAL_SPACE: usize = 1024;
 
-/// Janela do guard anti-replay em BITS (1 bit por época). 512 bits × 6h = 128
-/// dias de folga — muito além do ciclo horário do reporter. NUNCA desliza
-/// sozinho (evita perder crédito silenciosamente); a base só avança por
-/// governança via `SetAppliedBase` (monotônico: só p/ frente).
+/// Anti-replay guard window in BITS (1 bit per epoch). 512 bits × 6h = 128
+/// days of slack — far beyond the reporter's hourly cycle. It NEVER slides
+/// on its own (avoids silently losing credit); the base only advances through
+/// governance via `SetAppliedBase` (monotonic: forward only).
 pub const APPLIED_WINDOW_BITS: usize = 512;
 pub const APPLIED_WINDOW_BYTES: usize = APPLIED_WINDOW_BITS / 8; // 64
 
@@ -116,17 +116,17 @@ pub struct Config {
     pub paused: bool,
     pub operators: Vec<Pubkey>,
     pub total_credited: u64,
-    // ---- guard anti-replay de épocas (append-only p/ compat de migração:
-    //      Config antigo deserializa estes campos como zeros) ----
-    /// época mais antiga ainda "lembrável"; épocas < base são REJEITADAS
-    /// (janela passou). Migração: fica 0 até governança chamar SetAppliedBase.
+    // ---- epoch anti-replay guard (append-only for migration compat:
+    //      an old Config deserializes these fields as zeros) ----
+    /// oldest epoch still "rememberable"; epochs < base are REJECTED
+    /// (window has passed). Migration: stays 0 until governance calls SetAppliedBase.
     pub applied_base: u64,
-    /// 1 bit por época a partir de `applied_base`. bit setado = época já paga.
+    /// 1 bit per epoch starting from `applied_base`. bit set = epoch already paid.
     pub applied_bitmap: [u8; APPLIED_WINDOW_BYTES],
 }
 
-/// tamanho exato da conta de coleta de época p/ `n` submissores possíveis
-/// (= nº de operadores). Substitui o EPOCH_SPACE fixo de 2048 — right-sizing.
+/// exact size of the epoch collection account for `n` possible submitters
+/// (= number of operators). Replaces the fixed 2048 EPOCH_SPACE — right-sizing.
 pub fn epoch_space(num_operators: usize) -> usize {
     // bump(1)+epoch(8)+window(16)+veclen(4)+n*(32+32)+applied(1)
     1 + 8 + 16 + 4 + num_operators * 64 + 1
@@ -136,12 +136,12 @@ pub fn epoch_space(num_operators: usize) -> usize {
 pub struct EpochState {
     pub bump: u8,
     pub epoch: u64,
-    /// (slot inicial, slot final) — trava na primeira submissão (spec §09).
+    /// (start slot, end slot) — locks on the first submission (spec §09).
     pub window: (u64, u64),
-    /// (operador que submeteu, hash do relatório)
+    /// (operator who submitted, report hash)
     pub submissions: Vec<(Pubkey, [u8; 32])>,
-    /// true só entre marcar o bit e fechar a conta na MESMA tx (não persiste:
-    /// a conta é fechada logo após). O guard de replay real é o bitmap do Config.
+    /// true only between setting the bit and closing the account in the SAME tx (does not persist:
+    /// the account is closed right after). The real replay guard is the Config bitmap.
     pub applied: bool,
 }
 
@@ -162,18 +162,18 @@ pub struct Proposal {
 }
 
 // ---------------------------------------------------------------------------
-// Instruções
+// Instructions
 // ---------------------------------------------------------------------------
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
 pub struct EpochReport {
     pub epoch: u64,
     pub window_start_slot: u64,
     pub window_end_slot: u64,
-    /// (operador, nº de entregas) — ESTRITAMENTE ordenado por operador.
+    /// (operator, number of deliveries) — STRICTLY sorted by operator.
     pub credits: Vec<(Pubkey, u64)>,
-    /// v2 ClaimRemote: entregas de msgs ORIGINADAS AQUI feitas pelo operador em
-    /// outra chain — (domínio da entrega, operador local, nº de entregas).
-    /// Crédito = count × remote_reward(domínio). Coberto pelo MESMO hash/quórum.
+    /// v2 ClaimRemote: deliveries of msgs ORIGINATED HERE made by the operator on
+    /// another chain — (delivery domain, local operator, number of deliveries).
+    /// Credit = count × remote_reward(domain). Covered by the SAME hash/quorum.
     pub remote: Vec<(u32, Pubkey, u64)>,
 }
 
@@ -191,28 +191,28 @@ pub enum AdminAction {
     AddOperator(Pubkey),
     RemoveOperator(Pubkey),
     SetPaused(bool),
-    /// destino DENTRO do envelope → dentro do hash → dentro da aprovação.
+    /// destination INSIDE the envelope → inside the hash → inside the approval.
     WithdrawSurplus { to: Pubkey, amount: u64 },
     SetEpochDuration(u64),
-    /// v2: recompensa fixa (lamports) por entrega remota no domínio (0 desativa).
-    /// Contas extras: [reward PDA w]
+    /// v2: fixed reward (lamports) per remote delivery on the domain (0 disables).
+    /// Extra accounts: [reward PDA w]
     SetRemoteReward { domain: u32, reward: u64 },
-    /// v2: vínculo operador local → endereço executor na chain do domínio.
-    /// Contas extras: [binding PDA w]
+    /// v2: binding local operator → executor address on the domain's chain.
+    /// Extra accounts: [binding PDA w]
     SetRemoteBinding { domain: u32, operator: Pubkey, remote_address: String },
-    /// Avança a base da janela de replay de épocas. MONOTÔNICO: só p/ frente
-    /// (nunca retrocede — retroceder reabriria épocas já pagas = duplo-pagamento).
-    /// Uso 1 (migração): Config antigo tem base=0; governança seta a base p/ a
-    /// época atual antes das novas submissões. Uso 2: liberar espaço na janela
-    /// quando ela se aproxima do fim (128 dias) — só descartando épocas antigas
-    /// que a governança confirma já liquidadas.
+    /// Advances the base of the epoch replay window. MONOTONIC: forward only
+    /// (never goes back — going back would reopen already-paid epochs = double-payment).
+    /// Use 1 (migration): an old Config has base=0; governance sets the base to the
+    /// current epoch before the new submissions. Use 2: free up space in the window
+    /// when it nears the end (128 days) — only by discarding old epochs
+    /// that governance confirms as already settled.
     SetAppliedBase(u64),
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AdminEnvelope {
-    /// permite repetir uma ação idêntica no futuro sem colidir com a proposta
-    /// anterior já executada (spec §09).
+    /// allows repeating an identical action in the future without colliding with the
+    /// previous, already-executed proposal (spec §09).
     pub nonce: u64,
     pub action: AdminAction,
 }
@@ -233,8 +233,8 @@ pub enum Instruction {
         reward_lamports: u64,
         epoch_duration_secs: u64,
     },
-    /// [operator signer w (payer), config, epoch w, system, ...credit PDAs w na
-    ///  ordem de report.credits]
+    /// [operator signer w (payer), config, epoch w, system, ...credit PDAs w in
+    ///  the order of report.credits]
     SubmitEpochReport { report: EpochReport },
     /// [operator signer w, config w, credit w]
     Withdraw { amount: u64 },
@@ -242,22 +242,22 @@ pub enum Instruction {
     ///  (WithdrawSurplus: + destino w)]
     SubmitAdminAction { envelope: AdminEnvelope },
 
-    // ---- recibo trustless (registry + destino) ----
+    // ---- trustless receipt (registry + destination) ----
     /// [operator s w, config, router PDA w, system]
     SetRemoteRouter { domain: u32, router: [u8; 32] },
     /// [operator s w, config, opsol PDA w, oploc PDA w, system]
     SetOperatorSol { index: u32, operator: Pubkey },
-    /// Operador saca o SOL do recibo acumulado na sua PDA operator_sol(index).
+    /// Operator withdraws the receipt SOL accumulated in its operator_sol(index) PDA.
     /// [signer(payout) w, opsol PDA(index) w]
     WithdrawOperatorSol { index: u32, amount: u64 },
 }
 
 // ---------------------------------------------------------------------------
-// Utilidades
+// Utilities
 // ---------------------------------------------------------------------------
-/// Contas têm espaço fixo com folga (zero-padded); por isso o deserialize é
-/// STREAMING (`T::deserialize`), que ignora os bytes finais — `try_from_slice`
-/// exigiria consumo exato e falharia.
+/// Accounts have fixed space with slack (zero-padded); that is why deserialize is
+/// STREAMING (`T::deserialize`), which ignores the trailing bytes — `try_from_slice`
+/// would require exact consumption and fail.
 pub(crate) fn load_streaming<T: BorshDeserialize>(info: &AccountInfo) -> Result<T, ProgramError> {
     let data = info.data.borrow();
     let mut slice: &[u8] = &data;
@@ -271,7 +271,7 @@ pub(crate) fn store<T: BorshSerialize>(info: &AccountInfo, value: &T) -> Program
         return Err(ProgramError::AccountDataTooSmall);
     }
     data[..bytes.len()].copy_from_slice(&bytes);
-    // zera o resto p/ deserialização streaming estável
+    // zero the rest for stable streaming deserialization
     for b in data[bytes.len()..].iter_mut() {
         *b = 0;
     }
@@ -317,9 +317,9 @@ const ERR_TOO_MANY: u32 = 111;
 const ERR_EPOCH_WRONG_REPORT: u32 = 112;
 const ERR_NO_REMOTE_REWARD: u32 = 113;
 const ERR_NO_REMOTE_BINDING: u32 = 114;
-const ERR_EPOCH_TOO_OLD: u32 = 115;    // época < applied_base (janela já passou)
-const ERR_EPOCH_TOO_FUTURE: u32 = 116; // época >= base + janela (governança deve avançar a base)
-const ERR_BASE_NOT_MONOTONIC: u32 = 117; // SetAppliedBase só avança, nunca retrocede
+const ERR_EPOCH_TOO_OLD: u32 = 115;    // epoch < applied_base (window has already passed)
+const ERR_EPOCH_TOO_FUTURE: u32 = 116; // epoch >= base + window (governance must advance the base)
+const ERR_BASE_NOT_MONOTONIC: u32 = 117; // SetAppliedBase only advances, never goes back
 
 pub(crate) fn custom(code: u32) -> ProgramError {
     ProgramError::Custom(code)
@@ -405,10 +405,10 @@ fn init(
             paused: false,
             operators,
             total_credited: 0,
-            // guard de replay começa VAZIO. A base TRILHA ATRÁS do agora (meia
-            // janela) — senão a última época fechada (corrente−1, a que o
-            // reporter reporta) cairia abaixo da base. Assim ficam ~64 dias de
-            // back-report para trás e ~64 dias de folga para frente.
+            // replay guard starts EMPTY. The base TRAILS BEHIND now (half a
+            // window) — otherwise the last closed epoch (current−1, the one the
+            // reporter reports) would fall below the base. This leaves ~64 days of
+            // back-report behind and ~64 days of slack ahead.
             applied_base: {
                 let now = Clock::get()?.unix_timestamp as u64;
                 (now / epoch_duration_secs).saturating_sub((APPLIED_WINDOW_BITS / 2) as u64)
@@ -435,12 +435,12 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
     ensure(!config.paused, custom(ERR_PAUSED))?;
     ensure(is_operator(&config, operator.key), custom(ERR_NOT_OPERATOR))?;
 
-    // só épocas FECHADAS são reportáveis (a folga de confirmações é operacional)
+    // only CLOSED epochs are reportable (the confirmation slack is operational)
     let now = Clock::get()?.unix_timestamp as u64;
     let current_epoch = now / config.epoch_duration_secs;
     ensure(report.epoch < current_epoch, custom(ERR_EPOCH_OPEN))?;
 
-    // lista ordenada por chave, sem duplicatas (regra de convergência §09)
+    // list sorted by key, no duplicates (convergence rule §09)
     ensure(
         report.credits.windows(2).all(|w| w[0].0 < w[1].0),
         custom(ERR_UNSORTED),
@@ -456,9 +456,9 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         custom(ERR_WINDOW_MISMATCH),
     )?;
 
-    // ---- GUARD ANTI-REPLAY (bitmap no Config) — verificado ANTES de qualquer
-    //      criação/escrita: uma época já paga é rejeitada de imediato, mesmo que
-    //      sua conta de coleta já tenha sido fechada. ----
+    // ---- ANTI-REPLAY GUARD (bitmap in Config) — checked BEFORE any
+    //      creation/write: an already-paid epoch is rejected immediately, even if
+    //      its collection account has already been closed. ----
     ensure(report.epoch >= config.applied_base, custom(ERR_EPOCH_TOO_OLD))?;
     let bit_off = (report.epoch - config.applied_base) as usize;
     ensure(bit_off < APPLIED_WINDOW_BITS, custom(ERR_EPOCH_TOO_FUTURE))?;
@@ -473,7 +473,7 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
             epoch_info,
             system,
             program_id,
-            // right-sizing: cabe exatamente 1 submissão por operador existente
+            // right-sizing: fits exactly 1 submission per existing operator
             epoch_space(config.operators.len()),
             &[
                 SEED_PREFIX,
@@ -487,7 +487,7 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         EpochState {
             bump: epoch_bump,
             epoch: report.epoch,
-            // primeira submissão TRAVA a janela
+            // first submission LOCKS the window
             window: (report.window_start_slot, report.window_end_slot),
             submissions: vec![],
             applied: false,
@@ -497,15 +497,15 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         load_streaming(epoch_info)?
     };
 
-    // state.applied só existe DENTRO da tx de aplicação (a conta é fechada em
-    // seguida); o guard duradouro é o bitmap, já checado acima.
+    // state.applied only exists INSIDE the application tx (the account is closed
+    // right after); the lasting guard is the bitmap, already checked above.
     ensure(
         state.window == (report.window_start_slot, report.window_end_slot),
         custom(ERR_WINDOW_MISMATCH),
     )?;
 
     let hash = report.hash();
-    // sobrescreve a própria submissão, se houver
+    // overwrites its own submission, if any
     state.submissions.retain(|(op, _)| op != operator.key);
     ensure(state.submissions.len() < MAX_OPERATORS, custom(ERR_TOO_MANY))?;
     state.submissions.push((*operator.key, hash));
@@ -520,10 +520,10 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         return store(epoch_info, &state);
     }
 
-    // ---- quórum: aplica os créditos DESTE relatório (que gerou o hash) ----
-    // Marca o bit de replay no Config ANTES de distribuir. Tudo nesta instrução
-    // é ATÔMICO: se qualquer distribuição/persistência falhar, o bit também
-    // reverte — nunca fica "meio pago". O bit persiste com o store(config) final.
+    // ---- quorum: applies the credits of THIS report (the one that generated the hash) ----
+    // Sets the replay bit in Config BEFORE distributing. Everything in this instruction
+    // is ATOMIC: if any distribution/persistence fails, the bit also
+    // reverts — it is never left "half paid". The bit persists with the final store(config).
     bit_set(&mut config.applied_bitmap, bit_off);
 
     for (credited_op, delivered) in report.credits.iter() {
@@ -572,9 +572,9 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         store(credit_info, &credit)?;
     }
 
-    // ---- v2 ClaimRemote: créditos por entregas REMOTAS de msgs originadas aqui.
-    //      Contas por entrada de report.remote: [reward PDA ro, binding PDA ro,
-    //      credit PDA w]. Crédito = count × reward(domínio); saque via Withdraw.
+    // ---- v2 ClaimRemote: credits for REMOTE deliveries of msgs originated here.
+    //      Accounts per report.remote entry: [reward PDA ro, binding PDA ro,
+    //      credit PDA w]. Credit = count × reward(domain); withdrawal via Withdraw.
     for (domain, remote_op, count) in report.remote.iter() {
         ensure(*count > 0, ProgramError::InvalidInstructionData)?;
 
@@ -637,19 +637,19 @@ fn submit_report(program_id: &Pubkey, accounts: &[AccountInfo], report: EpochRep
         store(credit_info, &credit)?;
     }
 
-    // ---- FECHA a conta de coleta e devolve 100% do rent ao operador
-    //      signatário. O guard de replay agora vive no bitmap do Config (setado
-    //      acima), então a conta não precisa mais existir — reclamamos o rent.
-    //      Padrão seguro de close: zera os dados, transfere TODOS os lamports ao
-    //      destino e deixa a conta com 0 lamports (a runtime a coleta ao fim da
-    //      tx). Tudo atômico com a marcação do bit e a distribuição. ----
+    // ---- CLOSES the collection account and returns 100% of the rent to the
+    //      signing operator. The replay guard now lives in the Config bitmap (set
+    //      above), so the account no longer needs to exist — we reclaim the rent.
+    //      Safe close pattern: zeroes the data, transfers ALL lamports to the
+    //      destination and leaves the account with 0 lamports (the runtime collects it at the end of the
+    //      tx). All atomic with setting the bit and the distribution. ----
     close_account(epoch_info, operator)?;
 
     store(config_info, &config)
 }
 
-/// Fecha `acc` (owned pelo programa) enviando todos os lamports a `dest` e
-/// zerando os dados. A runtime remove contas com 0 lamports ao fim da tx.
+/// Closes `acc` (owned by the program) by sending all lamports to `dest` and
+/// zeroing the data. The runtime removes accounts with 0 lamports at the end of the tx.
 fn close_account(acc: &AccountInfo, dest: &AccountInfo) -> ProgramResult {
     let mut acc_lamports = acc.try_borrow_mut_lamports()?;
     let mut dest_lamports = dest.try_borrow_mut_lamports()?;
@@ -657,7 +657,7 @@ fn close_account(acc: &AccountInfo, dest: &AccountInfo) -> ProgramResult {
         .checked_add(**acc_lamports)
         .ok_or(ProgramError::ArithmeticOverflow)?;
     **acc_lamports = 0;
-    // zera os dados (defesa: nada legível/reusável fica pra trás)
+    // zero the data (defense: nothing readable/reusable is left behind)
     for b in acc.try_borrow_mut_data()?.iter_mut() {
         *b = 0;
     }
@@ -687,7 +687,7 @@ fn withdraw(program_id: &Pubkey, accounts: &[AccountInfo], amount: u64) -> Progr
         .ok_or(ProgramError::ArithmeticOverflow)?;
     ensure(amount > 0 && amount <= available, custom(ERR_INSUFFICIENT_CREDIT))?;
 
-    // débito direto de lamports RESPEITANDO o rent-exempt da PDA de config
+    // direct lamport debit RESPECTING the rent-exempt floor of the config PDA
     let rent_floor = Rent::get()?.minimum_balance(config_info.data_len());
     let pool_available = config_info
         .lamports()
@@ -755,7 +755,7 @@ fn submit_admin_action(
         return store(proposal_info, &proposal);
     }
 
-    // ---- quórum: executa a ação ----
+    // ---- quorum: executes the action ----
     proposal.executed = true;
     store(proposal_info, &proposal)?;
 
@@ -827,7 +827,7 @@ fn submit_admin_action(
             store(binding_info, &remote_address)?;
         }
         AdminAction::WithdrawSurplus { to, amount } => {
-            // o destino aprovado está DENTRO do hash — a conta passada tem de bater
+            // the approved destination is INSIDE the hash — the passed account must match
             let destination = next_account_info(iter).map_err(|_| custom(ERR_BAD_DESTINATION))?;
             ensure(*destination.key == to, custom(ERR_BAD_DESTINATION))?;
             let rent_floor = Rent::get()?.minimum_balance(config_info.data_len());
@@ -837,12 +837,12 @@ fn submit_admin_action(
             **destination.try_borrow_mut_lamports()? += amount;
         }
         AdminAction::SetAppliedBase(new_base) => {
-            // MONOTÔNICO: só avança. Retroceder reabriria épocas já marcadas no
-            // bitmap = risco de duplo-pagamento — proibido.
+            // MONOTONIC: only advances. Going back would reopen epochs already marked in the
+            // bitmap = double-payment risk — forbidden.
             ensure(new_base >= config.applied_base, custom(ERR_BASE_NOT_MONOTONIC))?;
-            // ao avançar a base, o bitmap desloca: os bits das épocas que saíram
-            // da janela são descartados (mas ficam protegidos por ERR_EPOCH_TOO_OLD,
-            // pois agora época < base). Deslocamento por (new_base - base) bits.
+            // when advancing the base, the bitmap shifts: the bits of epochs that left
+            // the window are discarded (but they stay protected by ERR_EPOCH_TOO_OLD,
+            // since now epoch < base). Shift by (new_base - base) bits.
             let shift = (new_base - config.applied_base) as usize;
             if shift >= APPLIED_WINDOW_BITS {
                 config.applied_bitmap = [0u8; APPLIED_WINDOW_BYTES];

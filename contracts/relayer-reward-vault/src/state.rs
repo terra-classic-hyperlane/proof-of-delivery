@@ -4,17 +4,17 @@ use cw_storage_plus::{Item, Map};
 
 #[cw_serde]
 pub struct Config {
-    /// Governança on-chain do Terra Classic.
+    /// Terra Classic on-chain governance.
     pub owner: Addr,
-    /// hpl-mailbox (fonte da prova de entrega, via raw query).
+    /// hpl-mailbox (source of the delivery proof, via raw query).
     pub mailbox: Addr,
-    /// hpl-igp do qual este vault é beneficiary.
+    /// hpl-igp of which this vault is beneficiary.
     pub igp: Addr,
-    /// Denom do pool ("uluna").
+    /// Pool denom ("uluna").
     pub denom: String,
-    /// Tarifa fixa por entrega comprovada.
+    /// Fixed reward per proven delivery.
     pub reward_per_delivery: Uint128,
-    /// Janela de resgate em blocos a partir do bloco da entrega.
+    /// Claim window in blocks starting from the delivery block.
     pub claim_window_blocks: u64,
     pub paused: bool,
 }
@@ -28,26 +28,26 @@ pub struct ClaimRecord {
 
 pub const CONFIG: Item<Config> = Item::new("config");
 
-/// message_id (32 bytes) → registro do pagamento. A existência da chave é o que
-/// impede resgate duplo; gravamos ANTES do BankMsg (padrão effects-first).
+/// message_id (32 bytes) → payment record. The existence of the key is what
+/// prevents double claim; we write it BEFORE the BankMsg (effects-first pattern).
 pub const CLAIMED: Map<Vec<u8>, ClaimRecord> = Map::new("claimed");
 
-/// Métricas agregadas (auditoria barata sem varrer o Map).
+/// Aggregate metrics (cheap auditing without scanning the Map).
 pub const TOTAL_PAID: Item<Uint128> = Item::new("total_paid");
 pub const TOTAL_CLAIMS: Item<u64> = Item::new("total_claims");
 
 // ---------------------------------------------------------------------------
-// v2 — ClaimRemote: pagamento da taxa de ORIGEM por entregas em chains remotas,
-// via atestação com quórum (o TC não enxerga outras chains; a confiança fica
-// no conjunto de atestadores + vínculos, ambos definidos pelo owner/governança).
+// v2 — ClaimRemote: payment of the ORIGIN fee for deliveries on remote chains,
+// via attestation with quorum (the TC does not see other chains; the trust rests
+// on the set of attestors + bindings, both defined by the owner/governance).
 // ---------------------------------------------------------------------------
 
 #[cw_serde]
 #[derive(Default)]
 pub struct RemoteConfig {
-    /// Operadores autorizados a atestar entregas remotas.
+    /// Operators authorized to attest remote deliveries.
     pub attestors: Vec<Addr>,
-    /// Atestações CONCORDANTES (mesmo executor) necessárias p/ pagar.
+    /// AGREEING attestations (same executor) required to pay.
     pub quorum: u32,
 }
 
@@ -60,41 +60,41 @@ pub struct RemoteClaimRecord {
 }
 
 pub const REMOTE_CONFIG: Item<RemoteConfig> = Item::new("remote_config");
-/// (operador TC, domain) → endereço remoto vinculado (hex 0x… minúsculo ou base58).
+/// (TC operator, domain) → bound remote address (hex 0x… lowercase or base58).
 pub const REMOTE_BINDINGS: Map<(&Addr, u32), String> = Map::new("remote_bindings");
-/// domain → recompensa fixa por entrega remota (0/ausente = domínio desativado).
+/// domain → fixed reward per remote delivery (0/absent = domain disabled).
 pub const REMOTE_REWARDS: Map<u32, Uint128> = Map::new("remote_rewards");
-/// message_id → pagamento remoto efetuado (existência = anti-duplo, effects-first).
+/// message_id → remote payment made (existence = anti-double, effects-first).
 pub const REMOTE_CLAIMED: Map<Vec<u8>, RemoteClaimRecord> = Map::new("remote_claimed");
-/// message_id → atestações acumuladas (atestador, executor apontado).
+/// message_id → accumulated attestations (attestor, pointed executor).
 pub const REMOTE_ATTESTS: Map<Vec<u8>, Vec<(Addr, Addr)>> = Map::new("remote_attests");
 pub const TOTAL_REMOTE_PAID: Item<Uint128> = Item::new("total_remote_paid");
-/// message_id → bloco em que o recibo (papel DESTINO) foi despachado.
-/// Existência = já emitiu recibo p/ este id → NÃO reemite. A idempotência do
-/// pagamento mora AQUI (no destino que emite), porque destinos como a Solana não
-/// conseguem deduplicar no `handle` (o Mailbox não passa payer p/ criar conta).
+/// message_id → block in which the receipt (DESTINATION role) was dispatched.
+/// Existence = already issued a receipt for this id → does NOT reissue. The payment
+/// idempotency lives HERE (on the issuing destination), because destinations like Solana
+/// cannot deduplicate in `handle` (the Mailbox does not pass a payer to create an account).
 pub const SENT_RECEIPT: Map<Vec<u8>, u64> = Map::new("sent_receipt");
 
 // ---------------------------------------------------------------------------
-// Fase 1 (recibo trustless) — REGISTRO DE/PARA GLOBAL de operadores.
-// Um operador é UMA identidade com um endereço por domínio. Este registro é a
-// espinha dorsal: o recibo carrega o ÍNDICE do operador (u32), e cada chain
-// resolve o endereço de pagamento no SEU próprio registro (definido pelo owner).
+// Phase 1 (trustless receipt) — GLOBAL FROM/TO REGISTRY of operators.
+// An operator is ONE identity with one address per domain. This registry is the
+// backbone: the receipt carries the operator INDEX (u32), and each chain
+// resolves the payment address in ITS own registry (defined by the owner).
 // ---------------------------------------------------------------------------
 
-/// índice do operador → (domínio → endereço naquele domínio, como string).
-/// Endereço no formato nativo da chain do domínio (terra1…/0x…/base58).
+/// operator index → (domain → address in that domain, as string).
+/// Address in the native format of the domain's chain (terra1…/0x…/base58).
 pub const OPERATOR_ADDR: Map<(u32, u32), String> = Map::new("op_addr");
 
-/// reverse-lookup: endereço LOCAL (minúsculo p/ 0x…) → índice do operador.
-/// Preenchido pelo owner ao gravar o endereço do operador NESTE domínio; é como
-/// o papel DESTINO descobre "o executor processor(id) é o operador N".
+/// reverse-lookup: LOCAL address (lowercase for 0x…) → operator index.
+/// Filled by the owner when writing the operator's address in THIS domain; it is how
+/// the DESTINATION role finds out "the executor processor(id) is operator N".
 pub const OPERATOR_OF_LOCAL: Map<String, u32> = Map::new("op_of_local");
 
-/// maior índice de operador já registrado (+1 = próximo livre). Informativo.
+/// highest operator index already registered (+1 = next free). Informational.
 pub const OPERATOR_COUNT: Item<u32> = Item::new("op_count");
 
-/// router confiável por domínio: o endereço do NOSSO vault naquela chain
-/// (hex de 32 bytes, convenção Hyperlane). Papel ORIGEM só aceita `handle` de um
-/// router registrado; papel DESTINO despacha o recibo para ele.
+/// trusted router per domain: the address of OUR vault on that chain
+/// (32-byte hex, Hyperlane convention). The ORIGIN role only accepts `handle` from a
+/// registered router; the DESTINATION role dispatches the receipt to it.
 pub const REMOTE_ROUTER: Map<u32, String> = Map::new("remote_router");

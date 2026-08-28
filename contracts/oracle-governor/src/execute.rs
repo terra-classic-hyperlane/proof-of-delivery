@@ -54,8 +54,8 @@ pub fn current_epoch(env: &Env, config: &Config) -> u64 {
     env.block.time.seconds() / config.epoch_duration_secs
 }
 
-/// Mediana com desempate "menor dos centrais": ordena e pega o índice (n-1)/2.
-/// Par → menor dos dois do meio (na dúvida, cobra MENOS do usuário — spec §10).
+/// Median with "lower of the central ones" tie-break: sorts and takes index (n-1)/2.
+/// Even → smaller of the two middle values (when in doubt, charge the user LESS — spec §10).
 fn lower_median(values: &mut [Uint128]) -> Uint128 {
     values.sort();
     values[(values.len() - 1) / 2]
@@ -81,8 +81,8 @@ fn ensure_in_bounds(
     Ok(())
 }
 
-/// |novo − último| * 10_000 <= último * max_delta_bps  (promovido a Uint256 para
-/// nunca estourar). Sem base anterior, o primeiro valor passa livre.
+/// |new − last| * 10_000 <= last * max_delta_bps  (promoted to Uint256 to
+/// never overflow). With no prior base, the first value passes freely.
 fn ensure_delta(
     field: &str,
     last: Uint128,
@@ -120,12 +120,12 @@ pub fn submit_price(
         ContractError::NotOperator {}
     );
 
-    // sem faixa da governança, o domínio está travado para os operadores
+    // without governance bounds, the domain is locked for the operators
     let bounds = crate::state::BOUNDS
         .may_load(deps.storage, domain)?
         .ok_or(ContractError::NoBounds { domain })?;
 
-    // rejeição imediata de submissão fora da faixa (fail fast)
+    // immediate rejection of out-of-bounds submission (fail fast)
     ensure_in_bounds(
         "token_exchange_rate",
         token_exchange_rate,
@@ -147,7 +147,7 @@ pub fn submit_price(
         ContractError::EpochAlreadyApplied { domain, epoch }
     );
 
-    // sobrescreve a própria submissão da época, se houver
+    // overwrites the operator's own submission for the epoch, if any
     SUBMISSIONS.save(
         deps.storage,
         (domain, epoch, &info.sender),
@@ -157,7 +157,7 @@ pub fn submit_price(
         },
     )?;
 
-    // conta as submissões da época; ao bater o quórum, aplica a mediana
+    // counts the epoch's submissions; once quorum is reached, applies the median
     let submissions: Vec<PriceSubmission> = SUBMISSIONS
         .prefix((domain, epoch))
         .range(deps.storage, None, None, Order::Ascending)
@@ -180,7 +180,7 @@ pub fn submit_price(
     let median_rate = lower_median(&mut rates);
     let median_gas = lower_median(&mut gas_prices);
 
-    // mediana de valores na faixa está na faixa, mas revalidamos por defesa
+    // the median of in-bounds values is in bounds, but we revalidate defensively
     ensure_in_bounds(
         "median token_exchange_rate",
         median_rate,
@@ -242,7 +242,7 @@ pub fn submit_price(
 }
 
 // ---------------------------------------------------------------------------
-// Governança (owner)
+// Governance (owner)
 // ---------------------------------------------------------------------------
 
 fn ensure_owner(deps: &DepsMut, info: &MessageInfo) -> Result<Config, ContractError> {
@@ -367,8 +367,8 @@ pub fn set_owner(deps: DepsMut, info: MessageInfo, owner: String) -> Result<Resp
         .add_attribute("owner", config.owner))
 }
 
-/// EMERGÊNCIA: escrita direta no oracle pela governança — ignora quórum, faixa
-/// e delta, e vira a nova base do delta.
+/// EMERGENCY: direct write to the oracle by governance — ignores quorum, bounds
+/// and delta, and becomes the new delta base.
 pub fn force_set_remote_gas_data(
     deps: DepsMut,
     env: Env,
@@ -439,8 +439,8 @@ pub fn revoke_oracle_ownership_transfer(
         .add_attribute("action", "revoke_oracle_ownership_transfer"))
 }
 
-/// Passo 2 da instalação: com o governor como pending owner do oracle, qualquer um
-/// pode disparar o Claim — o oracle só aceita se este contrato for mesmo o pending.
+/// Step 2 of installation: with the governor as pending owner of the oracle, anyone
+/// can trigger the Claim — the oracle only accepts if this contract is indeed the pending one.
 pub fn claim_oracle_ownership(deps: DepsMut, _info: MessageInfo) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     Ok(Response::new()

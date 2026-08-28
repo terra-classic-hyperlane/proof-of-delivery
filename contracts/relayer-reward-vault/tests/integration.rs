@@ -1,6 +1,6 @@
-//! Integração com cw-multi-test: vault + mock do Mailbox (MESMO layout de storage
-//! do hpl-mailbox, via cw-storage-plus) + mock do IGP (claim restrito ao beneficiary)
-//! + mock de Mailbox "migrado" (layout alterado) para provar o MailboxLayoutMismatch.
+//! Integration with cw-multi-test: vault + Mailbox mock (SAME storage layout
+//! as hpl-mailbox, via cw-storage-plus) + IGP mock (claim restricted to the beneficiary)
+//! + "migrated" Mailbox mock (altered layout) to prove the MailboxLayoutMismatch.
 
 use cosmwasm_std::{coin, coins, Addr, Empty, HexBinary, Uint128};
 use cw_multi_test::{App, AppBuilder, Contract, ContractWrapper, Executor};
@@ -11,12 +11,12 @@ use relayer_reward_vault::msg::{
 };
 
 const DENOM: &str = "uluna";
-const REWARD: u128 = 1_000_000; // 1 LUNC por entrega (exemplo)
+const REWARD: u128 = 1_000_000; // 1 LUNC per delivery (example)
 const WINDOW: u64 = 100_000;
 
 // ---------------------------------------------------------------------------
-// Mock do hpl-mailbox: grava DELIVERIES exatamente como o contrato real
-// (Map::new("deliveries") com chave Vec<u8> e valor {sender, block_number}).
+// hpl-mailbox mock: writes DELIVERIES exactly like the real contract
+// (Map::new("deliveries") with Vec<u8> key and {sender, block_number} value).
 // ---------------------------------------------------------------------------
 mod mock_mailbox {
     use cosmwasm_schema::cw_serde;
@@ -52,13 +52,13 @@ mod mock_mailbox {
 
     #[cw_serde]
     pub enum ExecuteMsg {
-        /// registra uma entrega como se `sender` tivesse executado o process()
+        /// registers a delivery as if `sender` had executed process()
         SetDelivery {
             message_id: HexBinary,
             sender: String,
             block_number: u64,
         },
-        /// captura o recibo despachado pelo vault (papel destino)
+        /// captures the receipt dispatched by the vault (destination role)
         Dispatch(DispatchMsg),
     }
 
@@ -112,8 +112,8 @@ mod mock_mailbox {
 }
 
 // ---------------------------------------------------------------------------
-// Mock de Mailbox "MIGRADO": mesmo namespace, mas o valor ganhou um campo extra.
-// O vault deve falhar com MailboxLayoutMismatch em vez de pagar.
+// "MIGRATED" Mailbox mock: same namespace, but the value gained an extra field.
+// The vault must fail with MailboxLayoutMismatch instead of paying.
 // ---------------------------------------------------------------------------
 mod mock_mailbox_migrated {
     use cosmwasm_schema::cw_serde;
@@ -127,7 +127,7 @@ mod mock_mailbox_migrated {
     pub struct DeliveryV2 {
         pub sender: Addr,
         pub block_number: u64,
-        pub gas_used: u64, // ← campo novo pós-"migrate"
+        pub gas_used: u64, // ← new field post-"migrate"
     }
 
     pub const DELIVERIES: Map<Vec<u8>, DeliveryV2> = Map::new("deliveries");
@@ -185,8 +185,8 @@ mod mock_mailbox_migrated {
 }
 
 // ---------------------------------------------------------------------------
-// Mock do hpl-igp: claim() SÓ pelo beneficiary; envia o saldo inteiro para ele.
-// (espelha igps/core/src/execute.rs:90-103 do tc-cw-hyperlane)
+// hpl-igp mock: claim() ONLY by the beneficiary; sends the entire balance to it.
+// (mirrors igps/core/src/execute.rs:90-103 of tc-cw-hyperlane)
 // ---------------------------------------------------------------------------
 mod mock_igp {
     use cosmwasm_schema::cw_serde;
@@ -292,7 +292,7 @@ struct Setup {
     relayer_b: Addr,
 }
 
-/// Sobe mailbox + igp (beneficiary = vault) + vault; opcionalmente semeia o pool.
+/// Brings up mailbox + igp (beneficiary = vault) + vault; optionally seeds the pool.
 fn setup(pool_seed: u128) -> Setup {
     let gov = Addr::unchecked("gov");
     let relayer_a = Addr::unchecked("relayer_a");
@@ -321,12 +321,12 @@ fn setup(pool_seed: u128) -> Setup {
         )
         .unwrap();
 
-    // vault precisa existir antes do IGP para ser o beneficiary?  Não: o IGP mock
-    // recebe o beneficiary por string; instanciamos o vault primeiro com um igp
-    // provisório e atualizamos depois seria pior — então: 1) igp com beneficiary
-    // "placeholder", 2) vault, 3) UpdateConfig não é preciso: o IGP mock aceita
-    // qualquer string; criamos o IGP DEPOIS do vault e passamos o endereço real,
-    // e atualizamos o igp do vault via UpdateConfig do owner.
+    // does the vault need to exist before the IGP to be the beneficiary?  No: the IGP mock
+    // receives the beneficiary as a string; instantiating the vault first with a
+    // provisional igp and updating later would be worse — so: 1) igp with a
+    // "placeholder" beneficiary, 2) vault, 3) UpdateConfig is not needed: the IGP mock accepts
+    // any string; we create the IGP AFTER the vault and pass the real address,
+    // and we update the vault's igp via the owner's UpdateConfig.
     let vault = app
         .instantiate_contract(
             vault_code,
@@ -334,7 +334,7 @@ fn setup(pool_seed: u128) -> Setup {
             &InstantiateMsg {
                 owner: gov.to_string(),
                 mailbox: mailbox.to_string(),
-                igp: mailbox.to_string(), // provisório; corrigido logo abaixo
+                igp: mailbox.to_string(), // provisional; fixed right below
                 denom: DENOM.to_string(),
                 reward_per_delivery: Uint128::from(REWARD),
                 claim_window_blocks: WINDOW,
@@ -376,7 +376,7 @@ fn setup(pool_seed: u128) -> Setup {
         app.send_tokens(funder.clone(), vault.clone(), &coins(pool_seed, DENOM))
             .unwrap();
     }
-    // deixa o funder com utilidade p/ testes de IGP
+    // gives the funder a purpose for IGP tests
     app.send_tokens(funder, igp.clone(), &coins(50_000_000, DENOM))
         .unwrap();
 
@@ -421,7 +421,7 @@ fn current_height(app: &App) -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// Testes
+// Tests
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -535,7 +535,7 @@ fn claim_by_wrong_relayer_fails() {
     let err = s
         .app
         .execute_contract(
-            s.relayer_b.clone(), // ← não foi quem entregou
+            s.relayer_b.clone(), // ← was not the one who delivered
             s.vault.clone(),
             &ExecuteMsg::Claim {
                 message_ids: vec![id],
@@ -608,7 +608,7 @@ fn claim_window_expired_fails() {
     let relayer = s.relayer_a.clone();
     set_delivery(&mut s, &id, &relayer, h);
 
-    // avança além da janela
+    // advances beyond the window
     s.app.update_block(|b| b.height += WINDOW + 1);
 
     let err = s
@@ -627,7 +627,7 @@ fn claim_window_expired_fails() {
 
 #[test]
 fn claim_insufficient_pool_fails_atomically() {
-    // pool cobre só 1 entrega, lote pede 2 → nada é pago, nada fica marcado
+    // pool covers only 1 delivery, batch asks for 2 → nothing is paid, nothing is marked
     let mut s = setup(REWARD);
     let h = current_height(&s.app);
     let relayer = s.relayer_a.clone();
@@ -649,7 +649,7 @@ fn claim_insufficient_pool_fails_atomically() {
         .unwrap_err();
     assert!(err.root_cause().to_string().contains("insufficient pool"));
 
-    // atômico: nenhum id ficou consumido
+    // atomic: no id was consumed
     for id in ids {
         let c: ClaimedResponse = s
             .app
@@ -664,7 +664,7 @@ fn claim_insufficient_pool_fails_atomically() {
 fn claim_batch_atomic_on_bad_id() {
     let mut s = setup(10 * REWARD);
     let good = msg_id(1);
-    let bad = msg_id(2); // nunca entregue
+    let bad = msg_id(2); // never delivered
     let h = current_height(&s.app);
     let relayer = s.relayer_a.clone();
     set_delivery(&mut s, &good, &relayer, h);
@@ -684,7 +684,7 @@ fn claim_batch_atomic_on_bad_id() {
     assert!(err.root_cause().to_string().contains("not delivered"));
     assert_eq!(balance(&s.app, &s.relayer_a), before);
 
-    // o id válido NÃO foi consumido pelo lote revertido — segue resgatável
+    // the valid id was NOT consumed by the reverted batch — remains claimable
     s.app
         .execute_contract(
             s.relayer_a.clone(),
@@ -705,7 +705,7 @@ fn sweep_is_permissionless_and_pulls_igp_funds() {
     assert!(igp_before > 0);
     let vault_before = balance(&s.app, &s.vault);
 
-    // qualquer endereço aciona o Sweep
+    // any address triggers the Sweep
     let anyone = Addr::unchecked("anyone");
     s.app
         .execute_contract(anyone, s.vault.clone(), &ExecuteMsg::Sweep {}, &[])
@@ -717,7 +717,7 @@ fn sweep_is_permissionless_and_pulls_igp_funds() {
 
 #[test]
 fn sweep_then_claim_in_sequence() {
-    // pool começa vazio; o Sweep enche com a arrecadação do IGP e o claim passa
+    // pool starts empty; the Sweep fills it with the IGP collection and the claim passes
     let mut s = setup(0);
     let id = msg_id(1);
     let h = current_height(&s.app);
@@ -761,7 +761,7 @@ fn sweep_then_claim_in_sequence() {
 fn migrated_mailbox_layout_is_detected_not_paid() {
     let mut s = setup(10 * REWARD);
 
-    // sobe o mailbox "migrado" e aponta o vault para ele (via owner)
+    // brings up the "migrated" mailbox and points the vault at it (via owner)
     let code = s.app.store_code(migrated_mailbox_contract());
     let migrated = s
         .app
@@ -804,7 +804,7 @@ fn migrated_mailbox_layout_is_detected_not_paid() {
         )
         .unwrap();
 
-    // claim falha explicitamente, sem pagar
+    // claim fails explicitly, without paying
     let err = s
         .app
         .execute_contract(
@@ -818,7 +818,7 @@ fn migrated_mailbox_layout_is_detected_not_paid() {
         .unwrap_err();
     assert!(err.root_cause().to_string().contains("layout mismatch"));
 
-    // e o LayoutCheck reporta o problema para o monitoramento
+    // and the LayoutCheck reports the problem for monitoring
     let check: LayoutCheckResponse = s
         .app
         .wrap()
@@ -865,7 +865,7 @@ fn pause_blocks_claim_and_is_owner_only() {
     let relayer = s.relayer_a.clone();
     set_delivery(&mut s, &id, &relayer, h);
 
-    // não-owner não pausa
+    // non-owner does not pause
     let err = s
         .app
         .execute_contract(
@@ -877,7 +877,7 @@ fn pause_blocks_claim_and_is_owner_only() {
         .unwrap_err();
     assert!(err.root_cause().to_string().contains("unauthorized"));
 
-    // owner pausa → claim bloqueado
+    // owner pauses → claim blocked
     s.app
         .execute_contract(
             s.gov.clone(),
@@ -899,7 +899,7 @@ fn pause_blocks_claim_and_is_owner_only() {
         .unwrap_err();
     assert!(err.root_cause().to_string().contains("paused"));
 
-    // despausa → claim passa
+    // unpauses → claim passes
     s.app
         .execute_contract(
             s.gov.clone(),
@@ -1042,14 +1042,14 @@ fn solvency_reports_capacity() {
 }
 
 // ===========================================================================
-// v2 — ClaimRemote: atestação de entregas remotas
+// v2 — ClaimRemote: attestation of remote deliveries
 // ===========================================================================
 use relayer_reward_vault::msg::{RemoteClaimedResponse, RemoteConfigResponse};
 
 const DOM_SOL: u32 = 1_399_811_149;
 const REMOTE_REWARD: u128 = 33_000_000; // 33 LUNC
 
-/// habilita o modo remoto: owner registra atestadores/quórum, vínculo e recompensa
+/// enables remote mode: owner registers attestors/quorum, binding and reward
 fn setup_remote(s: &mut Setup, attestors: &[&Addr], quorum: u32) {
     let owner = s.gov.clone();
     s.app
@@ -1119,7 +1119,7 @@ fn remote_quorum_1_paga_na_hora() {
 }
 
 #[test]
-fn remote_id_nao_paga_duas_vezes() {
+fn remote_id_not_paga_duas_vezes() {
     let mut s = setup(1_000_000_000);
     let att = s.relayer_a.clone();
     setup_remote(&mut s, &[&att], 1);
@@ -1134,7 +1134,7 @@ fn remote_id_nao_paga_duas_vezes() {
 }
 
 #[test]
-fn remote_quorum_2_exige_atestadores_independentes() {
+fn remote_quorum_2_requires_independent_attesters() {
     let mut s = setup(1_000_000_000);
     let a1 = s.relayer_a.clone();
     let a2 = Addr::unchecked("operador2");
@@ -1146,23 +1146,23 @@ fn remote_quorum_2_exige_atestadores_independentes() {
         message_ids: vec![msg_id(0xC1)],
         executor: Some(exec.to_string()),
     };
-    // o PRÓPRIO a1 atesta a si — anti-autopagamento: NÃO conta
+    // a1 ITSELF attests to itself — anti-self-payment: does NOT count
     s.app.execute_contract(a1.clone(), s.vault.clone(), &att(&a1, &a1), &[]).unwrap();
     assert_eq!(balance(&s.app, &a1), before);
-    // 1º independente (a2) — 1 de 2
+    // 1st independent (a2) — 1 of 2
     s.app.execute_contract(a2.clone(), s.vault.clone(), &att(&a2, &a1), &[]).unwrap();
     assert_eq!(balance(&s.app, &a1), before);
-    // 2º independente (a3) — fecha o quórum de INDEPENDENTES → paga a1
+    // 2nd independent (a3) — closes the INDEPENDENTS' quorum → pays a1
     s.app.execute_contract(a3.clone(), s.vault.clone(), &att(&a3, &a1), &[]).unwrap();
     assert_eq!(balance(&s.app, &a1), before + REMOTE_REWARD);
 }
 
 #[test]
-fn remote_rejeita_nao_atestador_sem_vinculo_e_dominio_sem_recompensa() {
+fn remote_rejects_non_attester_no_link_and_domain_without_reward() {
     let mut s = setup(1_000_000_000);
     let att = s.relayer_a.clone();
     setup_remote(&mut s, &[&att], 1);
-    // não-atestador
+    // non-attestor
     let err = s
         .app
         .execute_contract(
@@ -1177,7 +1177,7 @@ fn remote_rejeita_nao_atestador_sem_vinculo_e_dominio_sem_recompensa() {
         )
         .unwrap_err();
     assert!(err.root_cause().to_string().contains("not a registered remote attestor"));
-    // domínio sem recompensa
+    // domain without reward
     let err = s
         .app
         .execute_contract(
@@ -1223,7 +1223,7 @@ fn remote_config_e_total_pago_consultaveis() {
 }
 
 // ===========================================================================
-// Fase 1 — registro de/para global de operadores + routers
+// Phase 1 — global from/to registry of operators + routers
 // ===========================================================================
 use relayer_reward_vault::msg::{
     OperatorAddressResponse, OperatorOfLocalResponse, RemoteRouterResponse,
@@ -1236,7 +1236,7 @@ const DOM_BSC: u32 = 56;
 fn registro_de_para_e_reverse_lookup() {
     let mut s = setup(1_000_000_000);
     let owner = s.gov.clone();
-    // operador 0: endereço no TC (local) e na BSC
+    // operator 0: address on the TC (local) and on the BSC
     s.app.execute_contract(owner.clone(), s.vault.clone(),
         &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC,
             address: Some("terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into()) }, &[]).unwrap();
@@ -1244,16 +1244,16 @@ fn registro_de_para_e_reverse_lookup() {
         &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_BSC,
             address: Some("0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291".into()) }, &[]).unwrap();
 
-    // de/para: lê endereço por (índice, domínio)
+    // from/to: reads address by (index, domain)
     let r: OperatorAddressResponse = s.app.wrap().query_wasm_smart(&s.vault,
         &QueryMsg::OperatorAddress { index: 0, domain: DOM_BSC }).unwrap();
-    assert_eq!(r.address.unwrap(), "0x8f085bad1a15ee9ceee58c83efffa72518975291"); // minúsculo
+    assert_eq!(r.address.unwrap(), "0x8f085bad1a15ee9ceee58c83efffa72518975291"); // lowercase
 
-    // reverse-lookup SÓ para o domínio local (TC): executor terra1… → operador 0
+    // reverse-lookup ONLY for the local domain (TC): executor terra1… → operator 0
     let rl: OperatorOfLocalResponse = s.app.wrap().query_wasm_smart(&s.vault,
         &QueryMsg::OperatorOfLocal { address: "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp".into() }).unwrap();
     assert_eq!(rl.index, Some(0));
-    // endereço remoto (BSC) NÃO entra no reverse-lookup local
+    // remote address (BSC) does NOT enter the local reverse-lookup
     let rl2: OperatorOfLocalResponse = s.app.wrap().query_wasm_smart(&s.vault,
         &QueryMsg::OperatorOfLocal { address: "0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291".into() }).unwrap();
     assert_eq!(rl2.index, None);
@@ -1278,7 +1278,7 @@ fn router_owner_only() {
     let err = s.app.execute_contract(Addr::unchecked("intruso"), s.vault.clone(),
         &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC, address: Some("0xabc".into()) }, &[]).unwrap_err();
     assert!(err.root_cause().to_string().contains("unauthorized"));
-    // owner grava e lê
+    // owner writes and reads
     s.app.execute_contract(s.gov.clone(), s.vault.clone(),
         &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC, address: Some("0x1A41144c".into()) }, &[]).unwrap();
     let r: RemoteRouterResponse = s.app.wrap().query_wasm_smart(&s.vault,
@@ -1287,13 +1287,13 @@ fn router_owner_only() {
 }
 
 // ===========================================================================
-// Fase 2/3 — recibo trustless (CW: send_receipt no destino + handle na origem)
+// Phase 2/3 — trustless receipt (CW: send_receipt on destination + handle on origin)
 // ===========================================================================
 use sha3::{Digest, Keccak256};
 
 const DOM_BSC_R: u32 = 56;
 
-/// monta uma mensagem Hyperlane com origin_domain embutido em [5..9]
+/// builds a Hyperlane message with origin_domain embedded in [5..9]
 fn hyp_msg(origin: u32, nonce: u32) -> HexBinary {
     let mut m = vec![3u8]; // version
     m.extend_from_slice(&nonce.to_be_bytes());
@@ -1311,32 +1311,32 @@ fn keccak_id(m: &HexBinary) -> HexBinary {
 }
 
 #[test]
-fn send_receipt_prova_entrega_e_despacha() {
+fn send_receipt_proves_delivery_and_dispatches() {
     let mut s = setup(1_000_000_000);
     let owner = s.gov.clone();
     let relayer = s.relayer_a.clone();
-    // registro: executor local (relayer_a) = operador 0; router da BSC
+    // registry: local executor (relayer_a) = operator 0; BSC router
     s.app.execute_contract(owner.clone(), s.vault.clone(),
         &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: Some(relayer.to_string()) }, &[]).unwrap();
     s.app.execute_contract(owner.clone(), s.vault.clone(),
         &ExecuteMsg::SetRemoteRouter { domain: DOM_BSC_R,
             address: Some("0x00000000000000000000000000000000000000000000000000000000000000bc".into()) }, &[]).unwrap();
-    // mensagem originada na BSC (56), entregue AQUI (TC) pelo relayer_a
+    // message originated on the BSC (56), delivered HERE (TC) by relayer_a
     let m = hyp_msg(DOM_BSC_R, 1);
     let id = keccak_id(&m);
     s.app.execute_contract(relayer.clone(), s.mailbox.clone(),
         &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
-    // send_receipt (papel destino) — despacha 1 recibo p/ a BSC
+    // send_receipt (destination role) — dispatches 1 receipt to the BSC
     s.app.execute_contract(relayer.clone(), s.vault.clone(),
         &ExecuteMsg::SendReceipt { messages: vec![m], gas_limit: None }, &[]).unwrap();
-    // o mock mailbox capturou o dispatch: destino 56, corpo de 36 bytes
+    // the mock mailbox captured the dispatch: destination 56, 36-byte body
     let last: Option<(u32, HexBinary, HexBinary, Option<HexBinary>)> = s.app.wrap()
         .query_wasm_smart(&s.mailbox, &mock_mailbox::QueryLastDispatch {}).unwrap();
     let (dest, _router, body, metadata) = last.unwrap();
     assert_eq!(dest, DOM_BSC_R);
     assert_eq!(body.len(), 36);
-    assert_eq!(&body.as_slice()[0..32], id.as_slice()); // id no corpo
-    assert_eq!(metadata, None); // sem gas_limit → sem metadata (IGP usa gas_for_domain)
+    assert_eq!(&body.as_slice()[0..32], id.as_slice()); // id in the body
+    assert_eq!(metadata, None); // no gas_limit → no metadata (IGP uses gas_for_domain)
 }
 
 #[test]
@@ -1353,19 +1353,19 @@ fn send_receipt_com_gas_limit_vira_metadata_do_igp() {
     let id = keccak_id(&m);
     s.app.execute_contract(relayer.clone(), s.mailbox.clone(),
         &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
-    // gas_limit → metadata do IGP: 32 bytes BE do valor (recibo paga só gás real)
+    // gas_limit → IGP metadata: 32 BE bytes of the value (receipt pays only real gas)
     s.app.execute_contract(relayer.clone(), s.vault.clone(),
         &ExecuteMsg::SendReceipt { messages: vec![m], gas_limit: Some(cosmwasm_std::Uint256::from(300_000u32)) }, &[]).unwrap();
     let last: Option<(u32, HexBinary, HexBinary, Option<HexBinary>)> = s.app.wrap()
         .query_wasm_smart(&s.mailbox, &mock_mailbox::QueryLastDispatch {}).unwrap();
     let (_dest, _router, _body, metadata) = last.unwrap();
-    let md = metadata.expect("gas_limit deve gerar metadata");
-    assert_eq!(md.len(), 32); // só o gas_limit; refund vazio → refund = o vault (pool)
+    let md = metadata.expect("gas_limit must produce metadata");
+    assert_eq!(md.len(), 32); // only the gas_limit; empty refund → refund = the vault (pool)
     assert_eq!(md.as_slice(), cosmwasm_std::Uint256::from(300_000u32).to_be_bytes().as_slice());
 }
 
 #[test]
-fn send_receipt_nao_reemite_o_mesmo_id() {
+fn send_receipt_not_reemite_o_mesmo_id() {
     let mut s = setup(1_000_000_000);
     let owner = s.gov.clone();
     let relayer = s.relayer_a.clone();
@@ -1378,10 +1378,10 @@ fn send_receipt_nao_reemite_o_mesmo_id() {
     let id = keccak_id(&m);
     s.app.execute_contract(relayer.clone(), s.mailbox.clone(),
         &mock_mailbox::ExecuteMsg::SetDelivery { message_id: id.clone(), sender: relayer.to_string(), block_number: 100 }, &[]).unwrap();
-    // 1ª emissão: ok
+    // 1st issuance: ok
     s.app.execute_contract(relayer.clone(), s.vault.clone(),
         &ExecuteMsg::SendReceipt { messages: vec![m.clone()], gas_limit: None }, &[]).unwrap();
-    // 2ª emissão do MESMO id: recusada (nada novo) — anti-duplo-pagamento no destino
+    // 2nd issuance of the SAME id: refused (nothing new) — anti-double-payment on destination
     let err = s.app.execute_contract(relayer.clone(), s.vault.clone(),
         &ExecuteMsg::SendReceipt { messages: vec![m], gas_limit: None }, &[]).unwrap_err();
     assert!(err.root_cause().to_string().contains("nothing new to send"));
@@ -1393,7 +1393,7 @@ fn handle_paga_operador_do_registro_local_e_idempotente() {
     let owner = s.gov.clone();
     let payout = s.relayer_a.clone();
     let router_bsc = "0x00000000000000000000000000000000000000000000000000000000000000bc";
-    // operador 0 recebe no domínio LOCAL (TC); recompensa e router p/ origem BSC
+    // operator 0 receives in the LOCAL domain (TC); reward and router for BSC origin
     s.app.execute_contract(owner.clone(), s.vault.clone(),
         &ExecuteMsg::SetOperatorAddress { index: 0, domain: DOM_TC, address: Some(payout.to_string()) }, &[]).unwrap();
     s.app.execute_contract(owner.clone(), s.vault.clone(),
@@ -1403,23 +1403,23 @@ fn handle_paga_operador_do_registro_local_e_idempotente() {
 
     let id = keccak_id(&hyp_msg(DOM_BSC_R, 9));
     let mut body = id.to_vec();
-    body.extend_from_slice(&0u32.to_be_bytes()); // operador 0
+    body.extend_from_slice(&0u32.to_be_bytes()); // operator 0
     let handle = ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg {
         origin: DOM_BSC_R,
         sender: HexBinary::from(hex::decode("00000000000000000000000000000000000000000000000000000000000000bc").unwrap()),
         body: HexBinary::from(body),
     });
     let before = balance(&s.app, &payout);
-    // SÓ o mailbox chama handle
+    // ONLY the mailbox calls handle
     s.app.execute_contract(s.mailbox.clone(), s.vault.clone(), &handle, &[]).unwrap();
     assert_eq!(balance(&s.app, &payout), before + 33_000_000);
-    // reentrega do MESMO recibo não paga de novo
+    // redelivery of the SAME receipt does not pay again
     s.app.execute_contract(s.mailbox.clone(), s.vault.clone(), &handle, &[]).unwrap();
     assert_eq!(balance(&s.app, &payout), before + 33_000_000);
 }
 
 #[test]
-fn handle_rejeita_nao_mailbox_e_router_errado() {
+fn handle_rejects_non_mailbox_and_wrong_router() {
     let mut s = setup(1_000_000_000);
     let owner = s.gov.clone();
     s.app.execute_contract(owner.clone(), s.vault.clone(),
@@ -1428,11 +1428,11 @@ fn handle_rejeita_nao_mailbox_e_router_errado() {
     let mut body = keccak_id(&hyp_msg(DOM_BSC_R, 1)).to_vec();
     body.extend_from_slice(&0u32.to_be_bytes());
     let good = HexBinary::from(hex::decode("00000000000000000000000000000000000000000000000000000000000000bc").unwrap());
-    // não-mailbox (um relayer qualquer) → Unauthorized
+    // non-mailbox (any relayer) → Unauthorized
     let err = s.app.execute_contract(s.relayer_a.clone(), s.vault.clone(),
         &ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg { origin: DOM_BSC_R, sender: good.clone(), body: HexBinary::from(body.clone()) }), &[]).unwrap_err();
     assert!(err.root_cause().to_string().contains("unauthorized"));
-    // mailbox, mas sender != router → Unauthorized
+    // mailbox, but sender != router → Unauthorized
     let bad = HexBinary::from(hex::decode("00000000000000000000000000000000000000000000000000000000000000ff").unwrap());
     let err = s.app.execute_contract(s.mailbox.clone(), s.vault.clone(),
         &ExecuteMsg::Handle(relayer_reward_vault::msg::HandleMsg { origin: DOM_BSC_R, sender: bad, body: HexBinary::from(body) }), &[]).unwrap_err();
@@ -1441,7 +1441,7 @@ fn handle_rejeita_nao_mailbox_e_router_errado() {
 
 #[test]
 fn ism_specifier_query_deserializa_o_json_do_mailbox() {
-    // o hpl-mailbox envia exatamente: {"ism_specifier":{"interchain_security_module":[]}}
+    // the hpl-mailbox sends exactly: {"ism_specifier":{"interchain_security_module":[]}}
     let json = br#"{"ism_specifier":{"interchain_security_module":[]}}"#;
     let parsed: relayer_reward_vault::msg::QueryMsg = cosmwasm_std::from_json(json).unwrap();
     matches!(parsed, relayer_reward_vault::msg::QueryMsg::IsmSpecifier(_));

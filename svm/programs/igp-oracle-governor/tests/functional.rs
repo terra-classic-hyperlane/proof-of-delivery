@@ -1,5 +1,5 @@
-//! Testes funcionais do IgpOracleGovernor com o mock do IGP (mesmos índices
-//! borsh e layout de contas do programa real).
+//! Functional tests of the IgpOracleGovernor with the IGP mock (same borsh
+//! indices and account layout as the real program).
 
 use borsh::BorshDeserialize;
 use igp_oracle_governor::{
@@ -18,7 +18,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 
-const DOMAIN: u32 = 1399811149; // solana mainnet domain (exemplo)
+const DOMAIN: u32 = 1399811149; // solana mainnet domain (example)
 const EPOCH_SECS: u64 = 21_600;
 const DELTA_BPS: u64 = 2_000;
 const NOW: i64 = 1_700_000_000;
@@ -48,7 +48,7 @@ async fn setup() -> Env {
     );
     pt.add_program("mock_igp", igp_id, processor!(mock_igp::process_instruction));
 
-    // conta do IGP pré-populada: owner = config PDA do governor
+    // pre-populated IGP account: owner = governor's config PDA
     let state = MockIgpState {
         owner: Some(config),
         beneficiary: Pubkey::new_unique(),
@@ -112,7 +112,7 @@ async fn setup() -> Env {
         ops,
     };
 
-    // faixa do multisig para o domínio de teste
+    // multisig bounds for the test domain
     set_domain(&mut env, 10, 1_000, 1, 10_000).await.unwrap();
     env
 }
@@ -226,12 +226,12 @@ async fn quorum_applies_median_via_cpi() {
 
     let ix = submit_ix(&env, &s0, epoch_now(), 100, 10);
     send(&mut env.ctx, &[ix], &[s0]).await.unwrap();
-    assert!(igp_state(&mut env).await.oracles.is_empty()); // abaixo do quórum
+    assert!(igp_state(&mut env).await.oracles.is_empty()); // below quorum
 
     let ix = submit_ix(&env, &s1, epoch_now(), 200, 40);
     send(&mut env.ctx, &[ix], &[s1]).await.unwrap();
 
-    // par: menor dos centrais → 100/10 · token_decimals vem do domínio (multisig)
+    // even: lower of the central ones → 100/10 · token_decimals comes from the domain (multisig)
     let state = igp_state(&mut env).await;
     assert_eq!(state.oracles.len(), 1);
     let (domain, data) = &state.oracles[0];
@@ -251,12 +251,12 @@ async fn non_operator_and_out_of_bounds_rejected() {
     send(&mut env.ctx, &[ix], &[payer]).await.unwrap();
     let ix = submit_ix(&env, &outsider, epoch_now(), 100, 10);
     let err = send(&mut env.ctx, &[ix], &[outsider]).await.unwrap_err();
-    assert!(err.contains("0xc8"), "esperava ERR_NOT_OPERATOR(200=0xc8): {err}");
+    assert!(err.contains("0xc8"), "expected ERR_NOT_OPERATOR(200=0xc8): {err}");
 
     let s0 = env.ops[0].insecure_clone();
     let ix = submit_ix(&env, &s0, epoch_now(), 5_000, 10); // rate > max 1000
     let err = send(&mut env.ctx, &[ix], &[s0]).await.unwrap_err();
-    assert!(err.contains("0xcb"), "esperava ERR_OUT_OF_BOUNDS(203=0xcb): {err}");
+    assert!(err.contains("0xcb"), "expected ERR_OUT_OF_BOUNDS(203=0xcb): {err}");
 }
 
 #[tokio::test]
@@ -268,36 +268,36 @@ async fn delta_blocks_and_epoch_locks() {
         env.ops[2].insecure_clone(),
     );
 
-    // época 1: base 100
+    // epoch 1: base 100
     let ix = submit_ix(&env, &s0, epoch_now(), 100, 100);
     send(&mut env.ctx, &[ix], &[s0.insecure_clone()]).await.unwrap();
     let ix = submit_ix(&env, &s1, epoch_now(), 100, 100);
     send(&mut env.ctx, &[ix], &[s1.insecure_clone()]).await.unwrap();
 
-    // época travada: 3ª submissão na mesma época falha
+    // locked epoch: 3rd submission in the same epoch fails
     let ix = submit_ix(&env, &s2, epoch_now(), 100, 100);
     let err = send(&mut env.ctx, &[ix], &[s2]).await.unwrap_err();
-    assert!(err.contains("0xcc"), "esperava ERR_APPLIED(204=0xcc): {err}");
+    assert!(err.contains("0xcc"), "expected ERR_APPLIED(204=0xcc): {err}");
 
-    // época 2: salto de 30% > 20% → bloqueia
+    // epoch 2: jump of 30% > 20% → blocks
     warp_epoch(&mut env, 1).await;
     let e2 = epoch_now() + 1;
     let ix = submit_ix(&env, &s0, e2, 130, 100);
     send(&mut env.ctx, &[ix], &[s0]).await.unwrap();
     let ix = submit_ix(&env, &s1, e2, 130, 100);
     let err = send(&mut env.ctx, &[ix], &[s1]).await.unwrap_err();
-    assert!(err.contains("0xcd"), "esperava ERR_DELTA(205=0xcd): {err}");
+    assert!(err.contains("0xcd"), "expected ERR_DELTA(205=0xcd): {err}");
 }
 
 #[tokio::test]
 async fn close_round_protects_live_account() {
     let mut env = setup().await;
     let s0 = env.ops[0].insecure_clone();
-    // cria a conta viva (única por domínio)
+    // creates the live account (unique per domain)
     let ix = submit_ix(&env, &s0, epoch_now(), 100, 100);
     send(&mut env.ctx, &[ix], &[s0.insecure_clone()]).await.unwrap();
 
-    // CloseRound na conta VIVA deve falhar (ERR_ROUND_LIVE = 209 = 0xd1)
+    // CloseRound on the LIVE account must fail (ERR_ROUND_LIVE = 209 = 0xd1)
     let (live, _) = price_round_pda(&env.gov_id, DOMAIN);
     let close = Instruction {
         program_id: env.gov_id,
@@ -309,7 +309,7 @@ async fn close_round_protects_live_account() {
         data: borsh::to_vec(&GovInstruction::CloseRound).unwrap(),
     };
     let err = send(&mut env.ctx, &[close], &[s0]).await.unwrap_err();
-    assert!(err.contains("0xd1"), "esperava ERR_ROUND_LIVE(209=0xd1): {err}");
+    assert!(err.contains("0xd1"), "expected ERR_ROUND_LIVE(209=0xd1): {err}");
 }
 
 #[tokio::test]
@@ -317,7 +317,7 @@ async fn force_set_and_beneficiary_by_multisig_only() {
     let mut env = setup().await;
     let (domain_acc, _) = domain_pda(&env.gov_id, DOMAIN);
 
-    // não-multisig falha
+    // non-multisig fails
     let s0 = env.ops[0].insecure_clone();
     let bad = Instruction {
         program_id: env.gov_id,
@@ -337,9 +337,9 @@ async fn force_set_and_beneficiary_by_multisig_only() {
         .unwrap(),
     };
     let err = send(&mut env.ctx, &[bad], &[s0]).await.unwrap_err();
-    assert!(err.contains("0xc9"), "esperava ERR_NOT_MULTISIG(201=0xc9): {err}");
+    assert!(err.contains("0xc9"), "expected ERR_NOT_MULTISIG(201=0xc9): {err}");
 
-    // multisig: força preço direto no IGP
+    // multisig: forces price directly in the IGP
     let multisig = env.multisig.insecure_clone();
     let ix = Instruction {
         program_id: env.gov_id,
@@ -362,7 +362,7 @@ async fn force_set_and_beneficiary_by_multisig_only() {
     let state = igp_state(&mut env).await;
     assert_eq!(state.oracles[0].1.token_exchange_rate, 500);
 
-    // multisig troca o beneficiary do IGP via governor
+    // multisig swaps the IGP's beneficiary via governor
     let new_beneficiary = Pubkey::new_unique();
     let ix = Instruction {
         program_id: env.gov_id,
@@ -383,7 +383,7 @@ async fn emergency_transfer_igp_ownership() {
     let mut env = setup().await;
     let multisig = env.multisig.insecure_clone();
 
-    // SAÍDA DE EMERGÊNCIA: devolve a posse do IGP ao multisig
+    // EMERGENCY EXIT: returns the IGP ownership to the multisig
     let ix = Instruction {
         program_id: env.gov_id,
         accounts: vec![
@@ -398,11 +398,11 @@ async fn emergency_transfer_igp_ownership() {
     send(&mut env.ctx, &[ix], &[multisig.insecure_clone()]).await.unwrap();
     assert_eq!(igp_state(&mut env).await.owner, Some(multisig.pubkey()));
 
-    // e o governor PERDEU o poder: quórum de preço agora falha na CPI
+    // and the governor LOST the power: price quorum now fails at the CPI
     let (s0, s1) = (env.ops[0].insecure_clone(), env.ops[1].insecure_clone());
     let ix = submit_ix(&env, &s0, epoch_now(), 100, 10);
     send(&mut env.ctx, &[ix], &[s0]).await.unwrap();
     let ix = submit_ix(&env, &s1, epoch_now(), 100, 10);
     let err = send(&mut env.ctx, &[ix], &[s1]).await.unwrap_err();
-    assert!(!err.is_empty()); // CPI rejeitada pelo IGP (owner mudou)
+    assert!(!err.is_empty()); // CPI rejected by the IGP (owner changed)
 }

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.22;
 
-/// @dev Interface do oracle governado. Assinatura FLAT — compatível com o
-///      TerraClassicOracle em produção (selector 0x666af432, verificado no
-///      bytecode on-chain em BSC/ETH) E com o StorageGasOracle canônico? NÃO:
-///      o canônico usa struct. Este governor alveja o TerraClassicOracle.
+/// @dev Interface of the governed oracle. FLAT signature — compatible with the
+///      TerraClassicOracle in production (selector 0x666af432, verified in the
+///      on-chain bytecode on BSC/ETH) AND with the canonical StorageGasOracle? NO:
+///      the canonical one uses a struct. This governor targets the TerraClassicOracle.
 interface IStorageGasOracle {
     function setRemoteGasData(
         uint32 remoteDomain,
@@ -17,12 +17,12 @@ interface IStorageGasOracle {
 
 /**
  * @title GasOracleGovernor
- * @notice Torna-se owner do StorageGasOracle e reconstrói a separação de poderes
- *         (spec §07/§10): o MULTISIG define faixa, operadores, quórum e delta —
- *         e guarda os caminhos de emergência; os OPERADORES apenas submetem o
- *         preço observado. Ao bater o quórum na época (6h de block.timestamp),
- *         a MEDIANA (menor dos centrais em empate par — na dúvida cobra menos
- *         do usuário) é validada contra faixa + delta e escrita no oracle.
+ * @notice Becomes owner of the StorageGasOracle and rebuilds the separation of
+ *         powers (spec §07/§10): the MULTISIG sets bounds, operators, quorum and
+ *         delta — and holds the emergency paths; the OPERATORS only submit the
+ *         observed price. When quorum is reached in the epoch (6h of block.timestamp),
+ *         the MEDIAN (lower of the central ones on an even tie — when in doubt charge
+ *         the user less) is validated against bounds + delta and written to the oracle.
  */
 contract GasOracleGovernor {
     // ============ Errors ============
@@ -100,9 +100,9 @@ contract GasOracleGovernor {
     uint256 public maxDeltaBps;
 
     mapping(uint32 domain => Bounds) public bounds;
-    /// domínio → época → operador → submissão
+    /// domain → epoch → operator → submission
     mapping(uint32 => mapping(uint256 => mapping(address => Submission))) public submissions;
-    /// domínio → época → quem já submeteu (para varrer na mediana)
+    /// domain → epoch → who has already submitted (to sweep for the median)
     mapping(uint32 => mapping(uint256 => address[])) public submitters;
     mapping(uint32 => mapping(uint256 => bool)) public applied;
     mapping(uint32 => AppliedData) public lastApplied;
@@ -143,7 +143,7 @@ contract GasOracleGovernor {
         emit OwnershipTransferred(address(0), _owner);
     }
 
-    // ============ Operadores ============
+    // ============ Operators ============
 
     function currentEpoch() public view returns (uint256) {
         return block.timestamp / epochDurationSecs;
@@ -170,7 +170,7 @@ contract GasOracleGovernor {
         address[] memory who = submitters[domain][epoch];
         if (who.length < quorum) return;
 
-        // mediana campo a campo (menor dos centrais no empate par)
+        // field-by-field median (lower of the central ones on an even tie)
         uint256 n = who.length;
         uint128[] memory rates = new uint128[](n);
         uint128[] memory gases = new uint128[](n);
@@ -195,13 +195,13 @@ contract GasOracleGovernor {
         oracle.setRemoteGasData(domain, medianRate, medianGas);
     }
 
-    // ============ Internos ============
+    // ============ Internal ============
 
     function _ensureInBounds(uint32 domain, uint128 value, uint128 min, uint128 max) internal pure {
         if (value < min || value > max) revert OutOfBounds(domain, value, min, max);
     }
 
-    /// |novo − último| * 10_000 <= último * maxDeltaBps
+    /// |new − last| * 10_000 <= last * maxDeltaBps
     function _ensureDelta(uint32 domain, uint128 last, uint128 median) internal view {
         uint256 diff = median >= last ? median - last : last - median;
         if (diff * 10_000 > uint256(last) * maxDeltaBps) {
@@ -209,7 +209,7 @@ contract GasOracleGovernor {
         }
     }
 
-    /// insertion sort em memória (n = quórum, pequeno) + índice (n-1)/2
+    /// insertion sort in memory (n = quorum, small) + index (n-1)/2
     function _lowerMedian(uint128[] memory values) internal pure returns (uint128) {
         uint256 n = values.length;
         for (uint256 i = 1; i < n; ++i) {
@@ -282,8 +282,8 @@ contract GasOracleGovernor {
         emit MaxDeltaBpsSet(bps);
     }
 
-    /// EMERGÊNCIA (spec §10): escrita direta, ignora quórum/faixa/delta e vira a
-    /// nova base do delta.
+    /// EMERGENCY (spec §10): direct write, ignores quorum/bounds/delta and becomes
+    /// the new delta base.
     function forceSetRemoteGasData(
         uint32 domain,
         uint128 tokenExchangeRate,
@@ -294,14 +294,14 @@ contract GasOracleGovernor {
         oracle.setRemoteGasData(domain, tokenExchangeRate, gasPrice);
     }
 
-    /// SAÍDA DE EMERGÊNCIA: devolve a posse do oracle (OZ Ownable, passo único).
+    /// EMERGENCY EXIT: returns ownership of the oracle (OZ Ownable, single step).
     function transferOracleOwnership(address newOwner) external onlyOwner {
         if (newOwner == address(0)) revert ZeroAddress();
         emit OracleOwnershipTransferred(newOwner);
         oracle.transferOwnership(newOwner);
     }
 
-    // posse do próprio governor em dois passos
+    // two-step ownership of the governor itself
     function transferOwnership(address _pending) external onlyOwner {
         if (_pending == address(0)) revert ZeroAddress();
         pendingOwner = _pending;
@@ -315,7 +315,7 @@ contract GasOracleGovernor {
         pendingOwner = address(0);
     }
 
-    // ============ Views auxiliares ============
+    // ============ Auxiliary views ============
 
     function submitterCount(uint32 domain, uint256 epoch) external view returns (uint256) {
         return submitters[domain][epoch].length;

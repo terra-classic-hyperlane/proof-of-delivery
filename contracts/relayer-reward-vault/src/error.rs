@@ -24,9 +24,9 @@ pub enum ContractError {
     #[error("message not delivered: {id}")]
     NotDelivered { id: String },
 
-    // O storage do Mailbox retornou algo que NÃO parseia como `Delivery { sender,
-    // block_number }` — provável migrate mudando o layout. Falha explícita em vez
-    // de pagar errado (spec §06).
+    // The Mailbox storage returned something that does NOT parse as `Delivery { sender,
+    // block_number }` — likely a migrate changing the layout. Fail explicitly instead
+    // of paying wrong (spec §06).
     #[error("mailbox storage layout mismatch for message {id}: {reason}")]
     MailboxLayoutMismatch { id: String, reason: String },
 

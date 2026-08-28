@@ -1,15 +1,15 @@
-//! pod — vault (rrv) + igp-oracle-governor num ÚNICO programa Solana.
+//! pod — vault (rrv) + igp-oracle-governor in a SINGLE Solana program.
 //!
-//! Motivo: rent é cobrado por byte e ~90% de cada .so é a runtime
-//! solana-program+borsh, idêntica nos dois. Fundidos, ela é paga UMA vez
-//! (~150 KB no total em vez de ~260 KB → ~0,8 SOL a menos de caução).
+//! Reason: rent is charged per byte and ~90% of each .so is the
+//! solana-program+borsh runtime, identical in both. Merged, it is paid ONCE
+//! (~150 KB total instead of ~260 KB → ~0.8 SOL less collateral).
 //!
-//! Roteamento: o PRIMEIRO byte do instruction data escolhe o módulo e o
-//! restante é o instruction data original daquele programa:
+//! Routing: the FIRST byte of the instruction data chooses the module and the
+//! rest is the original instruction data of that program:
 //!   0x00 → rrv (vault)   ·   0x01 → igp-oracle-governor
 //!
-//! As PDAs dos dois módulos convivem sob o MESMO program id sem colisão
-//! (seeds já são namespaced: "rrv-config" vs "gov-…").
+//! The PDAs of the two modules coexist under the SAME program id without collision
+//! (seeds are already namespaced: "rrv-config" vs "gov-…").
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError,
     pubkey::Pubkey,
@@ -27,8 +27,8 @@ pub fn process_instruction(
     data: &[u8],
 ) -> ProgramResult {
     use rrv::receipt;
-    // O Mailbox chama o recipient (nós) com um discriminador de 8 bytes da
-    // interface MessageRecipient — tratamos ANTES do roteamento por módulo.
+    // The Mailbox calls the recipient (us) with an 8-byte discriminator of the
+    // MessageRecipient interface — we handle it BEFORE the per-module routing.
     if let Some(disc) = receipt::recipient_discriminator(data) {
         if disc == receipt::HANDLE_DISC {
             // borsh HandleInstruction { origin u32, sender H256(32), message Vec }
@@ -86,7 +86,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rejeita_modulo_desconhecido_e_data_vazio() {
+    fn rejects_unknown_module_and_empty_data() {
         let pid = Pubkey::new_unique();
         assert_eq!(
             process_instruction(&pid, &[], &[9]),

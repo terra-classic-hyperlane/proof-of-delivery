@@ -5,33 +5,34 @@ use crate::state::{AppliedGasData, Bounds, PriceSubmission};
 
 #[cw_serde]
 pub struct InstantiateMsg {
-    /// Governança on-chain do Terra Classic.
+    /// On-chain governance of Terra Classic.
     pub owner: String,
-    /// hpl-igp-oracle a governar.
+    /// hpl-igp-oracle to govern.
     pub oracle: String,
-    /// Operadores iniciais (endereços dos relayers).
+    /// Initial operators (relayer addresses).
     pub operators: Vec<String>,
-    /// Submissões necessárias para aplicar (1 <= quorum <= operadores).
+    /// Submissions required to apply (1 <= quorum <= operators).
     pub quorum: u32,
-    /// Duração da época em segundos (6h = 21_600).
+    /// Epoch duration in seconds (6h = 21_600).
     pub epoch_duration_secs: u64,
-    /// Variação máxima por aplicação, em bps (2000 = 20%).
+    /// Maximum variation per application, in bps (2000 = 20%).
     pub max_delta_bps: u64,
 }
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    // ---------------- operadores (quórum) ----------------
-    /// Submete o preço observado para um domínio na época corrente. Ao atingir o
-    /// quórum, a MEDIANA (menor dos centrais em empate par — na dúvida, cobra
-    /// menos do usuário) é validada contra a faixa e o delta e aplicada no oracle.
+    // ---------------- operators (quorum) ----------------
+    /// Submits the observed price for a domain in the current epoch. Upon reaching
+    /// the quorum, the MEDIAN (lower of the central ones on an even tie — when in
+    /// doubt, charge the user less) is validated against the bounds and the delta
+    /// and applied to the oracle.
     SubmitPrice {
         domain: u32,
         token_exchange_rate: Uint128,
         gas_price: Uint128,
     },
 
-    // ---------------- governança (owner) ----------------
+    // ---------------- governance (owner) ----------------
     SetBounds { domain: u32, bounds: Bounds },
     UnsetBounds { domain: u32 },
     SetOperators {
@@ -43,21 +44,21 @@ pub enum ExecuteMsg {
     SetMaxDeltaBps { max_delta_bps: u64 },
     SetOwner { owner: String },
 
-    /// EMERGÊNCIA (spec §10): a governança escreve direto no oracle, ignorando
-    /// quórum, faixa e delta. Atualiza a base do delta.
+    /// EMERGENCY (spec §10): governance writes directly to the oracle, ignoring
+    /// quorum, bounds and delta. Updates the delta base.
     ForceSetRemoteGasData {
         domain: u32,
         token_exchange_rate: Uint128,
         gas_price: Uint128,
     },
 
-    /// SAÍDA DE EMERGÊNCIA: inicia a devolução da posse do oracle (o destinatário
-    /// precisa dar ClaimOwnership no oracle). Owner-only.
+    /// EMERGENCY EXIT: starts returning ownership of the oracle (the recipient
+    /// must call ClaimOwnership on the oracle). Owner-only.
     InitOracleOwnershipTransfer { next_owner: String },
-    /// Cancela uma transferência iniciada. Owner-only.
+    /// Cancels a started transfer. Owner-only.
     RevokeOracleOwnershipTransfer {},
-    /// Reivindica a posse do oracle quando este contrato é o pending owner
-    /// (passo 2 da instalação). Permissionless: só aceita se o oracle concordar.
+    /// Claims ownership of the oracle when this contract is the pending owner
+    /// (step 2 of the installation). Permissionless: only accepted if the oracle agrees.
     ClaimOracleOwnership {},
 }
 
@@ -73,19 +74,19 @@ pub enum QueryMsg {
     #[returns(Option<Bounds>)]
     Bounds { domain: u32 },
 
-    /// Época corrente derivada do timestamp do bloco.
+    /// Current epoch derived from the block timestamp.
     #[returns(EpochResponse)]
     CurrentEpoch {},
 
-    /// Submissões registradas para (domínio, época).
+    /// Submissions registered for (domain, epoch).
     #[returns(SubmissionsResponse)]
     Submissions { domain: u32, epoch: u64 },
 
-    /// O que foi aplicado em (domínio, época), se algo foi.
+    /// What was applied in (domain, epoch), if anything.
     #[returns(Option<AppliedGasData>)]
     Applied { domain: u32, epoch: u64 },
 
-    /// Último valor aplicado por domínio (base do delta).
+    /// Last value applied per domain (delta base).
     #[returns(Option<AppliedGasData>)]
     LastApplied { domain: u32 },
 }

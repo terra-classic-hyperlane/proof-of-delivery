@@ -1,20 +1,20 @@
 //! # relayer-reward-vault
 //!
-//! Vault beneficiary do IGP no Terra Classic. Um relayer NÃO recebe por estar numa
-//! lista: recebe porque o storage do Mailbox registra que foi ELE quem executou o
-//! `process()` da mensagem (`DELIVERIES: Map<Vec<u8>, Delivery { sender, block_number }>`).
+//! IGP beneficiary vault on Terra Classic. A relayer does NOT get paid for being on a
+//! list: it gets paid because the Mailbox storage records that it was IT who executed the
+//! message's `process()` (`DELIVERIES: Map<Vec<u8>, Delivery { sender, block_number }>`).
 //!
-//! A prova é uma raw query na chave bruta do cw-storage-plus:
+//! The proof is a raw query on the raw cw-storage-plus key:
 //!   `[len_be_u16] + b"deliveries" + message_id(32)`  →  JSON `{"sender","block_number"}`
-//! (verificado contra o wasm EM PRODUÇÃO — code_id 11371, ver README do repositório).
+//! (verified against the wasm IN PRODUCTION — code_id 11371, see the repository README).
 //!
-//! Invariantes:
-//! - Claim em lote é ATÔMICO: um id inválido reverte tudo.
-//! - Parse do valor é ESTRITO (`deny_unknown_fields`): se um migrate do Mailbox mudar
-//!   o layout, o contrato falha com `MailboxLayoutMismatch` em vez de pagar errado.
-//! - `Sweep` é permissionless: qualquer um pode mandar o vault puxar o saldo do IGP
-//!   (o IGP só aceita `claim()` vindo do beneficiary — que é este contrato).
-//! - Owner é a governança on-chain do Terra Classic, não multisig.
+//! Invariants:
+//! - Batch claim is ATOMIC: one invalid id reverts everything.
+//! - Value parsing is STRICT (`deny_unknown_fields`): if a Mailbox migrate changes
+//!   the layout, the contract fails with `MailboxLayoutMismatch` instead of paying wrong.
+//! - `Sweep` is permissionless: anyone can make the vault pull the IGP balance
+//!   (the IGP only accepts `claim()` coming from the beneficiary — which is this contract).
+//! - Owner is the on-chain governance of Terra Classic, not a multisig.
 
 pub mod error;
 pub mod execute;

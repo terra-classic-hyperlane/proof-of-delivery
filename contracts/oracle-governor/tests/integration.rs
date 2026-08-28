@@ -1,6 +1,6 @@
-//! Integração do oracle-governor com um mock do hpl-igp-oracle que espelha o
-//! contrato real: posse em DOIS passos (InitOwnershipTransfer → ClaimOwnership)
-//! e SetRemoteGasData restrito ao owner.
+//! Integration of the oracle-governor with a mock of the hpl-igp-oracle that mirrors the
+//! real contract: TWO-step ownership (InitOwnershipTransfer → ClaimOwnership)
+//! and SetRemoteGasData restricted to the owner.
 
 use cosmwasm_std::{Addr, Empty, Uint128};
 use cw_multi_test::{App, Contract, ContractWrapper, Executor};
@@ -15,7 +15,7 @@ const EPOCH_SECS: u64 = 21_600; // 6h
 const DELTA_BPS: u64 = 2_000; // 20%
 
 // ---------------------------------------------------------------------------
-// Mock do hpl-igp-oracle
+// Mock of the hpl-igp-oracle
 // ---------------------------------------------------------------------------
 mod mock_oracle {
     use cosmwasm_schema::cw_serde;
@@ -27,7 +27,7 @@ mod mock_oracle {
 
     pub const OWNER: Item<Addr> = Item::new("owner");
     pub const PENDING: Item<Option<Addr>> = Item::new("pending");
-    /// domínio → (exchange_rate, gas_price)
+    /// domain → (exchange_rate, gas_price)
     pub const DATA: Map<u32, (Uint128, Uint128)> = Map::new("data");
 
     #[cw_serde]
@@ -169,8 +169,8 @@ struct Setup {
     ops: [Addr; 3],
 }
 
-/// Sobe oracle (owner=gov) + governor (3 operadores, quórum 2) e transfere a
-/// posse do oracle para o governor pelo fluxo de dois passos.
+/// Brings up oracle (owner=gov) + governor (3 operators, quorum 2) and transfers
+/// the oracle ownership to the governor via the two-step flow.
 fn setup() -> Setup {
     let gov = Addr::unchecked("gov");
     let ops = [
@@ -214,7 +214,7 @@ fn setup() -> Setup {
         )
         .unwrap();
 
-    // posse do oracle → governor (passo 1 pela governança, passo 2 permissionless)
+    // oracle ownership → governor (step 1 by governance, step 2 permissionless)
     app.execute_contract(
         gov.clone(),
         oracle.clone(),
@@ -232,7 +232,7 @@ fn setup() -> Setup {
     )
     .unwrap();
 
-    // faixa da governança para o domínio de teste
+    // governance bounds for the test domain
     app.execute_contract(
         gov.clone(),
         governor.clone(),
@@ -294,7 +294,7 @@ fn advance_epoch(s: &mut Setup) {
 }
 
 // ---------------------------------------------------------------------------
-// Testes
+// Tests
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -309,7 +309,7 @@ fn instantiate_and_claim_oracle_ownership() {
     assert_eq!(cfg.oracle, s.oracle);
     assert_eq!(cfg.quorum, 2);
     assert_eq!(cfg.operator_count, 3);
-    // a posse do oracle terminou no governor
+    // the oracle ownership ended up at the governor
     assert_eq!(oracle_owner(&s), s.governor);
 }
 
@@ -331,7 +331,7 @@ fn submit_without_bounds_fails() {
             op,
             s.governor.clone(),
             &ExecuteMsg::SubmitPrice {
-                domain: 999, // sem faixa cadastrada
+                domain: 999, // no bounds registered
                 token_exchange_rate: Uint128::from(100u128),
                 gas_price: Uint128::from(50u128),
             },
@@ -354,7 +354,7 @@ fn below_quorum_stores_but_does_not_apply() {
     let mut s = setup();
     let op = s.ops[0].clone();
     submit(&mut s, &op, 100, 50).unwrap();
-    assert_eq!(oracle_data(&s), None); // nada aplicado
+    assert_eq!(oracle_data(&s), None); // nothing applied
 
     let epoch: oracle_governor::msg::EpochResponse = s
         .app
@@ -378,8 +378,8 @@ fn below_quorum_stores_but_does_not_apply() {
 #[test]
 fn quorum_applies_median_to_oracle_odd() {
     let mut s = setup();
-    // quórum é 2, mas deixamos os 3 submeterem na mesma época? Não: o 2º já aplica.
-    // Para mediana de 3 valores, sobe o quórum para 3.
+    // quorum is 2, but do we let all 3 submit in the same epoch? No: the 2nd already applies.
+    // For the median of 3 values, raise the quorum to 3.
     let gov = s.gov.clone();
     s.app
         .execute_contract(
@@ -393,9 +393,9 @@ fn quorum_applies_median_to_oracle_odd() {
     let (a, b, c) = (s.ops[0].clone(), s.ops[1].clone(), s.ops[2].clone());
     submit(&mut s, &a, 100, 10).unwrap();
     submit(&mut s, &b, 300, 30).unwrap();
-    submit(&mut s, &c, 200, 20).unwrap(); // fecha o quórum
+    submit(&mut s, &c, 200, 20).unwrap(); // closes the quorum
 
-    // mediana de {100,200,300}=200 · {10,20,30}=20
+    // median of {100,200,300}=200 · {10,20,30}=20
     assert_eq!(
         oracle_data(&s),
         Some((Uint128::from(200u128), Uint128::from(20u128)))
@@ -404,11 +404,11 @@ fn quorum_applies_median_to_oracle_odd() {
 
 #[test]
 fn even_quorum_uses_lower_central_median() {
-    let mut s = setup(); // quórum 2
+    let mut s = setup(); // quorum 2
     let (a, b) = (s.ops[0].clone(), s.ops[1].clone());
     submit(&mut s, &a, 100, 10).unwrap();
     submit(&mut s, &b, 200, 40).unwrap();
-    // par: usa o MENOR dos centrais — na dúvida, cobra menos
+    // even: uses the LOWER of the central values — when in doubt, charge less
     assert_eq!(
         oracle_data(&s),
         Some((Uint128::from(100u128), Uint128::from(10u128)))
@@ -420,7 +420,7 @@ fn epoch_already_applied_rejects_more_submissions() {
     let mut s = setup();
     let (a, b, c) = (s.ops[0].clone(), s.ops[1].clone(), s.ops[2].clone());
     submit(&mut s, &a, 100, 10).unwrap();
-    submit(&mut s, &b, 100, 10).unwrap(); // aplica
+    submit(&mut s, &b, 100, 10).unwrap(); // applies
     let err = submit(&mut s, &c, 100, 10).unwrap_err();
     assert!(err.to_string().contains("already applied"));
 }
@@ -429,17 +429,17 @@ fn epoch_already_applied_rejects_more_submissions() {
 fn delta_exceeded_blocks_application() {
     let mut s = setup();
     let (a, b) = (s.ops[0].clone(), s.ops[1].clone());
-    // época 1: estabelece a base = 100
+    // epoch 1: establishes the base = 100
     submit(&mut s, &a, 100, 100).unwrap();
     submit(&mut s, &b, 100, 100).unwrap();
 
-    // época 2: salto de 30% > 2000 bps → a submissão que fecharia o quórum falha
+    // epoch 2: a 30% jump > 2000 bps → the submission that would close the quorum fails
     advance_epoch(&mut s);
     submit(&mut s, &a, 130, 100).unwrap();
     let err = submit(&mut s, &b, 130, 100).unwrap_err();
     assert!(err.to_string().contains("delta too large"));
 
-    // dentro do limite (19%) passa — a submissão do op_a é sobrescrita e aplica
+    // within the limit (19%) passes — op_a's submission is overwritten and applies
     submit(&mut s, &a, 119, 100).unwrap();
     submit(&mut s, &b, 119, 100).unwrap();
     assert_eq!(
@@ -453,12 +453,12 @@ fn operator_overwrites_own_submission() {
     let mut s = setup();
     let a = s.ops[0].clone();
     submit(&mut s, &a, 100, 10).unwrap();
-    submit(&mut s, &a, 150, 15).unwrap(); // sobrescreve, NÃO fecha quórum
+    submit(&mut s, &a, 150, 15).unwrap(); // overwrites, does NOT close quorum
     assert_eq!(oracle_data(&s), None);
 
     let b = s.ops[1].clone();
     submit(&mut s, &b, 150, 15).unwrap();
-    // centrais {150,150} → 150
+    // central values {150,150} → 150
     assert_eq!(
         oracle_data(&s),
         Some((Uint128::from(150u128), Uint128::from(15u128)))
@@ -472,16 +472,16 @@ fn new_epoch_resets_submission_count() {
     submit(&mut s, &a, 100, 10).unwrap();
 
     advance_epoch(&mut s);
-    // submissão da época anterior não conta para a nova
+    // the previous epoch's submission does not count toward the new one
     let b = s.ops[1].clone();
     submit(&mut s, &b, 100, 10).unwrap();
-    assert_eq!(oracle_data(&s), None); // ainda 1 submissão nesta época
+    assert_eq!(oracle_data(&s), None); // still 1 submission in this epoch
 }
 
 #[test]
 fn admin_actions_are_owner_only() {
     let mut s = setup();
-    let intruder = s.ops[0].clone(); // operador NÃO é governança
+    let intruder = s.ops[0].clone(); // operator is NOT governance
 
     for msg in [
         ExecuteMsg::SetQuorum { quorum: 1 },
@@ -543,7 +543,7 @@ fn emergency_ownership_return_flow() {
     let mut s = setup();
     assert_eq!(oracle_owner(&s), s.governor);
 
-    // governança manda o governor devolver a posse
+    // governance has the governor return ownership
     let gov = s.gov.clone();
     s.app
         .execute_contract(
@@ -555,7 +555,7 @@ fn emergency_ownership_return_flow() {
             &[],
         )
         .unwrap();
-    // e reivindica direto no oracle
+    // and claims directly on the oracle
     s.app
         .execute_contract(
             gov.clone(),
@@ -569,10 +569,10 @@ fn emergency_ownership_return_flow() {
 
 #[test]
 fn set_operators_respects_quorum_invariant() {
-    let mut s = setup(); // 3 operadores, quórum 2
+    let mut s = setup(); // 3 operators, quorum 2
     let gov = s.gov.clone();
 
-    // remover 2 deixaria 1 < quórum 2 → falha
+    // removing 2 would leave 1 < quorum 2 → fails
     let err = s
         .app
         .execute_contract(
@@ -587,7 +587,7 @@ fn set_operators_respects_quorum_invariant() {
         .unwrap_err();
     assert!(err.root_cause().to_string().contains("quorum"));
 
-    // remover 1 (sobram 2 >= quórum) passa
+    // removing 1 (2 remain >= quorum) passes
     s.app
         .execute_contract(
             gov,

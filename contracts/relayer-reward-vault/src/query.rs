@@ -57,10 +57,10 @@ pub fn delivery(deps: Deps, message_id: HexBinary) -> Result<DeliveryResponse, C
     })
 }
 
-/// Sonda o layout: para uma mensagem SABIDAMENTE entregue, `ok=true` significa que
-/// a chave existe e parseia estritamente. `ok=false` com o detalhe do erro é o
-/// alarme de migrate no Mailbox (spec §06). Chave ausente também retorna ok=false
-/// (mensagem errada ou layout de CHAVE alterado) — use um id confirmado.
+/// Probes the layout: for a message KNOWN to be delivered, `ok=true` means that
+/// the key exists and parses strictly. `ok=false` with the error detail is the
+/// migrate alarm on the Mailbox (spec §06). A missing key also returns ok=false
+/// (wrong message or KEY layout changed) — use a confirmed id.
 pub fn layout_check(deps: Deps, message_id: HexBinary) -> Result<LayoutCheckResponse, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     match load_delivery(&deps.querier, &config.mailbox, message_id.as_slice()) {
