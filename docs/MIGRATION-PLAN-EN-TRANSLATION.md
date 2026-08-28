@@ -1,3 +1,22 @@
+# Migration Plan — RESULT (English translation)
+
+> **Verified result (reproducible build, optimizer 0.17.0, compared to on-chain data_hash):**
+> Only the **TC relayer-reward-vault** changed bytecode (2 production error strings translated).
+> Everything else is **byte-identical to on-chain → no migration**:
+>
+> | Contract | on-chain data_hash | new build | migrate? |
+> |---|---|---|---|
+> | TC oracle-governor | `3383e2bc…` | `3383e2bc…` | ✅ identical — no |
+> | **TC relayer-reward-vault** | `f3bc80e6…` | `339b8257…` | ➡️ **yes** |
+> | Solana pod | sha `f2f434d8…` | `f2f434d8…` | ✅ identical — no |
+> | BSC / ETH (immutable) | — | no PT prod strings | ✅ no |
+>
+> **To do the vault migration (supervised):** build the wasm (reproducible), then
+> `KEY=<terrad-key> bash deploy/tc-migrate-vault-i18n.sh` (store → migrate `{}` → verify;
+> reversible to code_id 11596). The admin is the relayer `terra1run9wz…`.
+
+---
+
 # Migration Plan — Full contract string translation + on-chain migration
 
 > **Why this is a separate, supervised task.** Translating source **comments** does not change the
