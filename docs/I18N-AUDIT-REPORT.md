@@ -23,11 +23,36 @@ Branch: `main` @ `terra-classic-hyperlane/proof-of-delivery`.
 |---|---|---|---|---|---|
 | **Terra Classic** | oracle-governor | `terra1z7jmlky…9sv4hj` (code 11587) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` | `3383e2bc…41744` | ❌ identical |
 | **Terra Classic** | **relayer-reward-vault** | `terra1gqkrh2…duzc2q` (code 11596 → **11635**) | `f3bc80e635228e6f57643a17f88a6496ca194b23a8b38d51d65b618621eba346` | `339b82571a9679830f1b7469a2ae42a96929286d77954f53014416af9bcc33fa` | ✅ **MIGRATED** (§4) |
-| **Solana** | pod (vault+governor) | `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` | `f2f434d8d5256d3deb35d106dbca3adc261a66a7ca77c933edd74dbb3aa8572e` (sha256 of pod.so) | `f2f434d8…8572e` | ❌ identical |
-| **BSC** | RelayerRewardVault (v2) | `0x1A41144ccbA0797BB0e9e448Aa3C330Eb68347D1` | immutable; comments-only → identical | — | ❌ none (immutable) |
-| **BSC** | GasOracleGovernor | `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` | immutable; comments-only → identical | — | ❌ none (immutable) |
-| **Ethereum** | RelayerRewardVault (v2) | `0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1` | immutable; comments-only → identical | — | ❌ none (immutable) |
-| **Ethereum** | GasOracleGovernor | `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` | immutable; comments-only → identical | — | ❌ none (immutable) |
+| **Solana** | pod (vault+governor) | `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` | `f2f434d8d5256d3deb35d106dbca3adc261a66a7ca77c933edd74dbb3aa8572e` (sha256 of pod.so) | `f2f434d8…8572e` | ❌ **byte-identical, proven vs on-chain dump** (§2a) |
+| **BSC** | RelayerRewardVault (receipt, active) | `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` | 10417 B, PT-source metadata fingerprint | executable body identical; only 53-byte metadata trailer differs (§2b) | ❌ none (immutable; nothing executable changed) |
+| **BSC** | GasOracleGovernor | `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` | 6372 B, PT-source metadata fingerprint | executable body identical; only 53-byte metadata trailer differs (§2b) | ❌ none (immutable; nothing executable changed) |
+| **Ethereum** | RelayerRewardVault (v2 attestation, active) | `0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1` | 5892 B (deployed from the pre-receipt v2 source revision) | translation changed nothing executable (§2b) | ❌ none (immutable) |
+| **Ethereum** | GasOracleGovernor | `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` | 6372 B, PT-source metadata fingerprint | executable body identical; only 53-byte metadata trailer differs (§2b) | ❌ none (immutable; nothing executable changed) |
+
+### 2a. Solana — byte-level proof against the live program (2026-08-28)
+`solana program dump 2mQZcHYL…ZUFj` from mainnet-beta returned bytecode whose first 239,464 bytes
+hash to `f2f434d8…8572e` — **exactly** the sha256 of `pod.so` built from the translated source —
+and every byte past that is zero padding. The translation did not change a single byte of the
+deployed program. An upgrade would be a paid no-op; none is needed.
+
+### 2b. EVM — why translated comments cannot require a redeploy
+`solc` appends a 53-byte CBOR **metadata trailer** to every contract's bytecode: an IPFS hash that
+fingerprints the *source text* (comments included). It is data after the final `INVALID` opcode —
+it can never execute. Measured comparison of the build from the last pre-translation commit
+(`dc8617f`) vs the translated source (both solc 0.8.22, via-IR, runs=200):
+- `RelayerRewardVault`: 10,417 bytes — **first 10,364 bytes (all executable code) byte-identical**; only the trailer differs.
+- `GasOracleGovernor`: 6,372 bytes — **first 6,319 bytes byte-identical**; only the trailer differs.
+
+On-chain verification (eth_getCode, 2026-08-28): the BSC active vault `0x34E06a77…` and both
+governors match the PT-source build **exactly** — same size, same metadata trailer, differing only
+in the immutable-variable slots the constructor filled (expected). The deployed contracts therefore
+carry the original PT-source fingerprint; the repository's translated source compiles to the same
+executable code. Since these contracts are **immutable** (no migrate/upgrade path), the only way to
+change the trailer would be redeploying at new addresses and re-pointing IGP/ISM/registry — real
+risk for a non-executable fingerprint. **No redeploy is warranted or planned.**
+Note: the ETH vault `0x04096dCB…` (5,892 B) was deployed from the earlier v2 attestation source
+revision (commit `28be74f`, before quote/receipt/setIsm were added) — a pre-existing version gap
+unrelated to the translation.
 
 **Why only the TC vault changed:** compilers strip comments, so translating comments cannot change the
 bytecode. The only Portuguese **string literals** in production code were two `generic_err` messages in
