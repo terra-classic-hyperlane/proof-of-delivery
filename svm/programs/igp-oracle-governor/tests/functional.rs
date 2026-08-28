@@ -172,9 +172,9 @@ async fn set_domain(
     send(&mut env.ctx, &[ix], &[signer]).await
 }
 
-fn submit_ix(env: &Env, op: &Keypair, epoch: u64, rate: u128, gas: u128) -> Instruction {
+fn submit_ix(env: &Env, op: &Keypair, _epoch: u64, rate: u128, gas: u128) -> Instruction {
     let (domain_acc, _) = domain_pda(&env.gov_id, DOMAIN);
-    let (round, _) = price_round_pda(&env.gov_id, DOMAIN, epoch);
+    let (round, _) = price_round_pda(&env.gov_id, DOMAIN);
     Instruction {
         program_id: env.gov_id,
         accounts: vec![
@@ -287,6 +287,29 @@ async fn delta_blocks_and_epoch_locks() {
     let ix = submit_ix(&env, &s1, e2, 130, 100);
     let err = send(&mut env.ctx, &[ix], &[s1]).await.unwrap_err();
     assert!(err.contains("0xcd"), "esperava ERR_DELTA(205=0xcd): {err}");
+}
+
+#[tokio::test]
+async fn close_round_protects_live_account() {
+    let mut env = setup().await;
+    let s0 = env.ops[0].insecure_clone();
+    // cria a conta viva (única por domínio)
+    let ix = submit_ix(&env, &s0, epoch_now(), 100, 100);
+    send(&mut env.ctx, &[ix], &[s0.insecure_clone()]).await.unwrap();
+
+    // CloseRound na conta VIVA deve falhar (ERR_ROUND_LIVE = 209 = 0xd1)
+    let (live, _) = price_round_pda(&env.gov_id, DOMAIN);
+    let close = Instruction {
+        program_id: env.gov_id,
+        accounts: vec![
+            AccountMeta::new(s0.pubkey(), true),
+            AccountMeta::new_readonly(env.config, false),
+            AccountMeta::new(live, false),
+        ],
+        data: borsh::to_vec(&GovInstruction::CloseRound).unwrap(),
+    };
+    let err = send(&mut env.ctx, &[close], &[s0]).await.unwrap_err();
+    assert!(err.contains("0xd1"), "esperava ERR_ROUND_LIVE(209=0xd1): {err}");
 }
 
 #[tokio::test]

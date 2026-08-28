@@ -52,7 +52,9 @@ pub fn domain_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
         program_id,
     )
 }
-pub fn price_round_pda(program_id: &Pubkey, domain: u32, epoch: u64) -> (Pubkey, u8) {
+// UMA conta round por DOMÍNIO (reusada em toda época). O rent é pago só na 1ª criação e
+// reaproveitado pra sempre — sem novo PDA por época (elimina o acúmulo de rent nos rounds).
+pub fn price_round_pda(program_id: &Pubkey, domain: u32) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
@@ -60,8 +62,6 @@ pub fn price_round_pda(program_id: &Pubkey, domain: u32, epoch: u64) -> (Pubkey,
             SEED_PRICE,
             SEED_SEP,
             &domain.to_le_bytes(),
-            SEED_SEP,
-            &epoch.to_le_bytes(),
         ],
         program_id,
     )
@@ -165,6 +165,10 @@ pub enum Instruction {
     SetIgpBeneficiary(Pubkey),
     /// PORTA 2 (SAÍDA DE EMERGÊNCIA) · [multisig s, config, igp_program, igp w]
     TransferIgpOwnership(Option<Pubkey>),
+    /// PORTA 1 (LIMPEZA) · [operator s w (recebe o rent), config, round w]
+    /// Fecha uma conta `round` ÓRFÃ (das antigas por-época) e devolve 100% do rent ao operador.
+    /// NUNCA fecha a conta viva do domínio (a única por-domínio) — guard por endereço.
+    CloseRound,
 }
 
 // ---- espelho do wire-format do IGP real (índices 5/7/9) ----
@@ -210,6 +214,7 @@ const ERR_DELTA: u32 = 205;
 const ERR_BAD_QUORUM: u32 = 206;
 const ERR_TOO_MANY: u32 = 207;
 const ERR_BAD_IGP: u32 = 208;
+const ERR_ROUND_LIVE: u32 = 209;
 
 fn custom(code: u32) -> ProgramError {
     ProgramError::Custom(code)
@@ -348,7 +353,48 @@ pub fn process_instruction(
         Instruction::TransferIgpOwnership(new_owner) => {
             igp_admin_cpi(program_id, accounts, IGP_TRANSFER_OWNERSHIP, &borsh::to_vec(&new_owner).unwrap())
         }
+        Instruction::CloseRound => close_round(program_id, accounts),
     }
+}
+
+/// Fecha uma conta `round` ÓRFÃ (das antigas por-época) e devolve o rent ao operador signatário.
+/// Guard: nunca fecha a conta VIVA do domínio (a única por-domínio, no PDA sem época).
+fn close_round(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let iter = &mut accounts.iter();
+    let operator = next_account_info(iter)?; // signer, recebe o rent
+    let config_info = next_account_info(iter)?;
+    let round_info = next_account_info(iter)?;
+
+    ensure(operator.is_signer, ProgramError::MissingRequiredSignature)?;
+    ensure(config_info.owner == program_id, ProgramError::IncorrectProgramId)?;
+    let config: Config = load_streaming(config_info)?;
+    ensure(
+        config.operators.iter().any(|op| op == operator.key),
+        custom(ERR_NOT_OPERATOR),
+    )?;
+
+    ensure(round_info.owner == program_id, ProgramError::IncorrectProgramId)?;
+    let round: PriceRound = load_streaming(round_info)?;
+    // a conta viva do domínio fica no PDA SEM época — protegida; só fechamos as órfãs.
+    let (live, _) = price_round_pda(program_id, round.domain);
+    ensure(*round_info.key != live, custom(ERR_ROUND_LIVE))?;
+
+    close_round_account(round_info, operator)
+}
+
+/// Fecha `acc` (owned pelo programa): manda TODOS os lamports a `dest` e zera os dados.
+/// A runtime coleta contas com 0 lamports ao fim da tx. (Mesmo padrão seguro do vault.)
+fn close_round_account(acc: &AccountInfo, dest: &AccountInfo) -> ProgramResult {
+    let mut acc_lamports = acc.try_borrow_mut_lamports()?;
+    let mut dest_lamports = dest.try_borrow_mut_lamports()?;
+    **dest_lamports = dest_lamports
+        .checked_add(**acc_lamports)
+        .ok_or(ProgramError::ArithmeticOverflow)?;
+    **acc_lamports = 0;
+    for b in acc.try_borrow_mut_data()?.iter_mut() {
+        *b = 0;
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -442,10 +488,11 @@ fn submit_price(
     let now = Clock::get()?.unix_timestamp as u64;
     let epoch = now / config.epoch_duration_secs;
 
-    let (expected_round, round_bump) = price_round_pda(program_id, domain, epoch);
+    let (expected_round, round_bump) = price_round_pda(program_id, domain);
     ensure(*round_info.key == expected_round, ProgramError::InvalidSeeds)?;
 
     let mut round: PriceRound = if round_info.data_is_empty() {
+        // 1ª vez para o domínio: cria a conta única (rent pago só aqui, reaproveitado sempre).
         create_pda(
             operator,
             round_info,
@@ -458,8 +505,6 @@ fn submit_price(
                 SEED_PRICE,
                 SEED_SEP,
                 &domain.to_le_bytes(),
-                SEED_SEP,
-                &epoch.to_le_bytes(),
                 &[round_bump],
             ],
         )?;
@@ -474,6 +519,16 @@ fn submit_price(
         ensure(round_info.owner == program_id, ProgramError::IncorrectProgramId)?;
         load_streaming(round_info)?
     };
+
+    // Nova época → reseta a janela na MESMA conta (sem criar PDA novo). O relógio on-chain só
+    // avança, então round.epoch nunca fica à frente de `epoch` (defensivo contra isso).
+    if round.epoch < epoch {
+        round.epoch = epoch;
+        round.submissions.clear();
+        round.applied = false;
+    } else {
+        ensure(round.epoch == epoch, ProgramError::InvalidInstructionData)?;
+    }
 
     ensure(!round.applied, custom(ERR_APPLIED))?;
 
