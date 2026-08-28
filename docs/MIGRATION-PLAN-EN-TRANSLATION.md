@@ -1,4 +1,4 @@
-# Migration Plan — RESULT (English translation)
+# Migration Plan — RESULT (English translation) ✅ COMPLETED
 
 > **Verified result (reproducible build, optimizer 0.17.0, compared to on-chain data_hash):**
 > Only the **TC relayer-reward-vault** changed bytecode (2 production error strings translated).
@@ -7,13 +7,16 @@
 > | Contract | on-chain data_hash | new build | migrate? |
 > |---|---|---|---|
 > | TC oracle-governor | `3383e2bc…` | `3383e2bc…` | ✅ identical — no |
-> | **TC relayer-reward-vault** | `f3bc80e6…` | `339b8257…` | ➡️ **yes** |
+> | **TC relayer-reward-vault** | `f3bc80e6…` | `339b8257…` | ✅ **MIGRATED 2026-08-28** |
 > | Solana pod | sha `f2f434d8…` | `f2f434d8…` | ✅ identical — no |
 > | BSC / ETH (immutable) | — | no PT prod strings | ✅ no |
 >
-> **To do the vault migration (supervised):** build the wasm (reproducible), then
-> `KEY=<terrad-key> bash deploy/tc-migrate-vault-i18n.sh` (store → migrate `{}` → verify;
-> reversible to code_id 11596). The admin is the relayer `terra1run9wz…`.
+> **Vault migration EXECUTED (2026-08-28, supervised):** store tx
+> `0DF2F74B228F28CD80E7C8EE1E828E40BC4AA90F1406C6C667D0831474F492E9` → **code_id 11635** ·
+> migrate tx `0472A13D3950A6648950B591CA2D3BCB6D6408B335481159A730B9DF5E1CDC0A` (empty `MigrateMsg`,
+> state preserved: pool = claims_payable = 13489469826 uluna). On-chain `data_hash` of 11635 matches
+> the reproducible build exactly (`339b8257…33fa`). Rollback available: migrate back to code_id 11596.
+> Full record with all chains: `I18N-AUDIT-REPORT.md`.
 
 ---
 

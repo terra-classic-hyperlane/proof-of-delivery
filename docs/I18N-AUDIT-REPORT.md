@@ -22,7 +22,7 @@ Branch: `main` @ `terra-classic-hyperlane/proof-of-delivery`.
 | Chain | Contract | Address / Program | Deployed hash (before) | Rebuilt hash (after) | Migration |
 |---|---|---|---|---|---|
 | **Terra Classic** | oracle-governor | `terra1z7jmlky…9sv4hj` (code 11587) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` | `3383e2bc…41744` | ❌ identical |
-| **Terra Classic** | **relayer-reward-vault** | `terra1gqkrh2…duzc2q` (code 11596) | `f3bc80e635228e6f57643a17f88a6496ca194b23a8b38d51d65b618621eba346` | `339b82571a9679830f1b7469a2ae42a96929286d77954f53014416af9bcc33fa` | ➡️ **YES** |
+| **Terra Classic** | **relayer-reward-vault** | `terra1gqkrh2…duzc2q` (code 11596 → **11635**) | `f3bc80e635228e6f57643a17f88a6496ca194b23a8b38d51d65b618621eba346` | `339b82571a9679830f1b7469a2ae42a96929286d77954f53014416af9bcc33fa` | ✅ **MIGRATED** (§4) |
 | **Solana** | pod (vault+governor) | `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` | `f2f434d8d5256d3deb35d106dbca3adc261a66a7ca77c933edd74dbb3aa8572e` (sha256 of pod.so) | `f2f434d8…8572e` | ❌ identical |
 | **BSC** | RelayerRewardVault (v2) | `0x1A41144ccbA0797BB0e9e448Aa3C330Eb68347D1` | immutable; comments-only → identical | — | ❌ none (immutable) |
 | **BSC** | GasOracleGovernor | `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` | immutable; comments-only → identical | — | ❌ none (immutable) |
@@ -41,14 +41,19 @@ or in tests, and tests are not compiled into deployed artifacts).
 - Solana (`cargo test`): governor 6, vault 17 passed, 0 failed.
 - EVM (`forge test`): 48 passed, 0 failed.
 
-## 4. Terra Classic vault migration transactions
-> To be filled after execution of `deploy/tc-migrate-vault-i18n.sh` (admin `terra1run9wz…`, chain
-> `columbus-5`, reversible to code_id 11596). Build reproducibly with `cosmwasm/optimizer:0.17.0`.
+## 4. Terra Classic vault migration transactions ✅ EXECUTED (2026-08-28)
+> Executed via `deploy/tc-migrate-vault-i18n.sh` (admin `terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp`,
+> chain `columbus-5`). Reversible to code_id 11596. Built reproducibly with `cosmwasm/optimizer:0.17.0`.
 
 | Step | tx hash | result |
 |---|---|---|
-| `MsgStoreCode` (new wasm `339b8257…`) | `<STORE_TXHASH>` | new code_id `<NEW_CODE_ID>` |
-| `MsgMigrateContract` (vault → new code_id, `{}`) | `<MIGRATE_TXHASH>` | code_id updated; pool/state preserved |
+| `MsgStoreCode` (new wasm `339b8257…33fa`) | `0DF2F74B228F28CD80E7C8EE1E828E40BC4AA90F1406C6C667D0831474F492E9` | new **code_id 11635** |
+| `MsgMigrateContract` (vault → 11635, `{}`) | `0472A13D3950A6648950B591CA2D3BCB6D6408B335481159A730B9DF5E1CDC0A` | migrated; pool/state fully preserved |
+
+Post-migration verification (on-chain):
+- `code/11635` → `data_hash = 339B82571A9679830F1B7469A2AE42A96929286D77954F53014416AF9BCC33FA` — **exactly matches** the reproducible build.
+- Vault `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` → `code_id: 11635`, admin unchanged.
+- State preserved: `pool = 13489469826 uluna`, `claims_payable = 13489469826` (solvent, `claims_payable == pool`), `reward_per_delivery = 1`.
 
 ## 5. How anyone can reproduce these hashes
 ```bash
@@ -59,7 +64,7 @@ docker run --rm -v "$(pwd)":/code -v cwopt_cache:/target \
   -v cwopt_registry:/usr/local/cargo/registry cosmwasm/optimizer:0.17.0
 cat artifacts/checksums.txt
 #   oracle_governor.wasm      = 3383e2bc…41744   (matches on-chain code 11587)
-#   relayer_reward_vault.wasm = 339b8257…33fa    (new; on-chain 11596 is f3bc80e6… until migrated)
+#   relayer_reward_vault.wasm = 339b8257…33fa    (matches on-chain code 11635 — the vault's current code)
 
 # Solana
 cd svm && cargo build-sbf && sha256sum target/deploy/pod.so   # f2f434d8…8572e  (matches on-chain)
@@ -68,6 +73,7 @@ cd svm && cargo build-sbf && sha256sum target/deploy/pod.so   # f2f434d8…8572e
 cd ../evm && forge build && forge test   # bytecode of the immutable contracts is unchanged
 
 # Compare with on-chain (TC):
-curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11587 | jq -r .code_info.data_hash
-curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11596 | jq -r .code_info.data_hash
+curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11587 | jq -r .code_info.data_hash   # 3383e2bc… (governor)
+curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11635 | jq -r .code_info.data_hash   # 339b8257… (vault, current)
+curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11596 | jq -r .code_info.data_hash   # f3bc80e6… (vault, pre-migration)
 ```
