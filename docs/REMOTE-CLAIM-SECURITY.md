@@ -67,7 +67,7 @@ operator** — that is, it is equivalent to ONE malicious attester. Against this
 The only scenario in which a single key has full authority is **quorum = 1**,
 which exists only because today there is **1 operator in test**. The security
 action for production is **operational and already supported by the contract**:
-add independent operators and raise the quorum (`MANUAL-EXPANSAO.md` §3). The
+add independent operators and raise the quorum (`EXPANSION-MANUAL.md` §3). The
 anti self-payment (rule 4) is already in the bytecode, ready for the moment the
 quorum goes above 1.
 

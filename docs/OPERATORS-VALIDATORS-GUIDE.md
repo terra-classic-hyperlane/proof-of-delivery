@@ -121,7 +121,7 @@ the operator **withdraws** later (the native Mailbox does not allow paying
 directly into a wallet on delivery). Idempotency lives in TC's `send_receipt`.
 
 **Status: PROVEN IN PRODUCTION (2026-08-19).** TC↔BSC corridors (both directions)
-and Solana→TC working. Technical details: `RECIBO-TRUSTLESS.md`.
+and Solana→TC working. Technical details: `TRUSTLESS-RECEIPT.md`.
 
 ---
 
@@ -154,13 +154,13 @@ and Solana→TC working. Technical details: `RECIBO-TRUSTLESS.md`.
 | Item | Address | 32 bytes (hex, left-pad) |
 |---|---|---|
 | Vault (receipt) | `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` | `0x00000000000000000000000034e06a7793877ec5251b1dc230ad7cd577d231f4` |
-| Warp ISM (receipts from TC) | `0xF6b0cDD33A7d2895a3F18b85569Ed9A8278cD151` | mutable (definitive address), 4 validators / threshold 3 — `ISM-VALIDADORES.md` |
+| Warp ISM (receipts from TC) | `0xF6b0cDD33A7d2895a3F18b85569Ed9A8278cD151` | mutable (definitive address), 4 validators / threshold 3 — `ISM-VALIDATORS.md` |
 | RPC | `https://bsc-dataseed.bnbchain.org` | |
 
 ### 4.4 Ethereum (domain 1) — EVM
 | Item | Address | Note |
 |---|---|---|
-| Warp ISM | `0x3ba17675f0D319C89D70722f6eb07790DF0B254B` | mutable (definitive address), 4 validators / threshold 3 — `ISM-VALIDADORES.md`; receipt vault **not yet deployed** (waiting for low gas) |
+| Warp ISM | `0x3ba17675f0D319C89D70722f6eb07790DF0B254B` | mutable (definitive address), 4 validators / threshold 3 — `ISM-VALIDATORS.md`; receipt vault **not yet deployed** (waiting for low gas) |
 
 ---
 
@@ -253,7 +253,7 @@ SOLANA_OP_KEYPAIR=/path/to/your_wallet.json \
 ### 6.2 TC↔BSC / TC↔ETH corridors (EVM)
 Same model, mirrored. At the **DESTINATION** you call `sendReceipt`; at the
 **ORIGIN** the payment is automatic when the receipt arrives. See
-`RECIBO-TRUSTLESS.md` §B/§C (full `cast`/`terrad` commands). ETH is waiting for
+`TRUSTLESS-RECEIPT.md` §B/§C (full `cast`/`terrad` commands). ETH is waiting for
 the vault deploy (low gas).
 
 ### 6.3 Add a new operator (onboarding)
@@ -394,6 +394,6 @@ solana balance <CONFIG_PDA> -u https://api.mainnet-beta.solana.com   # pool bala
 
 ---
 
-*Living document. On-chain proofs and implementation details: `RECIBO-TRUSTLESS.md`.
+*Living document. On-chain proofs and implementation details: `TRUSTLESS-RECEIPT.md`.
 IGORFAKE warp addresses per chain: `WARP-IGORFAKE.md`. Audit per chain:
-`AUDITORIA-{TC,BSC,ETH,SOLANA}.md`.*
+`AUDIT-{TC,BSC,ETH,SOLANA}.md`.*

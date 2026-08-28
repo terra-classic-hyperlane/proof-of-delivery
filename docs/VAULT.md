@@ -84,7 +84,7 @@ vault) and `vault.claim(bytes32[] ids)` — can go in the same tx via its own mu
 ## Solana (rrv)
 
 Here there is NO single owner: changes are **proposed with an operator quorum**
-(`AdminEnvelope { nonce, action }` — see `docs/OPERADORES.md` §Solana):
+(`AdminEnvelope { nonce, action }` — see `docs/OPERATORS.md` §Solana):
 
 | Action | Envelope |
 |---|---|

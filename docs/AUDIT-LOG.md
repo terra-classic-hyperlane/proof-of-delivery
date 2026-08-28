@@ -1,8 +1,8 @@
 # Consolidated Audit Record — proof-of-delivery (4 networks)
 
 **Snapshot:** 08/18/2026 · system ACTIVE on the 4 networks. Details per network:
-`AUDITORIA-TC.md` · `AUDITORIA-BSC.md` · `AUDITORIA-ETH.md` · `AUDITORIA-SOLANA.md`.
-Warp/validators: `WARP-IGORFAKE.md`. How to operate each contract: `OPERACAO-CONTRATOS.md`.
+`AUDIT-TC.md` · `AUDIT-BSC.md` · `AUDIT-ETH.md` · `AUDIT-SOLANA.md`.
+Warp/validators: `WARP-IGORFAKE.md`. How to operate each contract: `CONTRACT-OPERATION.md`.
 
 ## 1. Terra Classic (domain 132556) — COLLATERAL side
 
@@ -100,16 +100,16 @@ Warp/validators: `WARP-IGORFAKE.md`. How to operate each contract: `OPERACAO-CON
 Attesters = owner of each chain · quorum 1 (test). **Economy (08/19): the
 per-delivery payment is UNIQUE, at the origin** — destination rewards reduced to
 1 symbolic unit (TC tx `965542B7…` · BSC `0x2ce94a7a…` · ETH `0xa0d516d3…`
-· SOL `5Q7C34EP…`). Expansion: `MANUAL-EXPANSAO.md`.
+· SOL `5Q7C34EP…`). Expansion: `EXPANSION-MANUAL.md`.
 
 ## 4c. Trustless receipt (TC↔BSC proven 08/19) — DEFINITIVE model
 
 Vaults with `send_receipt`/`handle`: TC `terra1gqkrh2…` (code_id 11592) · BSC
 `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism=`0xa82087B8…`, the warp ISM;
-since 08/20/2026 both use the mutable ISM `0xF6b0cDD3…` — see `ISM-VALIDADORES.md`).
+since 08/20/2026 both use the mutable ISM `0xF6b0cDD3…` — see `ISM-VALIDATORS.md`).
 Mutual router + operator 0 to/from. TRUSTLESS payment: the destination proves the
 delivery, the receipt is validated by the bridge validators, the origin pays.
-Details: `RECIBO-TRUSTLESS.md`. Previous attestation vaults (BSC 0x1A41144c,
+Details: `TRUSTLESS-RECEIPT.md`. Previous attestation vaults (BSC 0x1A41144c,
 0xAe95a3) deprecated. ETH/Solana pending replication.
 
 ## 5. Relayer in operation (1 operator in this phase)
@@ -126,8 +126,8 @@ Details: `RECIBO-TRUSTLESS.md`. Previous attestation vaults (BSC 0x1A41144c,
 Today (deployment phase): the deployer of each network accumulates owner + operator +
 relayer. **Target approved by governance**: TC → governance module;
 BSC/ETH/Solana → validators multisig (3 TC validators + 1 non-validator;
-threshold to be defined — see §8 of `PARAMETROS_PROPOSTA.md`). Step-by-step
-procedures in `OPERACAO-CONTRATOS.md` §5.
+threshold to be defined — see §8 of `PROPOSAL-PARAMETERS.md`). Step-by-step
+procedures in `CONTRACT-OPERATION.md` §5.
 
 ## 7. Quick verification (one line per invariant)
 
@@ -143,7 +143,7 @@ cast call --rpc-url https://bsc-dataseed.bnbchain.org 0xEdEd7a4f6FEe4B474B9d7730
 cast call --rpc-url https://ethereum-rpc.publicnode.com 0x3987cCE8f08037EBF93Ef3a934753540A94196cE "owner()(address)"
 cast call --rpc-url https://ethereum-rpc.publicnode.com 0x9650F1f8DB492750323172145e67Df4e89E964Aa "beneficiary()(address)"
 # Solana: owner/beneficiary embedded in the Igp account (FPTvDso…) — offsets 43/75
-# (verification script: deploy/solana-init.mjs reads and validates; see AUDITORIA-SOLANA.md)
+# (verification script: deploy/solana-init.mjs reads and validates; see AUDIT-SOLANA.md)
 solana balance Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w -u https://api.mainnet-beta.solana.com
 ```
 

@@ -14,3 +14,8 @@ deploy/evm-*.state
 deploy/solana.state
 deploy/node_modules
 deploy/.claim-agent-seen.json
+
+# segredo da conta de tooling (claim-agent/deliver-receipts/scripts) — NUNCA subir
+deploy/.relayer-tooling-key.md
+deploy/.env
+deploy/topup.env

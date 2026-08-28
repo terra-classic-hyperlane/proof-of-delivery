@@ -6,7 +6,7 @@ as the spec requires (§ "not a single line of the Hyperlane core is modified").
 offline agents (`oracle-agent`, `claim-agent`, `epoch-reporter`) only perform the
 roles the relayer does NOT: price/gas, emitting the claims (receipts), and the
 Solana epoch quorum. `deliver-receipts-tc.mjs` is just a **safety net**
-(plan B, off by default — see `RECIBO-TRUSTLESS.md`).
+(plan B, off by default — see `TRUSTLESS-RECEIPT.md`).
 
 VPS `31.97.91.4` · service `hyperlane-relayer.service` · binary at
 `/root/hyperlane/bin/relayer`.

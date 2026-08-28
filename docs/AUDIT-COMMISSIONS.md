@@ -144,13 +144,13 @@ receipt `5f67d0f7eec906e72bf724f1333b1657b6c924773ee88a6e33a62706a421158a` deliv
 - **TC ↔ ETH** — the ETH receipt vault **has not been deployed yet** (waiting for low gas).
   Without a vault, there is no receipt and no payment. **No ETH commission exists** —
   it is not a bug, it is a pending step. (Warp ETH ISM at the time: `0xDe8edEC7…`; since
-  2026-08-20 it is the mutable `0x3ba17675f0D319C89D70722f6eb07790DF0B254B` — `ISM-VALIDADORES.md`.)
+  2026-08-20 it is the mutable `0x3ba17675f0D319C89D70722f6eb07790DF0B254B` — `ISM-VALIDATORS.md`.)
 - **TC → Solana** — **not supported**. ⚠️ **Watch the direction:** this is the **OPPOSITE**
   of §3. What **works and was proven is Solana→TC** (Solana as ORIGIN, §3). The
   **TC→Solana** direction (Solana as DESTINATION) is the one left out — because, to pay, the
   destination would have to prove who delivered, and Solana **does not record the executor**;
   proving would only be possible in the same tx (keeper), which was discarded. In short: **the
-  Solana corridor works in the direction where it is the origin.** See `RECIBO-TRUSTLESS.md` §G.
+  Solana corridor works in the direction where it is the origin.** See `TRUSTLESS-RECEIPT.md` §G.
 
 ---
 

@@ -25,7 +25,7 @@ for the relayer's deliveries** (`src/claims.js`, config `chains.<name>.claims`):
 
 Cursors/pending items/epochs live in `state.json`. **The first round only records the
 cursor** — only NEW deliveries are claimed automatically (old ones:
-manual, `OPERACAO-CONTRATOS.md`). TC window: 200k blocks; BSC 1.6M; ETH 100.8k.
+manual, `CONTRACT-OPERATION.md`). TC window: 200k blocks; BSC 1.6M; ETH 100.8k.
 
 ## ANCHOR mode (why it does not compute the price from scratch)
 
@@ -51,7 +51,7 @@ Did you recalibrate the oracle manually? **Delete the corresponding entry from
 | `SOL_PRIVATE_KEY` | Solana | ed25519 seed hex (32 bytes) |
 
 The account of each key must be **registered as an operator** on the governor of the
-respective chain (see `OPERACAO-CONTRATOS.md`) and have a minimum balance for gas.
+respective chain (see `CONTRACT-OPERATION.md`) and have a minimum balance for gas.
 
 ## Production installation (relayer VPS) — state as of 2026-08-18
 
@@ -100,7 +100,7 @@ systemctl restart oracle-agent       # after editing config.json
 |---|---|---|
 | `anchor created … nothing submitted` | 1st round of that domain | Normal |
 | `stable (<300bps)` | price did not move enough | Normal |
-| `NotOperator` / `Unauthorized` | key not registered as an operator | `OPERACAO-CONTRATOS.md` (SetOperators) |
+| `NotOperator` / `Unauthorized` | key not registered as an operator | `CONTRACT-OPERATION.md` (SetOperators) |
 | `BoundsExceeded` | candidate outside the governor's bounds | Investigate price OR adjust bounds (owner) |
 | `DeltaExceeded` | jump > 20% in one epoch | Expected in a crash/pump; consider ForceSet |
 | `env … missing` | `.env` not created/loaded | run `setup-env.sh`, check the unit |

@@ -8,7 +8,7 @@
 //
 // State (cursors, pending ids, counted epochs) lives in state.json together with the
 // price anchors. First round only writes the cursor (only NEW deliveries are
-// claimed automatically; old ones: manual via docs/OPERACAO-CONTRATOS.md).
+// claimed automatically; old ones: manual via docs/CONTRACT-OPERATION.md).
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 
 const log = (chain, msg) => console.log(`[${new Date().toISOString()}] [${chain}] [claims] ${msg}`);

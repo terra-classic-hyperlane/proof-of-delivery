@@ -9,7 +9,7 @@
 # if it is not, because transferOwnership/setBeneficiary would fail.
 #
 # Addresses discovered ON-CHAIN on 2026-08-18 (from the routers wired
-# into the TC warp) — see docs/PARAMETROS_PROPOSTA.md. Oracle bounds anchored
+# into the TC warp) — see docs/PROPOSAL-PARAMETERS.md. Oracle bounds anchored
 # to the CURRENT values (÷3 · ×3): the oracle is the custom TerraClassicOracle
 # (setRemoteGasData flat, selector 0x666af432).
 # =============================================================================
@@ -90,7 +90,7 @@ if ! done_step VAULT; then
 fi
 VAULT=$(get_state VAULT); echo "✓ vault: $VAULT"
 
-# operators: signer + (optional) OPERATOR2 via env; quorum follows (docs/OPERADORES.md)
+# operators: signer + (optional) OPERATOR2 via env; quorum follows (docs/OPERATORS.md)
 OPS_ARG="[$SIGNER]"; Q=1
 if [ -n "${OPERATOR2:-}" ]; then OPS_ARG="[$SIGNER,$OPERATOR2]"; Q=${QUORUM:-2}; fi
 if ! done_step GOV; then

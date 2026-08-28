@@ -17,7 +17,7 @@ const KEYPAIR = process.env.SOLANA_KEYPAIR ?? "/home/lunc/keys/solana-keypair-Bi
 const IGP_PROGRAM = new PublicKey("FLZuKRsfdovLqd8n1AYhPCwLqBjfFyZY3A2edgnjdJoR");
 const IGP_INNER   = new PublicKey("FPTvDsowMHXFKktoLgy2a2qfr5yL6846JHKwvk2mYKFk");
 
-// parameters (docs/PARAMETROS_PROPOSTA.md, REAL on-chain convention)
+// parameters (docs/PROPOSAL-PARAMETERS.md, REAL on-chain convention)
 const TC_DOMAIN = 132556;
 const REWARD_LAMPORTS = 3_000_000n;      // 0.003 SOL
 const EPOCH_SECS = 21_600n;
@@ -42,7 +42,7 @@ const DO_TRANSFER = process.argv.includes("--transfer-igp");
 const DO_BENEFICIARY = process.argv.includes("--set-beneficiary");
 const DO_SEED = process.argv.includes("--seed");
 
-// operators: signer + (optional) OPERATOR2 via env; quorum follows (docs/OPERADORES.md)
+// operators: signer + (optional) OPERATOR2 via env; quorum follows (docs/OPERATORS.md)
 const OPERATOR2 = process.env.OPERATOR2 ? new PublicKey(process.env.OPERATOR2) : null;
 const OPS = (me) => (OPERATOR2 ? [me, OPERATOR2] : [me]);
 const QUORUM = OPERATOR2 ? 2 : 1;

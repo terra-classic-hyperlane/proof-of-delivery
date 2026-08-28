@@ -9,7 +9,7 @@ description: >-
 
 # tc-proof-of-delivery — deploy and operation (runbook)
 
-> Full step-by-step: `docs/INSTALACAO_E_EXECUCAO.md` §4–§6 · process diagrams: `docs/ARQUITETURA.md`.
+> Full step-by-step: `docs/INSTALL-AND-RUN.md` §4–§6 · process diagrams: `docs/ARCHITECTURE.md`.
 > The phase order is LAW (spec §13): 0 ✅ → 1–2 ✅ LIVE (TC, 18/08/2026 — addresses in README:
 > governor terra1z7jmlky…9sv4hj / vault terra1gqkrh2…duzc2q) → 3 (EVM: BSC ✅ + ETH ✅) → 4 (Solana ✅ ACTIVE — pod 2mQZcHYL…).
 

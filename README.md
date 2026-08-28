@@ -1,7 +1,7 @@
 # tc-proof-of-delivery
 
 Remuneration of multiple relayers on the Hyperlane bridge (Terra Classic · BSC · Ethereum · Solana).
-Specification: `SPEC.html` (v3) · **IGORFAKE warp map** (addresses/IGP/oracle/ISM/prices of the 4 legs): `docs/WARP-IGORFAKE.md` · **Architecture with diagrams**: `docs/ARQUITETURA.md` · **Installation/execution**: `docs/INSTALACAO_E_EXECUCAO.md` · Repo skills in `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Each network has a Vault as beneficiary of the local IGP; the operator
+Specification: `SPEC.html` (v3) · **IGORFAKE warp map** (addresses/IGP/oracle/ISM/prices of the 4 legs): `docs/WARP-IGORFAKE.md` · **Architecture with diagrams**: `docs/ARCHITECTURE.md` · **Installation/execution**: `docs/INSTALL-AND-RUN.md` · Repo skills in `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Each network has a Vault as beneficiary of the local IGP; the operator
 gets paid for what it DELIVERED, proven by the execution record of the chain itself (TC via raw query
 of the storage, EVM via processor(), Solana via epoch quorum).
 
@@ -95,35 +95,35 @@ When storing on the chain, the code's `data_hash` MUST equal the sha256 above.
 
 ## Audit and operation documentation
 
-- **`docs/RECIBO-TRUSTLESS.md`** — trustless model (receipt proven by the validators): step by step of the TC↔BSC commands.
-- **`docs/SEGURANCA-CLAIMREMOTO.md`** — ClaimRemote trust model: the contract (not the relayer) decides who gets paid; anti-self-payment; the two "beneficiaries".
-- **`docs/MANUAL-EXPANSAO.md`** — how to add chains, operators and bindings (from/to); by id vs by epoch.
-- **`docs/CLAIM-REMOTO.md`** — Vault v2: how the 4 chains tie together (address bindings, quorum attestation, origin fee paid to the operator).
+- **`docs/TRUSTLESS-RECEIPT.md`** — trustless model (receipt proven by the validators): step by step of the TC↔BSC commands.
+- **`docs/REMOTE-CLAIM-SECURITY.md`** — ClaimRemote trust model: the contract (not the relayer) decides who gets paid; anti-self-payment; the two "beneficiaries".
+- **`docs/EXPANSION-MANUAL.md`** — how to add chains, operators and bindings (from/to); by id vs by epoch.
+- **`docs/REMOTE-CLAIM.md`** — Vault v2: how the 4 chains tie together (address bindings, quorum attestation, origin fee paid to the operator).
 
-- **`docs/REGISTRO-AUDITORIA.md`** — ALL addresses/operators/parameters of the 4 networks + one-line verification per invariant.
-- **`docs/OPERACAO-CONTRATOS.md`** — how to execute each contract: change owner, operators, quorum, bounds, price, pause, withdrawals, handoff.
+- **`docs/AUDIT-LOG.md`** — ALL addresses/operators/parameters of the 4 networks + one-line verification per invariant.
+- **`docs/CONTRACT-OPERATION.md`** — how to execute each contract: change owner, operators, quorum, bounds, price, pause, withdrawals, handoff.
 - **`docs/ORACLE-AGENT.md`** — installation/execution of the price agent (anchor mode, hex keys, systemd, logs).
-- **`docs/RELATORIO-INSTALACAO-ORACLE-AGENT.md`** — report of the production installation (08/18/2026).
+- **`docs/ORACLE-AGENT-INSTALL-REPORT.md`** — report of the production installation (08/18/2026).
 
 ## Deployment — Solana (Phase 4): ✅ ACTIVE (08/18/2026, finalize included)
 
 Single program `pod` (vault+governor merged) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
 pool PDA `Eq1mJGTS…Dwb9w` with 0.3 SOL · IGP owner = governor PDA ✓ ·
 beneficiary = pool ✓ (verified on-chain). Total cost 1.66 SOL (rent recoverable).
-Complete record: `docs/AUDITORIA-SOLANA.md`.
+Complete record: `docs/AUDIT-SOLANA.md`.
 
 ## Deployment — Ethereum (Phase 3): ✅ LIVE (08/18/2026)
 
 Vault `0xDf90d3b7FF98466E148B334128374807b3e89EbD` · Governor
 `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` · oracle owner = governor ✓ ·
-IGP beneficiary = vault ✓ · quorum 1. Pool pending seeding. Record: `docs/AUDITORIA-ETH.md`.
+IGP beneficiary = vault ✓ · quorum 1. Pool pending seeding. Record: `docs/AUDIT-ETH.md`.
 
 ## Deployment — BSC (Phase 3): ✅ LIVE (08/18/2026)
 
 Vault `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` · Governor
 `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` · oracle owner = governor ✓ ·
 IGP beneficiary = vault ✓ · quorum 1. **Pool not yet seeded** (balance).
-Complete record: `docs/AUDITORIA-BSC.md`.
+Complete record: `docs/AUDIT-BSC.md`.
 
 ## Deployment — Terra Classic (Phases 1–2): ✅ LIVE (08/18/2026, columbus-5)
 
@@ -137,7 +137,7 @@ Complete record: `docs/AUDITORIA-BSC.md`.
 | IGP.beneficiary | ✅ = vault (tx `4895068D…`; confirmed by query `{"igp":{"beneficiary":{}}}`) |
 | Pool | ✅ 5,000 LUNC · fee 50 LUNC · **claims_payable = 100** · window 200k blocks |
 | `layout_check` (real msg `d039daa1…`) | ✅ `ok:true` — proof by raw query operating in production |
-| Operators / quorum | 1 (deployer) / 1 — expand via `docs/OPERADORES.md` |
-| Owner (governor + vault) | deployer — handoff to governance: §8 of `docs/PARAMETROS_PROPOSTA.md` |
+| Operators / quorum | 1 (deployer) / 1 — expand via `docs/OPERATORS.md` |
+| Owner (governor + vault) | deployer — handoff to governance: §8 of `docs/PROPOSAL-PARAMETERS.md` |
 
-**Complete audit record** (all 11 tx hashes and sha256 in full + verification commands): `docs/AUDITORIA-TC.md`.
+**Complete audit record** (all 11 tx hashes and sha256 in full + verification commands): `docs/AUDIT-TC.md`.

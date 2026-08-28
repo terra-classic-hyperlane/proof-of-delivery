@@ -4,7 +4,7 @@
 > **Whoever operates the relayer runs the whole package:** relayer + validator + oracle-agent (gas prices)
 > + claim-agent/epoch-reporter (vault receipts and rewards). This doc reflects the **real production**
 > setup. Deep dives: `RELAYER-VPS.md`, `ORACLE-AGENT.md`, `VAULT.md`,
-> `INSTALACAO-CLAIM-AGENT.md`, `OPERADORES.md`, `INSTALACAO_E_EXECUCAO.md` (contract build/deploy).
+> `CLAIM-AGENT-INSTALL.md`, `OPERATORS.md`, `INSTALL-AND-RUN.md` (contract build/deploy).
 
 ---
 
@@ -22,7 +22,7 @@
 > stuck >3min when the relayer loses the sequence. The relayer is the **primary**.
 
 The operator earns from what it **DELIVERS**: the IGP commission (pass-through) lands in the relayer and
-the reward is paid out of the **vault** according to the on-chain proof of delivery. See `TARIFAS-E-RECOMPENSAS.md`.
+the reward is paid out of the **vault** according to the on-chain proof of delivery. See `FEES-AND-REWARDS.md`.
 
 ---
 
@@ -31,7 +31,7 @@ the reward is paid out of the **vault** according to the on-chain proof of deliv
 - Ubuntu 22.04+ (production: 4 vCPU / 8 GB / 80 GB SSD is comfortable). The relayer is the heaviest.
 - **Node.js v20+** (production uses v22) — `oracle-agent`/`claim-agent`/`epoch-reporter`.
 - **Rust 1.84 + build-sbf** only if you are going to **compile** the contracts (most operators use the
-  already-published binaries; see `INSTALACAO_E_EXECUCAO.md §3`).
+  already-published binaries; see `INSTALL-AND-RUN.md §3`).
 - Hyperlane binaries (`relayer`, `validator`) — in `/root/hyperlane/bin/`.
 - **S3 bucket** (for the validator checkpoints) + AWS credentials.
 - **RPCs**: TC (LCD + RPC), BSC, Ethereum, Solana (Helius recommended).
@@ -102,7 +102,7 @@ RUST_LOG=info
 | Solana Pod (vault+governor) | `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` | 1399811149 |
 
 **TC validators (ISM 3-of-4):** igorveras `71b2b8c3…`, tcv `1afd3d07…`, darksun `e6bb0401…`,
-burnitall `5c374754…` (threshold **3**). See `ISM-VALIDADORES.md`.
+burnitall `5c374754…` (threshold **3**). See `ISM-VALIDATORS.md`.
 
 ---
 
@@ -130,7 +130,7 @@ cd /root/claim-agent && npm ci
 systemctl enable --now hyperlane-validator hyperlane-relayer oracle-agent claim-agent epoch-reporter
 ```
 
-**Order matters** only on the 1st deployment of the CONTRACTS (see `INSTALACAO_E_EXECUCAO.md §4` — governor →
+**Order matters** only on the 1st deployment of the CONTRACTS (see `INSTALL-AND-RUN.md §4` — governor →
 oracle ownership in 2 steps → bounds per domain → vault → `IGP.set_beneficiary=vault` → seed pool).
 To **operate** (contracts already live), the service order is free.
 

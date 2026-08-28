@@ -7,10 +7,10 @@ No attester, no agent with decision power — immune to a malicious relayer.
 > **Status: PROVEN IN PRODUCTION (08/19/2026), TC↔BSC corridor in both directions.**
 > Since 08/20/2026 (code_id 11596): `SendReceipt{gas_limit}` — the receipt leaving
 > TC pays only the REAL GAS via IGP metadata, not the $0.08 user fee
-> (which would eat up the commission). See `TARIFAS-E-RECOMPENSAS.md` §receipts.
+> (which would eat up the commission). See `FEES-AND-REWARDS.md` §receipts.
 > Receipt vaults: TC `terra1gqkrh2…` (code_id 11592) · BSC
 > `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` (ism = warp ISM; in the proof it was
-> `0xa82087B8…`, since 08/20/2026 it is the mutable `0xF6b0cDD3…` — `ISM-VALIDADORES.md`).
+> `0xa82087B8…`, since 08/20/2026 it is the mutable `0xF6b0cDD3…` — `ISM-VALIDATORS.md`).
 > Proofs: BSC→TC paid 33 LUNC (tx `F4700EF4…`, msg `974a7e47…`); TC→BSC paid
 > 2,259,538,750,000 wei BNB (msg `5920d3fb…`, receipt `b6d00d74…`). Hyperlane
 > integration details in §F.
@@ -194,7 +194,7 @@ The front ties together the two steps that live on different chains:
 - The origin domain is **read from the message** (committed by the `message_id`) —
   there is no way to divert the payment to another chain's pool.
 - **1 payment per id** (`remote_claimed`, effects-first) and per-domain cap.
-- Compared model (trust × cost): `SEGURANCA-CLAIMREMOTO.md` §3.
+- Compared model (trust × cost): `REMOTE-CLAIM-SECURITY.md` §3.
 
 ---
 
@@ -212,7 +212,7 @@ things from the recipient that the test mocks did not cover:
    already knows BSC (56); on BSC the default does NOT know TC (132556) → error
    `No ISM found for origin: 132556`. Solution: point to the **same ISM of the
    synthetic warp** for that route (since 08/20/2026: BSC `0xF6b0cDD3…`; ETH
-   `0x3ba17675…` — `ISM-VALIDADORES.md`), which already validates the messages coming from
+   `0x3ba17675…` — `ISM-VALIDATORS.md`), which already validates the messages coming from
    TC. EVM: `setIsm(<warp_ism>)` (owner).
 
 General rule for a new corridor: the vault of EACH chain that RECEIVES receipts points

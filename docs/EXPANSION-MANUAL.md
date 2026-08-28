@@ -1,9 +1,9 @@
 # Expansion Manual — new chain, new operators, new associations
 
 How to grow the system without breaking anything, in the **trustless receipt model**
-(`RECIBO-TRUSTLESS.md`). Three operations: **register identity (mapping)** ·
+(`TRUSTLESS-RECEIPT.md`). Three operations: **register identity (mapping)** ·
 **add operator** · **add chain**. Current addresses:
-`REGISTRO-AUDITORIA.md`.
+`AUDIT-LOG.md`.
 
 ---
 
@@ -56,11 +56,11 @@ Current table (remote reward ≈ real origin fee):
 | ETH | by id (receipt → `handle`) | ≈9.29e12 wei (real fee) |
 | Solana | by epoch (`EpochReport.remote`) | 499,000 lamports (real fee) |
 
-> **Current model = TRUSTLESS RECEIPT** (`RECIBO-TRUSTLESS.md`): the destination vault
+> **Current model = TRUSTLESS RECEIPT** (`TRUSTLESS-RECEIPT.md`): the destination vault
 > proves the delivery and dispatches a receipt signed by the validators; the origin
 > vault pays on receipt. **No attesters, no quorum, no agent with decision-making
 > power.** The previous attestation model (with quorum) is described in
-> `CLAIM-REMOTO.md`/`SEGURANCA-CLAIMREMOTO.md` for historical reference.
+> `REMOTE-CLAIM.md`/`REMOTE-CLAIM-SECURITY.md` for historical reference.
 
 ---
 
@@ -139,7 +139,7 @@ the scope of this system). Then, 6 steps:
 6. **oracle-agent** — new block in `config.json` (price). The ATTESTATION
    claim-agent is no longer necessary in the receipt model; the operator (or the
    frontend) calls `send_receipt` when the `quote` is worth the gas.
-7. **Audit** — `docs/AUDITORIA-<CHAIN>.md` + update `REGISTRO-AUDITORIA.md`.
+7. **Audit** — `docs/AUDIT-<CHAIN>.md` + update `AUDIT-LOG.md`.
 
 ---
 

@@ -1,7 +1,7 @@
 // ⚠️ DEPRECATED — OLD model (ClaimRemote/attestation, with SetRemoteBinding).
 //   The Solana→TC corridor now uses the RECEIPT MODEL: see
 //   `deploy/rrv-receipt-config-solana.mjs` (+ `tc-receipt-config-solana.sh`) and §G
-//   of `docs/RECIBO-TRUSTLESS.md`. Kept only as a historical reference.
+//   of `docs/TRUSTLESS-RECEIPT.md`. Kept only as a historical reference.
 //
 // v2 ClaimRemote on Solana: SetRemoteReward + SetRemoteBinding via administrative
 // proposal (current quorum 1 → the signer's approval executes).

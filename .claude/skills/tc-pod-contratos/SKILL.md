@@ -9,8 +9,8 @@ description: >-
 
 # tc-proof-of-delivery — contracts (development runbook)
 
-> Design source of truth: `SPEC.html` (v3) · diagrams: `docs/ARQUITETURA.md`. Mainnet evidence and test
-> scoreboard: `README.md`. Build/deploy: `docs/INSTALACAO_E_EXECUCAO.md`.
+> Design source of truth: `SPEC.html` (v3) · diagrams: `docs/ARCHITECTURE.md`. Mainnet evidence and test
+> scoreboard: `README.md`. Build/deploy: `docs/INSTALL-AND-RUN.md`.
 
 ## Non-negotiable principle
 The operator is paid for what it **DELIVERED**, proven by the chain's own record:

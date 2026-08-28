@@ -99,5 +99,5 @@ Details:
 - Scales to **N operators**: each one runs the agent(s); at quorum, the honest
   majority credits.
 
-Addresses and conversions: `GUIA-OPERADORES-VALIDADORES.md`. Receipt model:
-`RECIBO-TRUSTLESS.md`. Payment audit: `AUDITORIA-COMISSOES.md`.
+Addresses and conversions: `OPERATORS-VALIDATORS-GUIDE.md`. Receipt model:
+`TRUSTLESS-RECEIPT.md`. Payment audit: `AUDIT-COMMISSIONS.md`.

@@ -40,7 +40,7 @@ operators=[0x8f08…5291] · quorum=1 · epoch=21600s · delta=2000 bps`.
 ## Pending items
 
 - [ ] Seed the pool (0.005 BNB) once there is balance — without it `claim` reverts with `InsufficientPool`.
-- [ ] Handoff: `vault`/`governor`/`igp`/`oracle`/`ISM` → validators multisig (§8 of PARAMETROS_PROPOSTA.md).
+- [ ] Handoff: `vault`/`governor`/`igp`/`oracle`/`ISM` → validators multisig (§8 of PROPOSAL-PARAMETERS.md).
 
 ## How to audit
 

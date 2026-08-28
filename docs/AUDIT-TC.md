@@ -64,7 +64,7 @@ beneficiary = vault ✓ · solvency = 5,000 LUNC / 100 claims ✓ · layout_chec
 `ok:true` (sender=terra1run9wz…, block 29422362) ✓.
 
 > Future deploys (BSC/Ethereum/Solana — Phases 3–4) should get equivalent
-> records: `AUDITORIA-BSC.md`, `AUDITORIA-ETH.md`, `AUDITORIA-SOL.md`.
+> records: `AUDIT-BSC.md`, `AUDIT-ETH.md`, `AUDIT-SOLANA.md`.
 
 ## Vault v2 (ClaimRemote) — migration 08/19/2026
 
@@ -89,4 +89,4 @@ Independent post-migration verification (LCD, 08/19): code_id **11589** ✓ ·
 `remote_claimed(1e070a74…)` = paid 33 LUNC to executor `terra1run9wz…` at block
 30011260 ✓ · active bindings ✓ · `total_remote_paid` = 99 LUNC ✓ · pool
 4,901 LUNC (5,000 − 99, payments came out of the pool as designed) ✓.
-Complete model: `CLAIM-REMOTO.md`.
+Complete model: `REMOTE-CLAIM.md`.

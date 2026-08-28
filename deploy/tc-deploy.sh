@@ -7,7 +7,7 @@
 #
 # Signs with the "hyperlane-deploy" key (keyring file — the password is asked ONCE
 # and reused via pipe; it is never written anywhere).
-# Parameters: docs/PARAMETROS_PROPOSTA.md. Initial owner = deployer (handoff
+# Parameters: docs/PROPOSAL-PARAMETERS.md. Initial owner = deployer (handoff
 # to governance later — section 8 of the same doc).
 # =============================================================================
 set -euo pipefail
@@ -111,7 +111,7 @@ done
 
 if ! done_step GOV_ADDR; then
   say "3/9 instantiate oracle-governor"
-  # operators: deployer + (optional) OPERATOR2 via env; quorum follows (docs/OPERADORES.md)
+  # operators: deployer + (optional) OPERATOR2 via env; quorum follows (docs/OPERATORS.md)
   OPS="\"$DEPLOYER\""; Q=1
   if [ -n "${OPERATOR2:-}" ]; then OPS="$OPS,\"$OPERATOR2\""; Q=${QUORUM:-2}; fi
   init_gov=$(cat <<JSON

@@ -76,7 +76,7 @@ Shows what it would emit (how many pending per chain), without signing anything.
   (`RECEIPT_GAS_56=300000` / `RECEIPT_GAS_SOL=500000`, tunable in the `.env`) and
   attaches the quote +2%; the `send_receipt` passes this `gas_limit` via metadata, so
   the receipt pays only the real gas (~100 LUNC for BSC, ~20 for SOL) and not the full
-  user fee ($0.08). Details: `TARIFAS-E-RECOMPENSAS.md`.
+  user fee ($0.08). Details: `FEES-AND-REWARDS.md`.
 
 ## Security
 - `.env` is `chmod 600` (only root reads it).
@@ -95,7 +95,7 @@ Shows what it would emit (how many pending per chain), without signing anything.
 
 ## Quorum reporter (TC→Solana) — INSTALLED as a service
 The `~/claim-agent/solana-epoch-reporter.mjs` reports the **TC→Solana** deliveries (quorum
-model — see `AUTOMACAO-CLAIMS.md`). It runs as the **`epoch-reporter.service`** service
+model — see `CLAIMS-AUTOMATION.md`). It runs as the **`epoch-reporter.service`** service
 (systemd), loading the relayer's `.env` (`EnvironmentFile=/root/hyperlane/.env`) and
 signing with the relayer's `SOLANA_PRIVATE_KEY` — which is the **PbEo** operator (registered),
 so the `SubmitEpochReport` is accepted. Every hour it reports the newly closed epoch;
