@@ -1,9 +1,18 @@
-# i18n Audit Report — PT→EN translation & on-chain impact (all chains)
+# i18n Audit Report — PT→EN translation & on-chain impact (all chains) ✅ COMPLETE
 
 > Public, auditable record of the full Portuguese→English translation of this repository and its
-> exact on-chain impact. **Only the Terra Classic relayer-reward-vault changed bytecode** (2 production
-> error strings were translated); every other contract on every chain is **byte-identical** to what is
-> deployed, so **no migration** is required for them. All hashes below are reproducible.
+> exact on-chain impact. **Status: COMPLETE (2026-08-28).** The repository — docs, scripts, contract
+> source and tests — contains **zero Portuguese**. **Only the Terra Classic relayer-reward-vault
+> changed bytecode** (2 production error strings were translated) and it **was migrated** (§4);
+> every other contract on every chain is byte-identical in executable code to what is deployed, so
+> no migration is required for them (§2a/§2b). All hashes below are reproducible.
+>
+> **The rule this report demonstrates:** the on-chain `data_hash` covers the **compiled bytecode**,
+> not the source text. Compilers strip comments, and tests are never deployed — so translating
+> comments, doc-comments or test code **cannot** change the hash. Only changes to **executable
+> code** — logic, values, or runtime **string literals** (e.g. error messages) — change the bytecode
+> and require a migration. That is exactly why the TC vault (2 error strings) migrated and nothing
+> else did.
 
 ## 1. Repository record (git)
 
@@ -14,6 +23,14 @@
 | `f78163b` | contracts: comments + 2 vault prod strings + test names/asserts → English |
 | `9cfebbe` | ready vault migration script + plan |
 | `e466fbf` | rename PT doc filenames + update all references |
+| `518c09e` | record executed TC vault migration (code_id 11635, txs + on-chain hash proof) |
+| `2b77e7c` | byte-level proof no Solana/EVM migration is needed (on-chain dump + metadata-trailer analysis) |
+| `81ad764` | final sweep: last 2 PT remnants (EVM test fn name + SVM doc comment) — repo now 100% English |
+
+Post-`81ad764` verification: PT-scan over all `.rs`/`.sol` (src + tests) returns **zero matches**;
+`forge test` 48/48 green; `pod.so` rebuilt after the doc-comment edit hashes to the **same**
+`f2f434d8…8572e` as the live mainnet program — a live demonstration that comment edits do not
+change bytecode.
 
 Branch: `main` @ `terra-classic-hyperlane/proof-of-delivery`.
 
