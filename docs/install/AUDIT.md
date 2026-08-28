@@ -29,13 +29,14 @@ flowchart LR
 
 ### Terra Classic — `columbus-5`, domain **132556** (collateral side)
 
-| Contract | Address | code_id | data_hash (= reproducible build) |
+| Contract | Address | code_id | data_hash (sha256 of the wasm) |
 |---|---|---|---|
-| **relayer-reward-vault** | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` | **11635** | `339b82571a9679830f1b7469a2ae42a96929286d77954f53014416af9bcc33fa` |
-| **oracle-governor** | `terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj` | 11587 | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
-| Mailbox (Hyperlane) | `terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9` | 11371 | — |
-| IGP (beneficiary = **vault** ✓) | `terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz` | — | — |
-| IGP oracle (owner = **governor** ✓) | `terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d` | — | — |
+| **relayer-reward-vault** | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` | **11635** | `339b82571a9679830f1b7469a2ae42a96929286d77954f53014416af9bcc33fa` (= reproducible build) |
+| — vault previous code (pre-i18n, rollback target) | same address | 11596 | `f3bc80e635228e6f57643a17f88a6496ca194b23a8b38d51d65b618621eba346` |
+| **oracle-governor** | `terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj` | 11587 | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` (= reproducible build) |
+| Mailbox (Hyperlane) | `terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9` | 11371 | `b6d789c1a31ee79548fd736bad241dbcd3b8b319d66a776f31479743fe49eb01` |
+| IGP (beneficiary = **vault** ✓) | `terra1taunhg629rssf3g939nqr0h594q5mssrzdj5lkx2hygmxmh72ghqeqqnvz` | 11377 | `34313c90c9e08d2c342061412fafe4d064ad783f9be606255d0720590e6fad0b` |
+| IGP oracle (owner = **governor** ✓) | `terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d` | 11388 | `3b0143755d322a7a8bcd2e6081c8a22f817644c557c85cfd4d570d69e08de1fc` |
 
 Vault state (2026-08-28): pool = claims_payable = **13,489.469826 LUNC** (solvent,
 `claims_payable == pool` invariant holds), `reward_per_delivery = 1` (symbolic —
@@ -48,27 +49,32 @@ the real payment happens at the origin).
 
 ### BSC — domain **56** (synthetic side)
 
-| Piece | Address |
-|---|---|
-| **RelayerRewardVault** (trustless receipt, ACTIVE) | `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` |
-| **GasOracleGovernor** | `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` |
-| Mailbox | `0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4` |
-| IGP | `0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923` |
-| Oracle (owner = governor ✓) | `0x7dE950f8F0a037783989a6BE84B3620916552306` |
-| deprecated: vault v2 `0x1A41144c…`, v1 `0x8b3A9eEB…` | (unused) |
+| Piece | Address | Deployed-bytecode sha256 (`eth_getCode`, 2026-08-28) |
+|---|---|---|
+| **RelayerRewardVault** (trustless receipt, ACTIVE) | `0x34E06a7793877EC5251b1dC230aD7cD577d231f4` | `e2df5129e14d1aeae74505fd6c1031f5e306e1bc2f88b12949fa6c7d1e2be133` (10417 B) |
+| **GasOracleGovernor** | `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` | `ec7d0095de70d9bf52f28f4c233de7bda11b236a758b7ef27a82a32d4db46732` (6372 B) |
+| Mailbox (proxy) | `0x2971b9Aec44bE4eb673DF1B88cDB57b96eefe8a4` | `295eafd39c3e3f7a6beed270a4b13f626ef7b2613c65a2df0f0ac43f4334f189` (2555 B) |
+| IGP (proxy) | `0xEdEd7a4f6FEe4B474B9d7730Bf3465E35E2a4923` | `ae76a7148c0989c4d7cd30b2b5faaf7935482e9e751013cb5303de666c18a80b` (6043 B) |
+| Oracle (owner = governor ✓) | `0x7dE950f8F0a037783989a6BE84B3620916552306` | `d93c86aa1b584fc0147de6aadc09b78de90f08b0378ef43a2d5118d9b62440d8` (2118 B) |
+| deprecated: vault v2 `0x1A41144c…`, v1 `0x8b3A9eEB…` | (unused) | — |
 
 ### Ethereum — domain **1** (synthetic side)
 
-| Piece | Address |
-|---|---|
-| **RelayerRewardVault v2** (ACTIVE; receipt replication pending) | `0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1` |
-| **GasOracleGovernor** | `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` |
-| Mailbox | `0xc005dc82818d67AF737725bD4bf75435d065D239` |
-| IGP | `0x9650F1f8DB492750323172145e67Df4e89E964Aa` |
-| Oracle (owner = governor ✓) | `0x3987cCE8f08037EBF93Ef3a934753540A94196cE` |
+| Piece | Address | Deployed-bytecode sha256 (`eth_getCode`, 2026-08-28) |
+|---|---|---|
+| **RelayerRewardVault v2** (ACTIVE; receipt replication pending) | `0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1` | `f03661d776be8f9b0573d2efd3abc2f20294be5c7e531674ae2684a23a98f5ed` (5892 B) |
+| **GasOracleGovernor** | `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` | `d176ae95dbe88ed9a8d57ece6351bd207af42e7f33c977b19e32eea94f6e87f0` (6372 B) |
+| Mailbox (proxy) | `0xc005dc82818d67AF737725bD4bf75435d065D239` | `295eafd39c3e3f7a6beed270a4b13f626ef7b2613c65a2df0f0ac43f4334f189` (2555 B) |
+| IGP (proxy) | `0x9650F1f8DB492750323172145e67Df4e89E964Aa` | `ae76a7148c0989c4d7cd30b2b5faaf7935482e9e751013cb5303de666c18a80b` (6043 B) |
+| Oracle (owner = governor ✓) | `0x3987cCE8f08037EBF93Ef3a934753540A94196cE` | `d93c86aa1b584fc0147de6aadc09b78de90f08b0378ef43a2d5118d9b62440d8` (2118 B) |
 
-EVM contracts are **immutable** (constructor-set, no proxy) — powers are limited to
-the explicit owner/operator functions listed below.
+Cross-checks the hashes make visible: the Hyperlane infra (Mailbox proxy, IGP proxy,
+Oracle) is **byte-identical between BSC and Ethereum** (same sha256 on both chains —
+same audited Hyperlane code). Our two governors compile from the same source; their
+runtime bytecode differs only in the constructor-set **immutable** slots (addresses of
+oracle/owner) and the solc metadata fingerprint. Our EVM contracts are **immutable**
+(constructor-set, no proxy) — powers are limited to the explicit owner/operator
+functions listed below.
 
 ### Solana — domain **1399811149** (synthetic side)
 
@@ -109,8 +115,19 @@ git clone https://github.com/terra-classic-hyperlane/proof-of-delivery && cd pro
 docker run --rm -v "$(pwd)":/code -v cwopt_cache:/target \
   -v cwopt_registry:/usr/local/cargo/registry cosmwasm/optimizer:0.17.0
 cat artifacts/checksums.txt
-curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11635 | jq -r .code_info.data_hash  # vault
+curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11635 | jq -r .code_info.data_hash  # vault (current)
+curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11596 | jq -r .code_info.data_hash  # vault (pre-migration)
 curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11587 | jq -r .code_info.data_hash  # governor
+for c in 11371 11377 11388; do   # Hyperlane infra: Mailbox · IGP · IGP oracle
+  curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/$c | jq -r .code_info.data_hash; done
+
+# EVM — sha256 of the LIVE bytecode of any contract (works on BSC and Ethereum):
+verify() { curl -s -X POST "$1" -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_getCode","params":["'$2'","latest"]}' \
+  | jq -r .result | sed 's/^0x//' | xxd -r -p | sha256sum; }
+verify https://bsc-rpc.publicnode.com      0x34E06a7793877EC5251b1dC230aD7cD577d231f4  # BSC vault
+verify https://ethereum-rpc.publicnode.com 0x04096dCBbBB0FA58a312761c38E1d3B9F64631F1  # ETH vault
+# ...repeat for every address in the §2 tables — each must match its listed sha256
 
 # Solana — compare your build with the live program byte by byte
 cd svm && cargo build-sbf && sha256sum target/deploy/pod.so
