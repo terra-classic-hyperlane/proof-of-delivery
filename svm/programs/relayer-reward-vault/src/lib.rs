@@ -239,7 +239,7 @@ pub enum Instruction {
     /// [operator signer w, config w, credit w]
     Withdraw { amount: u64 },
     /// [operator signer w (payer), config w, proposal w, system,
-    ///  (WithdrawSurplus: + destino w)]
+    ///  (WithdrawSurplus: + destination w)]
     SubmitAdminAction { envelope: AdminEnvelope },
 
     // ---- trustless receipt (registry + destination) ----

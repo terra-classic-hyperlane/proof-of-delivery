@@ -428,7 +428,7 @@ contract RelayerRewardVaultRemoteTest is Test {
         assertEq(operador.balance, before + RREWARD);
     }
 
-    function test_autopagamento_bloqueado_em_quorum2() public {
+    function test_selfPaymentBlockedAtQuorum2() public {
         address[] memory atts = new address[](2);
         atts[0] = operador; atts[1] = operador2;
         vm.prank(multisig);
