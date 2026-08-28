@@ -104,30 +104,30 @@ When storing on the chain, the code's `data_hash` MUST equal the sha256 above.
 - **`docs/EXPANSION-MANUAL.md`** — how to add chains, operators and bindings (from/to); by id vs by epoch.
 - **`docs/REMOTE-CLAIM.md`** — Vault v2: how the 4 chains tie together (address bindings, quorum attestation, origin fee paid to the operator).
 
-- **`docs/AUDIT-LOG.md`** — ALL addresses/operators/parameters of the 4 networks + one-line verification per invariant.
+- **`docs/install/AUDIT.md`** — consolidated audit: current addresses/hashes/powers of the 4 networks + verification commands (launch snapshot: `docs/archive/AUDIT-LOG.md`).
 - **`docs/CONTRACT-OPERATION.md`** — how to execute each contract: change owner, operators, quorum, bounds, price, pause, withdrawals, handoff.
 - **`docs/ORACLE-AGENT.md`** — installation/execution of the price agent (anchor mode, hex keys, systemd, logs).
-- **`docs/ORACLE-AGENT-INSTALL-REPORT.md`** — report of the production installation (08/18/2026).
+- **`docs/archive/ORACLE-AGENT-INSTALL-REPORT.md`** — report of the production installation (08/18/2026).
 
 ## Deployment — Solana (Phase 4): ✅ ACTIVE (08/18/2026, finalize included)
 
 Single program `pod` (vault+governor merged) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
 pool PDA `Eq1mJGTS…Dwb9w` with 0.3 SOL · IGP owner = governor PDA ✓ ·
 beneficiary = pool ✓ (verified on-chain). Total cost 1.66 SOL (rent recoverable).
-Complete record: `docs/AUDIT-SOLANA.md`.
+Complete record: `docs/archive/AUDIT-SOLANA.md`.
 
 ## Deployment — Ethereum (Phase 3): ✅ LIVE (08/18/2026)
 
 Vault `0xDf90d3b7FF98466E148B334128374807b3e89EbD` · Governor
 `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` · oracle owner = governor ✓ ·
-IGP beneficiary = vault ✓ · quorum 1. Pool pending seeding. Record: `docs/AUDIT-ETH.md`.
+IGP beneficiary = vault ✓ · quorum 1. Pool pending seeding. Record: `docs/archive/AUDIT-ETH.md`.
 
 ## Deployment — BSC (Phase 3): ✅ LIVE (08/18/2026)
 
 Vault `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` · Governor
 `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` · oracle owner = governor ✓ ·
 IGP beneficiary = vault ✓ · quorum 1. **Pool not yet seeded** (balance).
-Complete record: `docs/AUDIT-BSC.md`.
+Complete record: `docs/archive/AUDIT-BSC.md`.
 
 ## Deployment — Terra Classic (Phases 1–2): ✅ LIVE (08/18/2026, columbus-5)
 
@@ -144,4 +144,4 @@ Complete record: `docs/AUDIT-BSC.md`.
 | Operators / quorum | 1 (deployer) / 1 — expand via `docs/OPERATORS.md` |
 | Owner (governor + vault) | deployer — handoff to governance: §8 of `docs/PROPOSAL-PARAMETERS.md` |
 
-**Complete audit record** (all 11 tx hashes and sha256 in full + verification commands): `docs/AUDIT-TC.md`.
+**Complete audit record** (all 11 tx hashes and sha256 in full + verification commands): `docs/archive/AUDIT-TC.md`.

@@ -1,7 +1,7 @@
 # Contract Operation Manual (4 networks)
 
 How to execute each contract function in production: change owner, operators,
-quorum, bounds, price, pause, withdrawals. Addresses: `AUDIT-LOG.md`.
+quorum, bounds, price, pause, withdrawals. Addresses: `install/AUDIT.md` (launch snapshot: `archive/AUDIT-LOG.md`).
 ⚠️ Every owner change is **one-way once confirmed** — check the address 3× before.
 Convention: `<...>` = value to fill in.
 
@@ -131,4 +131,4 @@ Accounts per instruction: comments in `svm/programs/*/src/lib.rs` (enum
 2. **BSC/ETH**: `transferOwnership(multisig)` on the vault and on the governor + the
    multisig executes `acceptOwnership()` on each one (4 accepts in total).
 3. **Solana**: gov `SetMultisig(<multisig>)` + `solana program set-upgrade-authority`.
-4. Check everything with section 7 of `AUDIT-LOG.md`.
+4. Check everything with section 7 of `archive/AUDIT-LOG.md`.

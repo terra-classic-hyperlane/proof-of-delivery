@@ -124,6 +124,6 @@ SOL→TC→proof-of-delivery flow closed end to end.
 
 On each leg, the **IGP** in this table receives `beneficiary = Vault` and the **oracle**
 passes to the **governor** (owner). On TC this is ALREADY DONE (Phases 1–2 — see
-`AUDIT-TC.md`): IGP `terra1taunhg…` → beneficiary vault `terra1gqkrh2…`,
+`archive/AUDIT-TC.md`): IGP `terra1taunhg…` → beneficiary vault `terra1gqkrh2…`,
 oracle `terra1j8xz…` → owner governor `terra1z7jmlky…`. On the remotes, the scripts
 `evm-deploy.sh`/`solana-deploy.sh` do the same with the addresses above.

@@ -129,9 +129,9 @@ sha256 `e24a5e66ab4a503c6acf369710b717310362d2ae5fa7b9800542c8272b2fc801`.
 Migration **at the same address** EXECUTED on 08/19/2026 (code_id **11589**,
 store `A9866AEE…`, migrate `C4075BA8…`) via `deploy/tc-migrate-vault-v2.sh`
 (LOCAL — project rule: no wasm/deploy on the VPS). First payments:
-99 LUNC for the day's 3 deliveries (txs in `AUDIT-TC.md`).
+99 LUNC for the day's 3 deliveries (txs in `archive/AUDIT-TC.md`).
 30 green tests (5 new in v2: quorum 1 pays, anti-double, quorum 2 waits for
-agreement, rejections, totals). Execution record: `AUDIT-TC.md`.
+agreement, rejections, totals). Execution record: `archive/AUDIT-TC.md`.
 
 ## 8. v2 also on BSC and ETH (mirror of the model)
 

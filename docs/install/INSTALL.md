@@ -265,5 +265,5 @@ du -sh /root/oracle-agent/logs /root/claim-agent/logs
 | RPC timeouts / 429 | swap the RPC in `rpc.env` / `config.json` |
 | service `activating` in a loop | `journalctl -u <name> -n 50` — usually an empty env var |
 
-Deep dives: `../ORACLE-AGENT.md` · `../CLAIM-AGENT-INSTALL.md` · `../VAULT.md` ·
-`../TRUSTLESS-RECEIPT.md` · `../OPERATOR-INSTALL-RELAYER-ORACLE-VAULT.md` (full node incl. relayer).
+Deep dives: `../ORACLE-AGENT.md` · `../VAULT.md` · `../TRUSTLESS-RECEIPT.md` ·
+`../RELAYER-VPS.md` (relayer/validator setup). Historical install records: `../archive/`.

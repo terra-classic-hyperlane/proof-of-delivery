@@ -144,8 +144,9 @@ Test suites (all green, 2026-08-28): CosmWasm 15+4+34 · Solana 6+17 · EVM 48.
 
 - `../I18N-AUDIT-REPORT.md` — full PT→EN translation record: per-chain bytecode
   proofs, vault migration txs, VPS redeploy (§6).
-- `../AUDIT-LOG.md` + `../AUDIT-TC.md` / `-BSC` / `-ETH` / `-SOLANA` — historical
-  per-network audit snapshots (deploy provenance, phase-by-phase).
+- `../archive/AUDIT-LOG.md` + `../archive/AUDIT-TC.md` / `-BSC` / `-ETH` / `-SOLANA` —
+  historical per-network audit snapshots (deploy provenance, phase-by-phase, original
+  launch tx hashes). See `../archive/README.md` for the full index.
 - `../FEES-AND-REWARDS.md` — tariff pass-through economics.
 - `../ISM-VALIDATORS.md` — validator set & thresholds.
 - Hyperlane registry: columbus-5/rebel-2 canonical (registry PR #1559, merged 2026-08-20).

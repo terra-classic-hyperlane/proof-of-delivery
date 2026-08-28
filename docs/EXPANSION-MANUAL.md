@@ -3,7 +3,7 @@
 How to grow the system without breaking anything, in the **trustless receipt model**
 (`TRUSTLESS-RECEIPT.md`). Three operations: **register identity (mapping)** ·
 **add operator** · **add chain**. Current addresses:
-`AUDIT-LOG.md`.
+`install/AUDIT.md`.
 
 ---
 
@@ -139,7 +139,7 @@ the scope of this system). Then, 6 steps:
 6. **oracle-agent** — new block in `config.json` (price). The ATTESTATION
    claim-agent is no longer necessary in the receipt model; the operator (or the
    frontend) calls `send_receipt` when the `quote` is worth the gas.
-7. **Audit** — `docs/AUDIT-<CHAIN>.md` + update `AUDIT-LOG.md`.
+7. **Audit** — `docs/archive/AUDIT-<CHAIN>.md` (historical pattern) + update `install/AUDIT.md`.
 
 ---
 
