@@ -1,13 +1,13 @@
-// oracle-agent — o lado off-chain do operador (spec §03/§10, generalizado):
-// a cada intervalo, observa preço (CoinGecko) e gás dos domínios remotos e
-// submete SubmitPrice ao GOVERNOR de cada chain local habilitada.
+// oracle-agent — the operator's off-chain side (spec §03/§10, generalized):
+// at each interval, it observes price (CoinGecko) and gas of the remote domains and
+// submits SubmitPrice to the GOVERNOR of each enabled local chain.
 //
-// O agente NÃO decide nada sozinho: quórum, mediana, faixa e delta são
-// aplicados on-chain pelos governors. Um erro numa chain não derruba as outras.
+// The agent does NOT decide anything on its own: quorum, median, bounds and delta are
+// applied on-chain by the governors. An error on one chain does not bring down the others.
 //
-// Uso:  node src/index.js [--once] [--dry-run] [--config caminho.json]
-//   --dry-run: calcula e imprime o que submeteria, sem assinar nada
-//   --once:    uma rodada só (útil em cron); sem ele, loop com intervalo
+// Usage:  node src/index.js [--once] [--dry-run] [--config path.json]
+//   --dry-run: computes and prints what it would submit, without signing anything
+//   --once:    a single round (useful in cron); without it, loop with interval
 
 import fs from "node:fs";
 import path from "node:path";
@@ -27,22 +27,22 @@ const config = JSON.parse(
   fs.readFileSync(fs.existsSync(cfgPath) ? cfgPath : examplePath, "utf8"),
 );
 if (!fs.existsSync(cfgPath)) {
-  console.warn(`[agent] config.json não encontrado — usando ${path.basename(examplePath)} (só faz sentido com --dry-run)`);
+  console.warn(`[agent] config.json not found — using ${path.basename(examplePath)} (only makes sense with --dry-run)`);
 }
 
 const log = (chain, msg) => console.log(`[${new Date().toISOString()}] [${chain}] ${msg}`);
 
 // ---------------------------------------------------------------------------
-// MODO ÂNCORA (produção é a verdade): em vez de calcular o rate do zero (cada
-// deployment tem calibração própria!), o agente ancora no valor ON-CHAIN
-// vigente na primeira rodada e, depois, só o AJUSTA pela variação RELATIVA do
-// preço (rate) e do gás observado (gas). Quórum/faixa/delta seguem on-chain.
-// Recalibrou manualmente o oracle? Apague a entrada no state.json → re-ancora.
+// ANCHOR MODE (production is the truth): instead of computing the rate from scratch (each
+// deployment has its own calibration!), the agent anchors to the current ON-CHAIN
+// value on the first round and, afterwards, only ADJUSTS it by the RELATIVE variation of
+// the price (rate) and of the observed gas (gas). Quorum/bounds/delta stay on-chain.
+// Manually recalibrated the oracle? Delete the entry in state.json → it re-anchors.
 // ---------------------------------------------------------------------------
 const statePath = config.statePath ?? path.join(root, "state.json");
 const state = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, "utf8")) : {};
 const saveState = () => fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
-const MIN_CHANGE_BPS = config.minChangeBps ?? 300; // só submete se drift >= 3%
+const MIN_CHANGE_BPS = config.minChangeBps ?? 300; // only submits if drift >= 3%
 
 const mods = {
   cosmwasm: () => import("./chains/terraclassic.js"),
@@ -52,7 +52,7 @@ const mods = {
 
 async function makeSubmitter(name, chain) {
   const mod = await mods[chain.type]?.();
-  if (!mod) throw new Error(`[${name}] type desconhecido: ${chain.type}`);
+  if (!mod) throw new Error(`[${name}] unknown type: ${chain.type}`);
   switch (chain.type) {
     case "cosmwasm": return mod.makeCosmwasmSubmitter(chain);
     case "evm": return mod.makeEvmSubmitter(chain);
@@ -62,18 +62,18 @@ async function makeSubmitter(name, chain) {
 
 async function runChain(name, chain, usd) {
   const mod = await mods[chain.type]?.();
-  if (!mod) throw new Error(`[${name}] type desconhecido: ${chain.type}`);
-  let submitter = null; // criado só quando há algo a submeter (dry-run não exige chave)
+  if (!mod) throw new Error(`[${name}] unknown type: ${chain.type}`);
+  let submitter = null; // created only when there is something to submit (dry-run needs no key)
   for (const [domain, remote] of Object.entries(chain.remotes)) {
     try {
-      const cur = await mod.readOracle(chain, domain); // VIGENTE on-chain
+      const cur = await mod.readOracle(chain, domain); // CURRENT on-chain
       const ratioNow = usd[remote.coin] / usd[chain.localCoin];
       const gasObs = BigInt(await fetchRemoteGasPrice(remote.gasPriceSource));
       const key = `${name}:${domain}`;
       const anchor = state[key];
 
       if (!anchor) {
-        log(name, `domínio ${domain} (${remote.coin}): âncora ${DRY ? "seria criada" : "criada"} no vigente rate=${cur.rate} gas=${cur.gas} (ratio=${ratioNow.toExponential(4)}) — nada submetido`);
+        log(name, `domain ${domain} (${remote.coin}): anchor ${DRY ? "would be created" : "created"} at current rate=${cur.rate} gas=${cur.gas} (ratio=${ratioNow.toExponential(4)}) — nothing submitted`);
         if (!DRY) {
           state[key] = { rate: cur.rate.toString(), ratio: ratioNow, gas: cur.gas.toString(), gasObs: gasObs.toString(), ts: new Date().toISOString() };
           saveState();
@@ -88,21 +88,21 @@ async function runChain(name, chain, usd) {
       const drift = (a, b) => (b === 0n ? 10_000n : ((a > b ? a - b : b - a) * 10_000n) / b);
       const driftBps = Math.max(Number(drift(candRate, cur.rate)), Number(drift(candGas, cur.gas)));
 
-      log(name, `domínio ${domain} (${remote.coin}): vigente rate=${cur.rate} gas=${cur.gas} · candidato rate=${candRate} gas=${candGas} · drift=${driftBps}bps`);
+      log(name, `domain ${domain} (${remote.coin}): current rate=${cur.rate} gas=${cur.gas} · candidate rate=${candRate} gas=${candGas} · drift=${driftBps}bps`);
       if (driftBps < MIN_CHANGE_BPS) {
-        log(name, `domínio ${domain}: estável (<${MIN_CHANGE_BPS}bps) — sem submissão`);
+        log(name, `domain ${domain}: stable (<${MIN_CHANGE_BPS}bps) — no submission`);
         continue;
       }
       if (DRY) {
-        log(name, `domínio ${domain}: [dry-run] submeteria rate=${candRate} gas=${candGas}`);
+        log(name, `domain ${domain}: [dry-run] would submit rate=${candRate} gas=${candGas}`);
         continue;
       }
       submitter ??= await makeSubmitter(name, chain);
       const tx = await submitter.submit(domain, candRate, candGas);
-      log(name, `domínio ${domain}: submetido → ${tx} (operador ${submitter.sender})`);
+      log(name, `domain ${domain}: submitted → ${tx} (operator ${submitter.sender})`);
     } catch (err) {
-      // erro num domínio não impede os demais
-      log(name, `domínio ${domain}: ERRO — ${err.message}`);
+      // an error on one domain does not block the others
+      log(name, `domain ${domain}: ERROR — ${err.message}`);
     }
   }
 }
@@ -118,18 +118,18 @@ async function round() {
   try {
     usd = await fetchUsdPrices(config.coingecko, [...coins]);
   } catch (err) {
-    console.error(`[agent] falha ao buscar preços: ${err.message} — rodada abortada`);
+    console.error(`[agent] failed to fetch prices: ${err.message} — round aborted`);
     return;
   }
-  console.log(`[agent] preços USD: ${JSON.stringify(usd)}`);
+  console.log(`[agent] USD prices: ${JSON.stringify(usd)}`);
 
-  // chains em paralelo; cada uma é independente
+  // chains in parallel; each one is independent
   await Promise.allSettled(chains.map(([name, c]) => runChain(name, c, usd)));
 
-  // fase de CLAIMS — DESCONTINUADA (modelo antigo de atestação v2). Os claims agora
-  // são feitos pelo `claim-agent-receipt.mjs` (recibo) + `solana-epoch-reporter.mjs`
-  // (quórum). Só roda se config.doClaims === true (padrão: DESLIGADO) — deixar ligado
-  // gera "execution reverted" / getLogs falhando toda rodada.
+  // CLAIMS phase — DISCONTINUED (old v2 attestation model). Claims are now
+  // done by `claim-agent-receipt.mjs` (receipt) + `solana-epoch-reporter.mjs`
+  // (quorum). Only runs if config.doClaims === true (default: OFF) — leaving it on
+  // causes "execution reverted" / getLogs failing every round.
   if (config.doClaims === true) {
     const ordered = [...chains].sort(([, a], [, b]) => (a.type === "cosmwasm" ? 1 : 0) - (b.type === "cosmwasm" ? 1 : 0));
     for (const [name, c] of ordered) {
@@ -139,10 +139,10 @@ async function round() {
   if (!DRY) saveState();
 }
 
-console.log(`[agent] oracle-agent iniciando · chains: ${Object.keys(config.chains).filter((k) => config.chains[k].enabled).join(", ")}${DRY ? " · DRY-RUN" : ""}`);
+console.log(`[agent] oracle-agent starting · chains: ${Object.keys(config.chains).filter((k) => config.chains[k].enabled).join(", ")}${DRY ? " · DRY-RUN" : ""}`);
 await round();
 if (!ONCE) {
   const interval = (config.intervalSeconds ?? 3600) * 1000;
-  console.log(`[agent] próxima rodada em ${config.intervalSeconds ?? 3600}s (loop)`);
+  console.log(`[agent] next round in ${config.intervalSeconds ?? 3600}s (loop)`);
   setInterval(round, interval);
 }

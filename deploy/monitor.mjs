@@ -1,8 +1,8 @@
-// monitor — painel de saúde do tc-proof-of-delivery (4 chains + VPS num lugar só).
+// monitor — health dashboard for tc-proof-of-delivery (4 chains + VPS in one place).
 //
-//   uso:  node deploy/monitor.mjs            # painel completo (RPC + SSH na VPS)
-//         node deploy/monitor.mjs --no-vps   # pula o SSH (só on-chain)
-//         node deploy/monitor.mjs --watch    # atualiza a cada 60s
+//   usage:  node deploy/monitor.mjs            # full dashboard (RPC + SSH on the VPS)
+//           node deploy/monitor.mjs --no-vps   # skip the SSH (on-chain only)
+//           node deploy/monitor.mjs --watch    # refreshes every 60s
 //   env:  SOLANA_RPC (default Helius), TC_LCD, BSC_RPC, ETH_RPC, VPS_HOST
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -18,21 +18,21 @@ const TC_LCD = process.env.TC_LCD ?? "https://lcd.terra-classic.hexxagon.io";
 const BSC_RPC = process.env.BSC_RPC ?? "https://bsc-dataseed.bnbchain.org";
 const ETH_RPC = process.env.ETH_RPC ?? "https://ethereum-rpc.publicnode.com";
 
-// cores
+// colors
 const C = { r: "\x1b[0m", b: "\x1b[1m", dim: "\x1b[2m", grn: "\x1b[32m", red: "\x1b[31m", yel: "\x1b[33m", cyan: "\x1b[36m", mag: "\x1b[35m" };
 const ok = (s) => `${C.grn}${s}${C.r}`, bad = (s) => `${C.red}${s}${C.r}`, warn = (s) => `${C.yel}${s}${C.r}`;
 const head = (s) => console.log(`\n${C.b}${C.cyan}▓▓ ${s}${C.r}`);
 const row = (label, val, note = "") => console.log(`  ${label.padEnd(26)} ${val}${note ? "  " + C.dim + note + C.r : ""}`);
 
-// preços ao vivo (Binance) p/ converter saldos em $
+// live prices (Binance) to convert balances into $
 async function prices() {
   const g = async (s) => Number((await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${s}`).then((r) => r.json())).price || 0);
   const [LUNC, BNB, SOL, ETH] = await Promise.all([g("LUNCUSDT"), g("BNBUSDT"), g("SOLUSDT"), g("ETHUSDT")]);
   return { LUNC, BNB, SOL, ETH };
 }
 const usd = (n, p) => `${C.dim}($${(n * p).toFixed(2)})${C.r}`;
-// alerta de saldo baixo por chain (em unidades da moeda)
-const flag = (v, lo) => (v < lo ? bad("⚠ BAIXO") : ok("ok"));
+// low-balance alert per chain (in coin units)
+const flag = (v, lo) => (v < lo ? bad("⚠ LOW") : ok("ok"));
 
 async function tcBalance(addr, denom = "uluna") {
   const r = await fetch(`${TC_LCD}/cosmos/bank/v1beta1/balances/${addr}/by_denom?denom=${denom}`).then((x) => x.json()).catch(() => null);
@@ -60,7 +60,7 @@ async function snapshot() {
   const conn = new Connection(HELIUS, "confirmed");
   const eBsc = new ethers.JsonRpcProvider(BSC_RPC), eEth = new ethers.JsonRpcProvider(ETH_RPC);
 
-  // dispara tudo em paralelo
+  // fire everything in parallel
   const [
     tcOp, tcVaultPool, tcIgpPool,
     bscOp, bscVault,
@@ -82,33 +82,33 @@ async function snapshot() {
   ]);
 
   console.clear();
-  console.log(`${C.b}${C.mag}╔════ tc-proof-of-delivery · painel · ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC ════╗${C.r}`);
+  console.log(`${C.b}${C.mag}╔════ tc-proof-of-delivery · dashboard · ${new Date().toISOString().slice(0, 19).replace("T", " ")} UTC ════╗${C.r}`);
   console.log(`  ${C.dim}LUNC $${P.LUNC.toFixed(8)} · BNB $${P.BNB.toFixed(2)} · SOL $${P.SOL.toFixed(2)} · ETH $${P.ETH.toFixed(2)}${C.r}`);
 
-  head("Carteiras-gatilho (pagam o gás — precisam de saldo)");
-  row("TC operador (terra1run9wz)", `${tcOp.toFixed(2)} LUNC ${usd(tcOp, P.LUNC)}`, flag(tcOp, 200));
-  row("BSC gatilho (0x8f08)", `${bscOp.toFixed(5)} BNB ${usd(bscOp, P.BNB)}`, flag(bscOp, 0.01));
-  row("ETH operador (0xEF81)", `${ethOp.toFixed(6)} ETH ${usd(ethOp, P.ETH)}`, flag(ethOp, 0.005));
+  head("Trigger wallets (pay the gas — need balance)");
+  row("TC operator (terra1run9wz)", `${tcOp.toFixed(2)} LUNC ${usd(tcOp, P.LUNC)}`, flag(tcOp, 200));
+  row("BSC trigger (0x8f08)", `${bscOp.toFixed(5)} BNB ${usd(bscOp, P.BNB)}`, flag(bscOp, 0.01));
+  row("ETH operator (0xEF81)", `${ethOp.toFixed(6)} ETH ${usd(ethOp, P.ETH)}`, flag(ethOp, 0.005));
   row("SOL PbEo (reporter)", `${pbeo.toFixed(4)} SOL ${usd(pbeo, P.SOL)}`, flag(pbeo, 0.02));
   row("SOL BirXd4Q (authority)", `${birx.toFixed(4)} SOL ${usd(birx, P.SOL)}`, flag(birx, 0.1));
 
-  head("Pools (reserva das comissões)");
+  head("Pools (commission reserve)");
   const vp = tcVaultPool ? Number(tcVaultPool.pool.amount) / 1e6 : 0;
-  row("TC vault pool", `${vp.toFixed(2)} LUNC ${usd(vp, P.LUNC)}`, tcVaultPool ? `cobre ${Math.floor(vp / 1584)} comissões` : bad("sem resposta"));
-  row("TC IGP acumulado", `${tcIgpPool.toFixed(2)} LUNC ${usd(tcIgpPool, P.LUNC)}`, tcIgpPool > 1584 ? warn("varrer p/ o pool (Sweep)") : "");
+  row("TC vault pool", `${vp.toFixed(2)} LUNC ${usd(vp, P.LUNC)}`, tcVaultPool ? `covers ${Math.floor(vp / 1584)} commissions` : bad("no response"));
+  row("TC IGP accumulated", `${tcIgpPool.toFixed(2)} LUNC ${usd(tcIgpPool, P.LUNC)}`, tcIgpPool > 1584 ? warn("sweep into the pool (Sweep)") : "");
   row("BSC vault", `${bscVault.toFixed(5)} BNB ${usd(bscVault, P.BNB)}`);
   if (poolInfo) {
-    // Config: … total_credited(u64) applied_base(u64) na cauda
+    // Config: … total_credited(u64) applied_base(u64) at the tail
     const d = poolInfo.data; let o = 0; const u8 = () => d[o++]; const r8 = () => { let v = 0n; for (let i = 0; i < 8; i++) v |= BigInt(d[o + i]) << BigInt(8 * i); o += 8; return v; };
     u8(); u8(); r8(); r8(); u8(); const n = d.readUInt32LE(o); o += 4 + n * 32; const tc = r8(); const base = Number(r8());
-    row("SOL pod pool (Config)", `${(poolInfo.lamports / 1e9).toFixed(4)} SOL ${usd(poolInfo.lamports / 1e9, P.SOL)}`, `total creditado ${(Number(tc) / 1e9).toFixed(4)} SOL`);
+    row("SOL pod pool (Config)", `${(poolInfo.lamports / 1e9).toFixed(4)} SOL ${usd(poolInfo.lamports / 1e9, P.SOL)}`, `total credited ${(Number(tc) / 1e9).toFixed(4)} SOL`);
     const nowEpoch = Math.floor(Date.now() / 1000 / 21600);
-    row("SOL replay base / época", `${base} / ${nowEpoch}`, base > 0 && nowEpoch - base < 512 ? ok("janela ok") : warn("checar SetAppliedBase"));
+    row("SOL replay base / epoch", `${base} / ${nowEpoch}`, base > 0 && nowEpoch - base < 512 ? ok("window ok") : warn("check SetAppliedBase"));
   }
 
-  head("Serviços (VPS 31.97.91.4)");
-  if (NO_VPS) console.log(`  ${C.dim}(--no-vps: pulado)${C.r}`);
-  else if (!vps || vps.error) row("SSH", bad("inacessível"), vps?.error ?? "");
+  head("Services (VPS 31.97.91.4)");
+  if (NO_VPS) console.log(`  ${C.dim}(--no-vps: skipped)${C.r}`);
+  else if (!vps || vps.error) row("SSH", bad("unreachable"), vps?.error ?? "");
   else {
     for (const s of ["hyperlane-relayer", "hyperlane-validator", "oracle-agent", "claim-agent", "epoch-reporter", "deliver-receipts.timer"]) {
       row(s, vps[s] === "active" ? ok("active") : bad(vps[s] ?? "?"));
@@ -116,10 +116,10 @@ async function snapshot() {
     row("relayer panics (30min)", Number(vps.relayer_panics) > 0 ? bad(vps.relayer_panics) : ok("0"),
       `fds ${vps.relayer_fds ?? "?"}`);
   }
-  console.log(`\n${C.dim}  (⚠ BAIXO = recarregar a carteira · IGP acumulado alto = rodar Sweep no vault)${C.r}`);
+  console.log(`\n${C.dim}  (⚠ LOW = top up the wallet · high IGP accumulated = run Sweep on the vault)${C.r}`);
 }
 
 if (WATCH) {
-  const loop = async () => { try { await snapshot(); } catch (e) { console.error("erro:", String(e).slice(0, 120)); } };
+  const loop = async () => { try { await snapshot(); } catch (e) { console.error("error:", String(e).slice(0, 120)); } };
   await loop(); setInterval(loop, 60_000);
 } else { await snapshot(); }

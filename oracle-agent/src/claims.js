@@ -1,19 +1,19 @@
-// claim-agent — fase de RESGATE de cada rodada (roda junto do oracle-agent):
+// claim-agent — CLAIM phase of each round (runs alongside the oracle-agent):
 //
-//   TC/EVM : varre as entregas do NOSSO relayer no Mailbox (eventos/logs) e
-//            chama `Claim` no vault com os message_ids ainda não resgatados.
-//   Solana : conta os process() pagos pelo relayer no Mailbox por ÉPOCA e, para
-//            épocas FECHADAS, submete `SubmitEpochReport` (quórum on-chain) e
-//            depois `Withdraw` do crédito disponível.
+//   TC/EVM : scans OUR relayer's deliveries in the Mailbox (events/logs) and
+//            calls `Claim` on the vault with the message_ids not yet claimed.
+//   Solana : counts the process() paid by the relayer in the Mailbox per EPOCH and, for
+//            CLOSED epochs, submits `SubmitEpochReport` (on-chain quorum) and
+//            then `Withdraw` of the available credit.
 //
-// Estado (cursors, ids pendentes, épocas contadas) vive no state.json junto das
-// âncoras de preço. Primeira rodada só grava o cursor (só entregas NOVAS são
-// resgatadas automaticamente; antigas: manual via docs/OPERACAO-CONTRATOS.md).
+// State (cursors, pending ids, counted epochs) lives in state.json together with the
+// price anchors. First round only writes the cursor (only NEW deliveries are
+// claimed automatically; old ones: manual via docs/OPERACAO-CONTRATOS.md).
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 
 const log = (chain, msg) => console.log(`[${new Date().toISOString()}] [${chain}] [claims] ${msg}`);
 
-/** enfileira ids p/ atestação remota no vault do TC (ClaimRemote v2) */
+/** queues ids for remote attestation in the TC vault (ClaimRemote v2) */
 function queueRemoteAttest(state, domain, ids) {
   if (!ids.length) return;
   state.remoteAttest = state.remoteAttest ?? {};
@@ -32,7 +32,7 @@ async function tcCurrentHeight(rpc) {
 }
 
 async function tcScan(chain, fromHeight, toHeight) {
-  // tx_search pelo evento do process no Mailbox; filtra o sender = relayer
+  // tx_search by the process event in the Mailbox; filters the sender = relayer
   const ids = [];
   let page = 1;
   for (;;) {
@@ -62,15 +62,15 @@ async function tcScan(chain, fromHeight, toHeight) {
   return ids;
 }
 
-/** Sweep automático: quando o IGP acumular >= sweepMinUluna (default 100 LUNC),
- *  puxa a arrecadação p/ o pool do vault (permissionless). */
+/** Automatic sweep: when the IGP accumulates >= sweepMinUluna (default 100 LUNC),
+ *  pulls the collected fees to the vault pool (permissionless). */
 async function tcAutoSweep(chain, DRY) {
   if (!chain.claims.igp || !chain.claims.lcd) return;
   const r = await fetch(`${chain.claims.lcd}/cosmos/bank/v1beta1/balances/${chain.claims.igp}`).then((x) => x.json());
   const bal = BigInt(r.balances?.find((b) => b.denom === "uluna")?.amount ?? "0");
   const min = BigInt(chain.claims.sweepMinUluna ?? 100_000_000);
   if (bal < min) return;
-  log("terraclassic", `IGP com ${Number(bal) / 1e6} LUNC acumulados` + (DRY ? " [dry-run: sweep não executado]" : " — executando Sweep"));
+  log("terraclassic", `IGP with ${Number(bal) / 1e6} LUNC accumulated` + (DRY ? " [dry-run: sweep not executed]" : " — running Sweep"));
   if (DRY) return;
   const { SigningCosmWasmClient } = await import("@cosmjs/cosmwasm-stargate");
   const { DirectSecp256k1Wallet } = await import("@cosmjs/proto-signing");
@@ -83,8 +83,8 @@ async function tcAutoSweep(chain, DRY) {
   log("terraclassic", `✓ Sweep → pool: ${res.transactionHash}`);
 }
 
-/** Atesta no vault do TC (v2 ClaimRemote) as entregas remotas confirmadas dos
- *  nossos relayers — a fila é alimentada pelos scanners de BSC/ETH/Solana. */
+/** Attests in the TC vault (v2 ClaimRemote) the confirmed remote deliveries from
+ *  our relayers — the queue is fed by the BSC/ETH/Solana scanners. */
 async function tcAttestRemote(chain, state, DRY) {
   const q = state.remoteAttest ?? {};
   const domains = Object.keys(q).filter((d) => (q[d] ?? []).length);
@@ -92,16 +92,16 @@ async function tcAttestRemote(chain, state, DRY) {
   const { CosmWasmClient, SigningCosmWasmClient } = await import("@cosmjs/cosmwasm-stargate");
   const ro = await CosmWasmClient.connect(chain.rpc);
   for (const d of domains) {
-    // remove os já pagos (idempotência entre rodadas)
+    // remove the ones already paid (idempotency across rounds)
     const ids = [];
     for (const id of q[d]) {
       const r = await ro.queryContractSmart(chain.claims.vault, { remote_claimed: { message_id: id } })
-        .catch(() => null); // v1 ainda no ar → query inexistente
-      if (r === null) { log("terraclassic", "vault ainda sem v2 (ClaimRemote) — fila mantida"); return; }
+        .catch(() => null); // v1 still live → query does not exist
+      if (r === null) { log("terraclassic", "vault still without v2 (ClaimRemote) — queue kept"); return; }
       if (!r.claimed) ids.push(id);
     }
     if (!ids.length) { q[d] = []; continue; }
-    if (DRY) { log("terraclassic", `[dry-run] atestaria ${ids.length} entrega(s) do domínio ${d}`); continue; }
+    if (DRY) { log("terraclassic", `[dry-run] would attest ${ids.length} delivery(ies) from domain ${d}`); continue; }
     const { DirectSecp256k1Wallet } = await import("@cosmjs/proto-signing");
     const { GasPrice } = await import("@cosmjs/stargate");
     const key = process.env[chain.privateKeyEnv].replace(/^0x/, "");
@@ -112,26 +112,26 @@ async function tcAttestRemote(chain, state, DRY) {
       const res = await client.execute(acc.address, chain.claims.vault,
         { attest_remote_delivery: { domain: Number(d), message_ids: ids.slice(0, MAX_BATCH), executor: null } }, "auto");
       q[d] = q[d].filter((i) => !ids.slice(0, MAX_BATCH).includes(i));
-      log("terraclassic", `✓ atestado ${ids.length} entrega(s) remota(s) do domínio ${d} → ${res.transactionHash}`);
+      log("terraclassic", `✓ attested ${ids.length} remote delivery(ies) from domain ${d} → ${res.transactionHash}`);
     } catch (e) {
-      log("terraclassic", `atestação dom ${d} ERRO — ${String(e.message).slice(0, 90)} (fila mantida)`);
+      log("terraclassic", `attestation dom ${d} ERROR — ${String(e.message).slice(0, 90)} (queue kept)`);
     }
   }
 }
 
 async function runTcClaims(chain, st, DRY, state, epochSecs) {
-  await tcAutoSweep(chain, DRY).catch((e) => log("terraclassic", `sweep ERRO — ${e.message}`));
-  await tcAttestRemote(chain, state, DRY).catch((e) => log("terraclassic", `attest ERRO — ${e.message}`));
+  await tcAutoSweep(chain, DRY).catch((e) => log("terraclassic", `sweep ERROR — ${e.message}`));
+  await tcAttestRemote(chain, state, DRY).catch((e) => log("terraclassic", `attest ERROR — ${e.message}`));
   const height = await tcCurrentHeight(chain.rpc);
   if (st.cursor == null) {
     st.cursor = height;
-    log("terraclassic", `cursor inicial gravado no bloco ${height} — só entregas novas serão resgatadas`);
+    log("terraclassic", `initial cursor written at block ${height} — only new deliveries will be claimed`);
     return;
   }
   const novos = await tcScan(chain, st.cursor, height);
   st.cursor = height;
-  // fila de atestação nos vaults EVM de ORIGEM (v2): entregas NO TC de msgs
-  // vindas da BSC (56) / ETH (1) rendem a taxa de origem lá
+  // attestation queue in the ORIGIN EVM vaults (v2): deliveries ON TC of msgs
+  // coming from BSC (56) / ETH (1) earn the origin fee there
   state.remoteAttestEvm = state.remoteAttestEvm ?? {};
   state.remoteAttestSol = state.remoteAttestSol ?? {};
   for (const n of novos) {
@@ -141,13 +141,13 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
       state.remoteAttestEvm[n.origin] = [...q];
     }
     if (n.origin === 1399811149) {
-      // crédito remoto no vault da SOLANA, agregado por época de lá
+      // remote credit in the SOLANA vault, aggregated by its epoch
       const ep = Math.floor(Date.now() / 1000 / epochSecs);
       state.remoteAttestSol[ep] = (state.remoteAttestSol[ep] ?? 0) + 1;
     }
   }
   st.pending = [...new Set([...(st.pending ?? []), ...novos.map((n) => n.id)])];
-  if (novos.length) log("terraclassic", `${novos.length} entrega(s) nova(s) do relayer detectada(s)`);
+  if (novos.length) log("terraclassic", `${novos.length} new delivery(ies) from the relayer detected`);
   if (!st.pending.length) return;
 
   const { CosmWasmClient, SigningCosmWasmClient } = await import("@cosmjs/cosmwasm-stargate");
@@ -155,7 +155,7 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
   const claimables = [];
   for (const id of st.pending) {
     const c = await ro.queryContractSmart(chain.claims.vault, { claimed: { message_id: id } });
-    if (c.claimed) log("terraclassic", `id ${id.slice(0, 12)}… já resgatado por ${c.claimant} — removendo`);
+    if (c.claimed) log("terraclassic", `id ${id.slice(0, 12)}… already claimed by ${c.claimant} — removing`);
     else claimables.push(id);
   }
   st.pending = claimables;
@@ -165,8 +165,8 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
   const sol = await ro.queryContractSmart(chain.claims.vault, { solvency: {} });
   const payable = Number(sol.claims_payable ?? sol.claimsPayable ?? 0);
   const lote = claimables.slice(0, Math.min(MAX_BATCH, payable));
-  if (!lote.length) { log("terraclassic", `pool insuficiente p/ ${claimables.length} claim(s) — pendentes mantidos`); return; }
-  if (DRY) { log("terraclassic", `[dry-run] resgataria ${lote.length} id(s)`); return; }
+  if (!lote.length) { log("terraclassic", `pool insufficient for ${claimables.length} claim(s) — pending kept`); return; }
+  if (DRY) { log("terraclassic", `[dry-run] would claim ${lote.length} id(s)`); return; }
 
   const { DirectSecp256k1Wallet } = await import("@cosmjs/proto-signing");
   const { GasPrice } = await import("@cosmjs/stargate");
@@ -176,7 +176,7 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
   const client = await SigningCosmWasmClient.connectWithSigner(chain.rpc, wallet, { gasPrice: GasPrice.fromString(chain.gasPrice) });
   const res = await client.execute(acc.address, chain.claims.vault, { claim: { message_ids: lote } }, "auto");
   st.pending = claimables.filter((i) => !lote.includes(i));
-  log("terraclassic", `✓ claim de ${lote.length} entrega(s) → ${res.transactionHash}`);
+  log("terraclassic", `✓ claim of ${lote.length} delivery(ies) → ${res.transactionHash}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -184,14 +184,14 @@ async function runTcClaims(chain, st, DRY, state, epochSecs) {
 // ---------------------------------------------------------------------------
 async function runEvmClaims(name, chain, st, DRY, state) {
   const { Contract, JsonRpcProvider, Wallet, id } = await import("ethers");
-  // DOIS providers: claims.rpc SÓ para getLogs (RPCs com suporte a logs têm
-  // cotas apertadas); chain.rpc p/ calls e TRANSAÇÕES (claim/atestação/igp).
+  // TWO providers: claims.rpc ONLY for getLogs (RPCs with log support have
+  // tight quotas); chain.rpc for calls and TRANSACTIONS (claim/attestation/igp).
   const providerLogs = new JsonRpcProvider(chain.claims.rpc ?? chain.rpc, undefined, { batchMaxCount: 1 });
   const provider = new JsonRpcProvider(chain.rpc, undefined, { batchMaxCount: 1 });
   const current = await provider.getBlockNumber();
   if (st.cursor == null) {
     st.cursor = current;
-    log(name, `cursor inicial gravado no bloco ${current} — só entregas novas serão resgatadas`);
+    log(name, `initial cursor written at block ${current} — only new deliveries will be claimed`);
     return;
   }
   const MAILBOX_ABI = [
@@ -211,8 +211,8 @@ async function runEvmClaims(name, chain, st, DRY, state) {
   const mailbox = new Contract(chain.claims.mailbox, MAILBOX_ABI, provider);
   const vault = new Contract(chain.claims.vault, VAULT_ABI, provider);
 
-  // ---- auto-sweep: igp.claim() é permissionless e empurra a arrecadação p/ o
-  //      vault (beneficiary). Chama quando houver saldo relevante no IGP.
+  // ---- auto-sweep: igp.claim() is permissionless and pushes the collected fees to the
+  //      vault (beneficiary). Called when there is a relevant balance in the IGP.
   if (chain.claims.igp) {
     try {
       const igpBal = await provider.getBalance(chain.claims.igp);
@@ -221,20 +221,20 @@ async function runEvmClaims(name, chain, st, DRY, state) {
         const igp = new Contract(chain.claims.igp, IGP_ABI, wallet);
         const tx = await igp.claim();
         const rc = await tx.wait();
-        log(name, `✓ igp.claim(): ${igpBal} wei → pool do vault (${rc.hash})`);
+        log(name, `✓ igp.claim(): ${igpBal} wei → vault pool (${rc.hash})`);
       }
     } catch (e) {
-      log(name, `igp.claim() ERRO — ${String(e.message).slice(0, 70)}`);
+      log(name, `igp.claim() ERROR — ${String(e.message).slice(0, 70)}`);
     }
   }
 
-  // ---- v2: atesta AQUI as entregas (feitas no TC) de msgs ORIGINADAS aqui ----
+  // ---- v2: attest HERE the deliveries (made on TC) of msgs ORIGINATED here ----
   const attQ = (state.remoteAttestEvm ?? {})[chain.claims.domain] ?? [];
   if (attQ.length) {
     try {
       const reward = await vault.remoteReward(132556);
       if (reward === 0n) {
-        log(name, `vault ainda sem v2/recompensa — ${attQ.length} atestação(ões) na fila`);
+        log(name, `vault still without v2/reward — ${attQ.length} attestation(s) in the queue`);
       } else {
         const ids = [];
         for (const id of attQ) {
@@ -245,17 +245,17 @@ async function runEvmClaims(name, chain, st, DRY, state) {
           const wallet = new Wallet(process.env[chain.privateKeyEnv], provider);
           const tx = await vault.connect(wallet).attestRemoteDelivery(132556, ids, "0x0000000000000000000000000000000000000000");
           const rc = await tx.wait();
-          log(name, `✓ atestado ${ids.length} entrega(s) no TC (origem ${chain.claims.domain}) → ${rc.hash}`);
+          log(name, `✓ attested ${ids.length} delivery(ies) on TC (origin ${chain.claims.domain}) → ${rc.hash}`);
         }
         state.remoteAttestEvm[chain.claims.domain] = [];
       }
     } catch (e) {
-      log(name, `atestação v2 ERRO — ${String(e.message).slice(0, 80)} (fila mantida)`);
+      log(name, `v2 attestation ERROR — ${String(e.message).slice(0, 80)} (queue kept)`);
     }
   }
 
-  // varredura em janelas configuráveis (RPCs públicos variam MUITO no limite
-  // de eth_getLogs: 1rpc/BSC = 50 blocos; mevblocker/ETH aceita centenas)
+  // scan in configurable windows (public RPCs vary A LOT in the eth_getLogs
+  // limit: 1rpc/BSC = 50 blocks; mevblocker/ETH accepts hundreds)
   const chunk = Number(chain.claims.chunkBlocks ?? 2000);
   const maxWindows = Number(chain.claims.maxWindows ?? 30);
   const topic = id("ProcessId(bytes32)");
@@ -269,13 +269,13 @@ async function runEvmClaims(name, chain, st, DRY, state) {
       st.cursor = to;
       from = to + 1;
     } catch (e) {
-      // RPC público intermitente: mantém o cursor e continua na PRÓXIMA rodada
-      log(name, `varredura interrompida no bloco ${from} (${String(e.message).slice(0, 60)}…) — retoma na próxima rodada`);
+      // intermittent public RPC: keep the cursor and continue on the NEXT round
+      log(name, `scan interrupted at block ${from} (${String(e.message).slice(0, 60)}…) — resumes on the next round`);
       break;
     }
-    await new Promise((r) => setTimeout(r, 150)); // pacing p/ rate limit
+    await new Promise((r) => setTimeout(r, 150)); // pacing for rate limit
   }
-  if (from <= current) log(name, `varredura parcial (até bloco ${st.cursor}; continua na próxima rodada)`);
+  if (from <= current) log(name, `partial scan (up to block ${st.cursor}; continues on the next round)`);
 
   const pend = new Set(st.pending ?? []);
   const nossos = [];
@@ -286,7 +286,7 @@ async function runEvmClaims(name, chain, st, DRY, state) {
     }
   }
   if (chain.claims.domain) queueRemoteAttest(state, chain.claims.domain, nossos);
-  if (novos.length) log(name, `${novos.length} process() no Mailbox · ${pend.size} do nosso relayer no total pendente`);
+  if (novos.length) log(name, `${novos.length} process() in the Mailbox · ${pend.size} from our relayer pending in total`);
 
   if (chain.claims.localClaim === false) { st.pending = []; return; }
   const claimables = [];
@@ -298,18 +298,18 @@ async function runEvmClaims(name, chain, st, DRY, state) {
 
   const payable = Number(await vault.claimsPayable());
   const lote = claimables.slice(0, Math.min(MAX_BATCH, payable));
-  if (!lote.length) { log(name, `pool insuficiente p/ ${claimables.length} claim(s) — semear o vault; pendentes mantidos`); return; }
-  if (DRY) { log(name, `[dry-run] resgataria ${lote.length} id(s)`); return; }
+  if (!lote.length) { log(name, `pool insufficient for ${claimables.length} claim(s) — seed the vault; pending kept`); return; }
+  if (DRY) { log(name, `[dry-run] would claim ${lote.length} id(s)`); return; }
 
   const wallet = new Wallet(process.env[chain.privateKeyEnv], provider);
   const tx = await vault.connect(wallet).claim(lote);
   const rc = await tx.wait();
   st.pending = claimables.filter((i) => !lote.includes(i));
-  log(name, `✓ claim de ${lote.length} entrega(s) → ${rc.hash}`);
+  log(name, `✓ claim of ${lote.length} delivery(ies) → ${rc.hash}`);
 }
 
 // ---------------------------------------------------------------------------
-// Solana — relatório de época + withdraw (módulo rrv do pod)
+// Solana — epoch report + withdraw (rrv module of the pod)
 // ---------------------------------------------------------------------------
 const sep = Buffer.from("-");
 const u32le = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(Number(n)); return b; };
@@ -318,21 +318,21 @@ const rrvPda = (pod, seeds) => PublicKey.findProgramAddressSync([Buffer.from("rr
 
 async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
   const conn = new Connection(chain.rpc, "confirmed");
-  const pod = new PublicKey(chain.governorProgram); // mesmo programa (pod)
+  const pod = new PublicKey(chain.governorProgram); // same program (pod)
   const mailbox = new PublicKey(chain.claims.mailboxProgram);
   const relayer = new PublicKey(chain.claims.relayer);
 
-  // 1. novas assinaturas do Mailbox desde o último cursor
+  // 1. new Mailbox signatures since the last cursor
   const opts = { limit: 100 };
   if (st.lastSig) opts.until = st.lastSig;
   const sigs = await conn.getSignaturesForAddress(mailbox, opts);
   if (!st.lastSig && sigs.length) {
     st.lastSig = sigs[0].signature;
-    log("solana", `cursor inicial gravado (${st.lastSig.slice(0, 12)}…) — só entregas novas serão contadas`);
+    log("solana", `initial cursor written (${st.lastSig.slice(0, 12)}…) — only new deliveries will be counted`);
     return;
   }
   st.epochs = st.epochs ?? {};
-  for (const s of sigs.reverse()) { // mais antigas primeiro
+  for (const s of sigs.reverse()) { // oldest first
     if (s.err) continue;
     const tx = await conn.getTransaction(s.signature, { maxSupportedTransactionVersion: 0 });
     if (!tx || tx.meta.err) continue;
@@ -348,7 +348,7 @@ async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
     st.lastSig = s.signature;
   }
 
-  // 2. reporta épocas FECHADAS com entregas
+  // 2. reports CLOSED epochs with deliveries
   const now = Math.floor(Date.now() / 1000);
   const currentEpoch = Math.floor(now / epochSecs);
   const kp = Keypair.fromSeed(Uint8Array.from(Buffer.from(process.env[chain.privateKeyEnv].replace(/^0x/, ""), "hex")));
@@ -362,7 +362,7 @@ async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
     const e = (st.epochs[epoch] = st.epochs[epoch] ?? { count: 0, minSlot: 0, maxSlot: 0, reported: false });
     const remoteCount = remoteQ[epoch] ?? 0;
     if (e.reported || (e.count === 0 && remoteCount === 0)) continue;
-    log("solana", `época ${epoch} fechada: ${e.count} entrega(s) local(is) + ${remoteCount} remota(s)` + (DRY ? " [dry-run: não reportado]" : ""));
+    log("solana", `epoch ${epoch} closed: ${e.count} local delivery(ies) + ${remoteCount} remote` + (DRY ? " [dry-run: not reported]" : ""));
     if (DRY) continue;
     // EpochReport { epoch, start, end, credits: [(op,count)], remote: [(dom,op,count)] }
     const credits = e.count > 0
@@ -388,16 +388,16 @@ async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
     const ix = new TransactionInstruction({
       programId: pod,
       keys,
-      data: Buffer.concat([Buffer.from([0, 1]), report]), // [módulo rrv][SubmitEpochReport]
+      data: Buffer.concat([Buffer.from([0, 1]), report]), // [rrv module][SubmitEpochReport]
     });
     const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
     await conn.confirmTransaction(sig, "confirmed");
     e.reported = true;
     delete remoteQ[epoch];
-    log("solana", `✓ relatório da época ${epoch} (${e.count} local + ${remoteCount} remota) → ${sig}`);
+    log("solana", `✓ report of epoch ${epoch} (${e.count} local + ${remoteCount} remote) → ${sig}`);
   }
 
-  // 3. saca crédito disponível (respeitando o rent da PDA do pool)
+  // 3. withdraw available credit (respecting the rent of the pool PDA)
   const creditPda = rrvPda(pod, [Buffer.from("credit"), sep, Buffer.from(relayer.toBytes())]);
   const cInfo = await conn.getAccountInfo(creditPda);
   if (!cInfo) return;
@@ -410,8 +410,8 @@ async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
   const rentFloor = BigInt(await conn.getMinimumBalanceForRentExemption(cfgInfo.data.length));
   const pool = BigInt(cfgInfo.lamports) - rentFloor;
   const amount = available < pool ? available : pool;
-  if (amount <= 0n) { log("solana", `crédito de ${available} lamports mas pool sem folga — semear`); return; }
-  if (DRY) { log("solana", `[dry-run] sacaria ${amount} lamports de crédito`); return; }
+  if (amount <= 0n) { log("solana", `credit of ${available} lamports but pool with no headroom — seed`); return; }
+  if (DRY) { log("solana", `[dry-run] would withdraw ${amount} lamports of credit`); return; }
   const ix = new TransactionInstruction({
     programId: pod,
     keys: [
@@ -419,11 +419,11 @@ async function runSolanaClaims(chain, st, DRY, epochSecs, state) {
       { pubkey: configPda, isSigner: false, isWritable: true },
       { pubkey: creditPda, isSigner: false, isWritable: true },
     ],
-    data: Buffer.concat([Buffer.from([0, 2]), u64le(amount)]), // [módulo rrv][Withdraw]
+    data: Buffer.concat([Buffer.from([0, 2]), u64le(amount)]), // [rrv module][Withdraw]
   });
   const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
   await conn.confirmTransaction(sig, "confirmed");
-  log("solana", `✓ withdraw de ${amount} lamports → ${sig}`);
+  log("solana", `✓ withdraw of ${amount} lamports → ${sig}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -436,6 +436,6 @@ export async function runClaims(name, chain, state, DRY, epochSecs) {
     else if (chain.type === "evm") await runEvmClaims(name, chain, st, DRY, state);
     else if (chain.type === "solana") await runSolanaClaims(chain, st, DRY, epochSecs, state);
   } catch (err) {
-    log(name, `ERRO — ${err.message}`);
+    log(name, `ERROR — ${err.message}`);
   }
 }

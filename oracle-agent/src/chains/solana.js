@@ -1,10 +1,10 @@
-// Submissão no igp-oracle-governor (Solana): borsh manual da instrução
-//   SubmitPrice { domain: u32, token_exchange_rate: u128, gas_price: u128 }  (variante 1)
-// DEPLOY REAL (18/08/2026): o governor vive dentro do programa único `pod`
-// (2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj) — o 1º byte do instruction
-// data escolhe o módulo (0=vault, 1=governor) e o restante é a instrução acima.
-// Contas: [operator s w, config, domain w, round w, system, igp_program, igp w]
-// Seeds iguais às do programa: ["gov","-","config"] · ["gov","-","domain","-",u32le]
+// Submission to the igp-oracle-governor (Solana): manual borsh of the instruction
+//   SubmitPrice { domain: u32, token_exchange_rate: u128, gas_price: u128 }  (variant 1)
+// REAL DEPLOY (18/08/2026): the governor lives inside the single `pod` program
+// (2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj) — the 1st byte of the instruction
+// data selects the module (0=vault, 1=governor) and the rest is the instruction above.
+// Accounts: [operator s w, config, domain w, round w, system, igp_program, igp w]
+// Seeds same as the program's: ["gov","-","config"] · ["gov","-","domain","-",u32le]
 //                              · ["gov","-","price","-",u32le,"-",u64le]
 import fs from "node:fs";
 import {
@@ -16,7 +16,7 @@ import {
   TransactionInstruction,
 } from "@solana/web3.js";
 
-const POD_MODULE_GOV = 1; // roteador do pod: 0=vault (rrv), 1=governor
+const POD_MODULE_GOV = 1; // pod router: 0=vault (rrv), 1=governor
 const SUBMIT_PRICE_VARIANT = 1;
 
 function u32le(n) {
@@ -63,9 +63,9 @@ export function pdas(programId, domain, epoch) {
   return { config, domainPda, round };
 }
 
-/** Valor VIGENTE do IGP de produção: varre o account pelo domínio LE e valida
- *  [domain u32][variante 0][rate u128][gas u128][decimals u8] (mesmo parser
- *  do deploy/solana-init.mjs, testado contra o mainnet 18/08/2026). */
+/** CURRENT value of the production IGP: scans the account by the LE domain and validates
+ *  [domain u32][variant 0][rate u128][gas u128][decimals u8] (same parser
+ *  as deploy/solana-init.mjs, tested against mainnet 18/08/2026). */
 export async function readOracle(chain, domain) {
   const conn = new Connection(chain.rpc, "confirmed");
   const info = await conn.getAccountInfo(new PublicKey(chain.igpAccount));
@@ -78,19 +78,19 @@ export async function readOracle(chain, domain) {
     const rate = rd(idx + 5), gas = rd(idx + 21), dec = d[idx + 37];
     if (d[idx + 4] === 0 && rate > 0n && gas > 0n && dec >= 1 && dec <= 18) return { rate, gas };
   }
-  throw new Error(`domínio ${domain} não encontrado no Igp ${chain.igpAccount}`);
+  throw new Error(`domain ${domain} not found in Igp ${chain.igpAccount}`);
 }
 
 export async function makeSolanaSubmitter(chain, epochDurationSecs) {
-  // chave HEX (privateKeyEnv, seed ed25519 de 32 bytes — formato do relayer
-  // Hyperlane) OU caminho de keypair JSON (keypairEnv)
+  // HEX key (privateKeyEnv, 32-byte ed25519 seed — Hyperlane relayer format)
+  // OR path to a JSON keypair (keypairEnv)
   let keypair;
   const rawHex = chain.privateKeyEnv && process.env[chain.privateKeyEnv];
   if (rawHex) {
     keypair = Keypair.fromSeed(Uint8Array.from(Buffer.from(rawHex.replace(/^0x/, ""), "hex")));
   } else {
     const keypairPath = process.env[chain.keypairEnv];
-    if (!keypairPath) throw new Error(`env ${chain.privateKeyEnv ?? chain.keypairEnv} ausente`);
+    if (!keypairPath) throw new Error(`env ${chain.privateKeyEnv ?? chain.keypairEnv} missing`);
     keypair = Keypair.fromSecretKey(
       Uint8Array.from(JSON.parse(fs.readFileSync(keypairPath, "utf8"))),
     );

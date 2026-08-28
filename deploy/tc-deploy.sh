@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # =============================================================================
-# tc-proof-of-delivery · Deploy Fases 1–2 no Terra Classic (columbus-5)
+# tc-proof-of-delivery · Deploy Phases 1–2 on Terra Classic (columbus-5)
 #
-#   FASE 1: oracle-governor + posse do StorageGasOracle + faixas por domínio
-#   FASE 2: relayer-reward-vault + IGP.beneficiary = vault + semente do pool
+#   PHASE 1: oracle-governor + ownership of the StorageGasOracle + bounds per domain
+#   PHASE 2: relayer-reward-vault + IGP.beneficiary = vault + pool seed
 #
-# Assina com a chave "hyperlane-deploy" (keyring file — a senha é pedida UMA
-# vez e reutilizada via pipe; nunca é gravada em lugar nenhum).
-# Parâmetros: docs/PARAMETROS_PROPOSTA.md. Owner inicial = deployer (handoff
-# p/ governança depois — seção 8 do mesmo doc).
+# Signs with the "hyperlane-deploy" key (keyring file — the password is asked ONCE
+# and reused via pipe; it is never written anywhere).
+# Parameters: docs/PARAMETROS_PROPOSTA.md. Initial owner = deployer (handoff
+# to governance later — section 8 of the same doc).
 # =============================================================================
 set -euo pipefail
 
@@ -25,7 +25,7 @@ IGP_ORACLE="terra1j8xzgzk7vds5uzrplmnln4vcz6f205t9atdyflypzrr43cd5eh7scwqj0d"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WASM_GOV="$ROOT/artifacts/oracle_governor.wasm"
 WASM_VAULT="$ROOT/artifacts/relayer_reward_vault.wasm"
-STATE="$ROOT/deploy/tc-deploy.state"   # progresso p/ retomar se algo falhar
+STATE="$ROOT/deploy/tc-deploy.state"   # progress to resume if something fails
 
 TXFLAGS=(--node "$NODE" --chain-id "$CHAIN" --from "$KEY" --keyring-backend "$KEYRING"
          --gas auto --gas-adjustment 1.5 --gas-prices 28.325uluna
@@ -35,26 +35,26 @@ TXFLAGS=(--node "$NODE" --chain-id "$CHAIN" --from "$KEY" --keyring-backend "$KE
 say() { printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
 jget() { python3 -c "import sys,json;d=json.load(sys.stdin);print(eval(sys.argv[1]))" "$1"; }
 
-read -rs -p "Senha do keyring (chave $KEY): " PASS; echo
+read -rs -p "Keyring password (key $KEY): " PASS; echo
 sign() { printf '%s\n%s\n' "$PASS" "$PASS" | terrad "$@"; }
 
 ADDR=$(sign keys show "$KEY" -a --keyring-backend "$KEYRING")
-[ "$ADDR" = "$DEPLOYER" ] || { echo "❌ chave $KEY = $ADDR, esperado $DEPLOYER"; exit 1; }
-echo "✓ chave confere: $ADDR"
+[ "$ADDR" = "$DEPLOYER" ] || { echo "❌ key $KEY = $ADDR, expected $DEPLOYER"; exit 1; }
+echo "✓ key matches: $ADDR"
 
-wait_tx() { # hash → json da tx incluída (falha se code!=0)
+wait_tx() { # hash → json of the included tx (fails if code!=0)
   local hash="$1" out code
   for _ in $(seq 1 40); do
     if out=$(terrad q tx "$hash" --node "$NODE" --output json 2>/dev/null); then
       code=$(echo "$out" | jget "d['code']")
-      [ "$code" = "0" ] || { echo "❌ tx $hash falhou (code $code):" >&2; echo "$out" | jget "d['raw_log'][:400]" >&2; exit 1; }
+      [ "$code" = "0" ] || { echo "❌ tx $hash failed (code $code):" >&2; echo "$out" | jget "d['raw_log'][:400]" >&2; exit 1; }
       echo "$out"; return 0
     fi; sleep 3
   done
-  echo "❌ timeout esperando tx $hash" >&2; exit 1
+  echo "❌ timeout waiting for tx $hash" >&2; exit 1
 }
 
-tx() { # executa terrad tx ..., espera inclusão, ecoa o json final
+tx() { # runs terrad tx ..., waits for inclusion, echoes the final json
   local res hash
   res=$(sign tx "$@" "${TXFLAGS[@]}")
   hash=$(echo "$res" | jget "d['txhash']")
@@ -62,7 +62,7 @@ tx() { # executa terrad tx ..., espera inclusão, ecoa o json final
   wait_tx "$hash"
 }
 
-event_attr() { # json, tipo, chave → valor (primeira ocorrência)
+event_attr() { # json, type, key → value (first occurrence)
   python3 -c "
 import sys,json
 d=json.load(sys.stdin)
@@ -83,7 +83,7 @@ done_step() { grep -q "^$1=" "$STATE" 2>/dev/null; }
 get_state() { grep "^$1=" "$STATE" | tail -1 | cut -d= -f2; }
 touch "$STATE"
 
-# ---------- FASE 1 ----------
+# ---------- PHASE 1 ----------
 if ! done_step CODE_GOV; then
   say "1/9 store oracle_governor.wasm"
   out=$(tx wasm store "$WASM_GOV")
@@ -100,18 +100,18 @@ if ! done_step CODE_VAULT; then
 fi
 CODE_VAULT=$(get_state CODE_VAULT); echo "✓ vault code_id: $CODE_VAULT"
 
-say "verificando data_hash on-chain vs checksums.txt"
+say "verifying on-chain data_hash vs checksums.txt"
 for pair in "$CODE_GOV:oracle_governor.wasm" "$CODE_VAULT:relayer_reward_vault.wasm"; do
   cid="${pair%%:*}"; f="${pair##*:}"
   onchain=$(terrad q wasm code-info "$cid" --node "$NODE" --output json | jget "d['data_hash']" | tr a-z A-Z)
   local_hash=$(grep "$f" "$ROOT/artifacts/checksums.txt" | cut -d' ' -f1 | tr a-z A-Z)
-  [ "$onchain" = "$local_hash" ] || { echo "❌ data_hash divergente p/ $f! on-chain=$onchain local=$local_hash"; exit 1; }
-  echo "✓ $f data_hash confere ($onchain)"
+  [ "$onchain" = "$local_hash" ] || { echo "❌ data_hash mismatch for $f! on-chain=$onchain local=$local_hash"; exit 1; }
+  echo "✓ $f data_hash matches ($onchain)"
 done
 
 if ! done_step GOV_ADDR; then
   say "3/9 instantiate oracle-governor"
-  # operadores: deployer + (opcional) OPERATOR2 via env; quórum acompanha (docs/OPERADORES.md)
+  # operators: deployer + (optional) OPERATOR2 via env; quorum follows (docs/OPERADORES.md)
   OPS="\"$DEPLOYER\""; Q=1
   if [ -n "${OPERATOR2:-}" ]; then OPS="$OPS,\"$OPERATOR2\""; Q=${QUORUM:-2}; fi
   init_gov=$(cat <<JSON
@@ -125,20 +125,20 @@ fi
 GOV_ADDR=$(get_state GOV_ADDR); echo "✓ oracle-governor: $GOV_ADDR"
 
 if ! done_step ORACLE_TRANSFER; then
-  say "4/9 posse do StorageGasOracle → governor (passo 1: init transfer)"
+  say "4/9 ownership of the StorageGasOracle → governor (step 1: init transfer)"
   tx wasm execute "$IGP_ORACLE" "{\"ownership\":{\"init_ownership_transfer\":{\"next_owner\":\"$GOV_ADDR\"}}}" >/dev/null
   mark ORACLE_TRANSFER ok
 fi
 if ! done_step ORACLE_CLAIM; then
-  say "5/9 posse do StorageGasOracle → governor (passo 2: claim)"
+  say "5/9 ownership of the StorageGasOracle → governor (step 2: claim)"
   tx wasm execute "$GOV_ADDR" '{"claim_oracle_ownership":{}}' >/dev/null
   mark ORACLE_CLAIM ok
 fi
-echo "✓ governor é owner do oracle"
+echo "✓ governor is owner of the oracle"
 
 if ! done_step BOUNDS; then
-  say "6/9 faixas por domínio — DERIVADAS DO ORACLE EM PRODUÇÃO neste momento (vigente ÷3 · ×3)"
-  # Nada de valor fixo: a doc envelhece; a fonte é o que está NO ORACLE agora.
+  say "6/9 bounds per domain — DERIVED FROM THE ORACLE IN PRODUCTION at this moment (current ÷3 · ×3)"
+  # No fixed value: the docs age; the source is what is IN THE ORACLE now.
   set_bounds() { tx wasm execute "$GOV_ADDR" "{\"set_bounds\":{\"domain\":$1,\"bounds\":{\"min_exchange_rate\":\"$2\",\"max_exchange_rate\":\"$3\",\"min_gas_price\":\"$4\",\"max_gas_price\":\"$5\"}}}" >/dev/null; }
   for dom in 1 56 1399811149; do
     vals=$(terrad q wasm contract-state smart "$IGP_ORACLE" \
@@ -147,19 +147,19 @@ if ! done_step BOUNDS; then
 import sys, json
 d = json.load(sys.stdin)["data"]
 rate, gas = int(d["exchange_rate"]), int(d["gas_price"])
-assert rate > 0 and gas > 0, "oracle sem valor para o domínio — configure-o antes"
+assert rate > 0 and gas > 0, "oracle has no value for the domain — configure it first"
 print(max(1, rate // 3), rate * 3, max(1, gas // 3), gas * 3)')
     read -r MIN_R MAX_R MIN_G MAX_G <<< "$vals"
-    echo "  dom $dom: vigente lido do oracle → faixa rate [$MIN_R · $MAX_R] · gas [$MIN_G · $MAX_G]"
+    echo "  dom $dom: current read from the oracle → bounds rate [$MIN_R · $MAX_R] · gas [$MIN_G · $MAX_G]"
     set_bounds "$dom" "$MIN_R" "$MAX_R" "$MIN_G" "$MAX_G"
   done
   mark BOUNDS ok
 fi
-echo "✓ faixas definidas (dom 1, 56, 1399811149)"
+echo "✓ bounds defined (dom 1, 56, 1399811149)"
 
-# ---------- FASE 2 ----------
+# ---------- PHASE 2 ----------
 if ! done_step VAULT_ADDR; then
-  say "7/9 instantiate relayer-reward-vault (50 LUNC/entrega · janela 200k blocos)"
+  say "7/9 instantiate relayer-reward-vault (50 LUNC/delivery · window 200k blocks)"
   init_vault=$(cat <<JSON
 {"owner":"$DEPLOYER","mailbox":"$MAILBOX","igp":"$IGP","denom":"uluna","reward_per_delivery":"50000000","claim_window_blocks":200000}
 JSON
@@ -175,24 +175,24 @@ if ! done_step BENEFICIARY; then
   tx wasm execute "$IGP" "{\"set_beneficiary\":{\"beneficiary\":\"$VAULT_ADDR\"}}" >/dev/null
   mark BENEFICIARY ok
 fi
-echo "✓ beneficiary apontado"
+echo "✓ beneficiary pointed"
 
 if ! done_step SEED; then
-  say "9/9 semente do pool: 5.000 LUNC"
+  say "9/9 pool seed: 5,000 LUNC"
   tx bank send "$KEY" "$VAULT_ADDR" 5000000000uluna >/dev/null
   mark SEED ok
 fi
-echo "✓ pool semeado"
+echo "✓ pool seeded"
 
-# ---------- verificação final ----------
-say "VERIFICAÇÃO"
+# ---------- final verification ----------
+say "VERIFICATION"
 q() { terrad q wasm contract-state smart "$1" "$2" --node "$NODE" --output json; }
 echo "-- governor config:"; q "$GOV_ADDR" '{"config":{}}' | jget "json.dumps(d['data'])"
 echo "-- oracle owner:";   q "$IGP_ORACLE" '{"ownable":{"get_owner":{}}}' | jget "d['data']"
 echo "-- vault config:";   q "$VAULT_ADDR" '{"config":{}}' | jget "json.dumps(d['data'])"
 echo "-- vault solvency:"; q "$VAULT_ADDR" '{"solvency":{}}' | jget "json.dumps(d['data'])"
-echo "-- layout_check (mensagem real d039daa1…):"
+echo "-- layout_check (real message d039daa1…):"
 q "$VAULT_ADDR" '{"layout_check":{"message_id":"d039daa1c75d5b558906fef6d790b13dc94a8b39e58e1e7f219b3967a28c4f04"}}' | jget "json.dumps(d['data'])"
 echo "-- igp beneficiary:"; q "$IGP" '{"igp":{"beneficiary":{}}}' | jget "d['data']" || true
 
-say "DEPLOY CONCLUÍDO 🎉  (endereços salvos em $STATE)"
+say "DEPLOY COMPLETE 🎉  (addresses saved in $STATE)"

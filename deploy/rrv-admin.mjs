@@ -1,7 +1,7 @@
-// Proposta administrativa do VAULT Solana (módulo rrv do pod) — spec §09:
-// cada operador submete o MESMO AdminEnvelope; ao atingir o quórum, executa.
+// Administrative proposal for the Solana VAULT (pod rrv module) — spec §09:
+// each operator submits the SAME AdminEnvelope; once quorum is reached, it executes.
 //   node deploy/rrv-admin.mjs set-quorum <n> [nonce]
-// Chave: SOLANA_KEYPAIR (arquivo JSON) OU SOLANA_SEED_HEX (seed 32B hex).
+// Key: SOLANA_KEYPAIR (JSON file) OR SOLANA_SEED_HEX (32B hex seed).
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
@@ -11,7 +11,7 @@ const POD = new PublicKey("2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj");
 const RRV_CONFIG = new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w");
 
 const [cmd, valueArg, nonceArg] = process.argv.slice(2);
-if (cmd !== "set-quorum") { console.error("uso: rrv-admin.mjs set-quorum <n> [nonce]"); process.exit(1); }
+if (cmd !== "set-quorum") { console.error("usage: rrv-admin.mjs set-quorum <n> [nonce]"); process.exit(1); }
 const nonce = BigInt(nonceArg ?? "1");
 
 const kp = process.env.SOLANA_SEED_HEX
@@ -20,14 +20,14 @@ const kp = process.env.SOLANA_SEED_HEX
       process.env.SOLANA_KEYPAIR ?? "/home/lunc/keys/solana-keypair-BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j.json", "utf8"))));
 
 const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
-// AdminEnvelope { nonce u64, action: AdminAction::SetQuorum(u8)=variante 1 }
+// AdminEnvelope { nonce u64, action: AdminAction::SetQuorum(u8)=variant 1 }
 const envelope = Buffer.concat([u64(nonce), Buffer.from([1, Number(valueArg)])]);
 const hash = createHash("sha256").update(envelope).digest();
 const sep = Buffer.from("-");
 const [proposal] = PublicKey.findProgramAddressSync(
   [Buffer.from("rrv"), sep, Buffer.from("prop"), sep, hash], POD);
 
-console.log("operador:", kp.publicKey.toBase58(), "· proposta:", proposal.toBase58(), "· envelope sha256:", hash.toString("hex"));
+console.log("operator:", kp.publicKey.toBase58(), "· proposal:", proposal.toBase58(), "· envelope sha256:", hash.toString("hex"));
 
 const conn = new Connection(RPC, "confirmed");
 const ix = new TransactionInstruction({
@@ -43,4 +43,4 @@ const ix = new TransactionInstruction({
 });
 const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
 await conn.confirmTransaction(sig, "confirmed");
-console.log("✓ aprovação registrada:", sig);
+console.log("✓ approval recorded:", sig);

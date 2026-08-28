@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# instala o painel web como serviço de USUÁRIO (systemd) no WSL/Linux — sobe sozinho.
+# installs the web panel as a USER service (systemd) on WSL/Linux — comes up on its own.
 set -euo pipefail
 NODE=$(which node)
 mkdir -p ~/.config/systemd/user
 cat > ~/.config/systemd/user/tcpod-monitor.service <<UNIT
 [Unit]
-Description=painel web tc-proof-of-delivery (http://localhost:8787)
+Description=tc-proof-of-delivery web panel (http://localhost:8787)
 After=network-online.target
 [Service]
 Type=simple
@@ -19,5 +19,5 @@ WantedBy=default.target
 UNIT
 systemctl --user daemon-reload
 systemctl --user enable --now tcpod-monitor.service
-loginctl enable-linger "$USER" 2>/dev/null || echo "  (linger: rode 'sudo loginctl enable-linger $USER' se não subir no boot)"
-echo "✓ painel em http://localhost:8787 · status: systemctl --user status tcpod-monitor"
+loginctl enable-linger "$USER" 2>/dev/null || echo "  (linger: run 'sudo loginctl enable-linger $USER' if it does not come up on boot)"
+echo "✓ panel at http://localhost:8787 · status: systemctl --user status tcpod-monitor"

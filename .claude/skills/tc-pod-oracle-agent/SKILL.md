@@ -1,51 +1,51 @@
 ---
 name: tc-pod-oracle-agent
 description: >-
-  Runbook do oracle-agent (Node) — o feed de preço multi-chain dos governors
-  (Terra Classic, BSC, Ethereum, Solana). Use ao configurar, operar, depurar ou
-  estender o agente (nova chain, nova fonte de preço/gás, cron do operador).
+  Runbook for the oracle-agent (Node) — the multi-chain price feed for the governors
+  (Terra Classic, BSC, Ethereum, Solana). Use when configuring, operating, debugging or
+  extending the agent (new chain, new price/gas source, operator cron).
 ---
 
 # oracle-agent (runbook)
 
-> Código: `oracle-agent/` · README próprio com uso. O agente NÃO tem poder:
-> quórum + mediana + faixa + delta são aplicados on-chain pelos governors.
+> Code: `oracle-agent/` · its own README with usage. The agent has NO power:
+> quorum + median + bounds + delta are enforced on-chain by the governors.
 
-## O que faz por rodada
-1. Busca preços USD (CoinGecko, 1 chamada para todos os tokens);
-2. Por chain local habilitada × domínio remoto:
-   `token_exchange_rate = preço(remoto)/preço(local) × SCALE` —
-   **SCALE por VM da chain LOCAL**: 1e10 (cosmwasm/evm) · **1e19 (solana)**;
-3. Gas do remoto: `eth_gasPrice` via RPC (`evm-rpc`) ou `fixed`;
-4. Submete `SubmitPrice` no governor local:
+## What it does per round
+1. Fetches USD prices (CoinGecko, 1 call for all tokens);
+2. Per enabled local chain × remote domain:
+   `token_exchange_rate = price(remote)/price(local) × SCALE` —
+   **SCALE per VM of the LOCAL chain**: 1e10 (cosmwasm/evm) · **1e19 (solana)**;
+3. Remote gas: `eth_gasPrice` via RPC (`evm-rpc`) or `fixed`;
+4. Submits `SubmitPrice` on the local governor:
    - TC: execute CosmWasm `{"submit_price":{...}}` (cosmjs, `TC_MNEMONIC`);
    - EVM: `governor.submitPrice(domain, rate, gas)` (ethers, `EVM_PRIVATE_KEY`);
-   - Solana: instrução borsh variante 1, PDAs `gov-config` / `gov-domain-{u32le}` /
+   - Solana: borsh instruction variant 1, PDAs `gov-config` / `gov-domain-{u32le}` /
      `gov-price-{domain}-{epoch}` (`SOLANA_KEYPAIR_PATH`).
 
-## Configuração
-`config.example.json` → `config.json`. Chave NUNCA no arquivo — os campos
-`mnemonicEnv/privateKeyEnv/keypairEnv` dizem QUAL env ler. Domain do TC: **132556**.
-Nova chain = nova entrada em `chains` (tipos: cosmwasm | evm | solana) + coin no
-`coingecko.ids`. Nova fonte de gás = novo `type` em `fetchRemoteGasPrice` (prices.js).
+## Configuration
+`config.example.json` → `config.json`. Key NEVER in the file — the fields
+`mnemonicEnv/privateKeyEnv/keypairEnv` say WHICH env to read. TC domain: **132556**.
+New chain = new entry in `chains` (types: cosmwasm | evm | solana) + coin in
+`coingecko.ids`. New gas source = new `type` in `fetchRemoteGasPrice` (prices.js).
 
-## Comandos
+## Commands
 ```bash
-npm test         # matemática de escala (node:test)
-npm run dry-run  # rodada real de cotação SEM assinar — use antes de qualquer mudança
-npm run once     # 1 rodada assinada (cron recomendado: a cada época de 6h + jitter)
-npm start        # loop contínuo (intervalSeconds)
+npm test         # scale math (node:test)
+npm run dry-run  # real quoting round WITHOUT signing — use before any change
+npm run once     # 1 signed round (recommended cron: every 6h epoch + jitter)
+npm start        # continuous loop (intervalSeconds)
 ```
 
-## Depuração
-- Erros são POR DOMÍNIO (um falhar não derruba os outros) — ler o log da rodada;
-- Submissão rejeitada on-chain: conferir se é `NoBounds` (governança não definiu
-  faixa), `OutOfBounds` (checar fonte de preço), `EpochAlreadyApplied` (outro
-  operador fechou o quórum — normal) ou `Delta` (movimento > bps → emergência);
-- `dry-run` compara bem com o esperado: LUNC ~5e-5 USD → ETH em LUNC ≈ 4e17 na
-  escala 1e10. Ordem de grandeza muito diferente = fonte de preço errada.
+## Debugging
+- Errors are PER DOMAIN (one failing does not bring down the others) — read the round log;
+- Submission rejected on-chain: check whether it is `NoBounds` (governance did not set
+  bounds), `OutOfBounds` (check price source), `EpochAlreadyApplied` (another
+  operator closed the quorum — normal) or `Delta` (movement > bps → emergency);
+- `dry-run` compares well with the expected: LUNC ~5e-5 USD → ETH in LUNC ≈ 4e17 at
+  scale 1e10. A very different order of magnitude = wrong price source.
 
-## Operação multi-operador
-Cada operador roda o SEU agente com a SUA chave, sem coordenação — o governor
-converge pela mediana (menor dos centrais). Não compartilhar chave entre operadores:
-isso colapsa o quórum em 1 entidade (mesmo limiar de confiança do ISM).
+## Multi-operator operation
+Each operator runs THEIR agent with THEIR key, without coordination — the governor
+converges via the median (lower of the central ones). Do not share a key between operators:
+that collapses the quorum into 1 entity (same trust threshold as the ISM).

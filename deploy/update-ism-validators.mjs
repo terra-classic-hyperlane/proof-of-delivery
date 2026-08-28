@@ -1,25 +1,25 @@
-// update-ism-validators — warp IGORFAKE: troca o conjunto de validadores dos ISMs
-// dos sintéticos (ETH, BSC, Solana) de [igorveras]/1 para os 4 validadores com
-// threshold 3 (3-de-4).
+// update-ism-validators — IGORFAKE warp: swaps the validator set of the synthetic
+// ISMs (ETH, BSC, Solana) from [igorveras]/1 to the 4 validators with
+// threshold 3 (3-of-4).
 //
-// ⚠️ 20/08/2026: a parte EVM (--eth/--bsc/--fix-vault-bsc/--revert) foi SUPERADA
-// pelo storage-ism.mjs (ISMs mutáveis definitivos 0x3ba17675…/0xF6b0cDD3…).
-// Deste script, só a parte SOLANA (--sol) segue sendo a ferramenta de rotação.
+// ⚠️ 2026-08-20: the EVM part (--eth/--bsc/--fix-vault-bsc/--revert) was SUPERSEDED
+// by storage-ism.mjs (definitive mutable ISMs 0x3ba17675…/0xF6b0cDD3…).
+// From this script, only the SOLANA part (--sol) remains the rotation tool.
 //
-// ETH/BSC: os ISMs atuais (0xDe8e… / 0xa820…) são ESTÁTICOS (validadores no
-//   bytecode, sem owner) — não dá para alterar. O script cria o ISM novo pela
-//   factory oficial staticMessageIdMultisigIsmFactory (CREATE2 — endereço
-//   determinístico, idempotente) e aponta o warp para ele.
-// Solana: o ISM 4MzF7… é o multisig-ism-message-id (mutável) — só manda
-//   SetValidatorsAndThreshold(132556) assinado pelo owner do access-control.
+// ETH/BSC: the current ISMs (0xDe8e… / 0xa820…) are STATIC (validators in the
+//   bytecode, no owner) — cannot be changed. The script creates the new ISM via
+//   the official staticMessageIdMultisigIsmFactory factory (CREATE2 — deterministic,
+//   idempotent address) and points the warp at it.
+// Solana: the ISM 4MzF7… is the multisig-ism-message-id (mutable) — just send
+//   SetValidatorsAndThreshold(132556) signed by the access-control owner.
 //
-//   uso:
-//     DRY=1 node update-ism-validators.mjs --eth --bsc --sol   # só mostra
-//     node update-ism-validators.mjs --eth --bsc --sol         # executa
-//   chaves (env):
-//     ETH_PRIVATE_KEY  → owner do warp ETH  (0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae)
-//     BSC_PRIVATE_KEY  → owner do warp BSC  (0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291)
-//     SOLANA_KEYPAIR   → owner do ISM Solana (default: keypair BirXd4Q… em /home/lunc/keys)
+//   usage:
+//     DRY=1 node update-ism-validators.mjs --eth --bsc --sol   # only shows
+//     node update-ism-validators.mjs --eth --bsc --sol         # executes
+//   keys (env):
+//     ETH_PRIVATE_KEY  → owner of ETH warp  (0xEF8181201Ce6C83120035Ffbcc11945E67Ba00ae)
+//     BSC_PRIVATE_KEY  → owner of BSC warp  (0x8f085bAD1a15ee9ceeE58C83EFFFa72518975291)
+//     SOLANA_KEYPAIR   → owner of Solana ISM (default: keypair BirXd4Q… in /home/lunc/keys)
 //   RPCs: ETH_RPC / BSC_RPC / SOLANA_RPC (rpc.env)
 import fs from "node:fs";
 import { ethers } from "ethers";
@@ -28,7 +28,7 @@ const DRY = process.env.DRY === "1";
 const want = (f) => process.argv.includes(f);
 const log = (...a) => console.log(...a);
 
-// validadores novos (igorveras · tcv · darksun · burnitall) — threshold 3-de-4
+// new validators (igorveras · tcv · darksun · burnitall) — threshold 3-of-4
 const VALIDATORS = [
   "0x71b2b8c36a0c76b74be92eb7915e26a69b3b03eb",
   "0x1afd3d07abd2aaa19a9f7993f334a926e253b90c",
@@ -38,7 +38,7 @@ const VALIDATORS = [
 const THRESHOLD = 3;
 const TC_DOMAIN = 132556;
 
-// ---- EVM: factory.deploy(vals, 3) (idempotente) + warp.setInterchainSecurityModule ----
+// ---- EVM: factory.deploy(vals, 3) (idempotent) + warp.setInterchainSecurityModule ----
 async function evm(name, rpc, warp, factory, keyEnv, legacy) {
   warp = ethers.getAddress(warp.toLowerCase()); factory = ethers.getAddress(factory.toLowerCase());
   const provider = new ethers.JsonRpcProvider(rpc);
@@ -54,20 +54,20 @@ async function evm(name, rpc, warp, factory, keyEnv, legacy) {
   const ISM_ABI = ["function validatorsAndThreshold(bytes) view returns (address[],uint8)"];
   const fRO = new ethers.Contract(factory, FACTORY_ABI, provider);
   const wRO = new ethers.Contract(warp, WARP_ABI, provider);
-  // ethers v6: contract.getAddress() é método interno — usar getFunction p/ a função da ABI
+  // ethers v6: contract.getAddress() is an internal method — use getFunction for the ABI function
   const ismAddr = await fRO.getFunction("getAddress(address[],uint8)").staticCall(VALIDATORS, THRESHOLD);
   const deployed = (await provider.getCode(ismAddr)) !== "0x";
   const current = await wRO.interchainSecurityModule();
-  log(`${name}: ISM novo (determinístico) = ${ismAddr} · ${deployed ? "JÁ implantado" : "ainda NÃO implantado"}`);
-  log(`${name}: warp ${warp} aponta hoje para ${current}`);
-  if (current.toLowerCase() === ismAddr.toLowerCase()) { log(`${name}: ✓ nada a fazer`); return; }
+  log(`${name}: new ISM (deterministic) = ${ismAddr} · ${deployed ? "ALREADY deployed" : "NOT yet deployed"}`);
+  log(`${name}: warp ${warp} points today to ${current}`);
+  if (current.toLowerCase() === ismAddr.toLowerCase()) { log(`${name}: ✓ nothing to do`); return; }
   if (DRY) return;
   const pk = process.env[keyEnv];
-  if (!pk) { log(`${name}: ⚠ falta ${keyEnv} — pulando`); return; }
+  if (!pk) { log(`${name}: ⚠ missing ${keyEnv} — skipping`); return; }
   const wallet = new ethers.Wallet(pk, provider);
   const owner = await wRO.owner();
   if (wallet.address.toLowerCase() !== owner.toLowerCase()) {
-    log(`${name}: ⚠ chave ${wallet.address} não é o owner do warp ${owner} — pulando`); return;
+    log(`${name}: ⚠ key ${wallet.address} is not the warp owner ${owner} — skipping`); return;
   }
   const opts = legacy ? { gasPrice: (await provider.getFeeData()).gasPrice } : {};
   if (!deployed) {
@@ -75,14 +75,14 @@ async function evm(name, rpc, warp, factory, keyEnv, legacy) {
     log(`${name}: factory.deploy tx ${tx.hash} …`); await tx.wait();
   }
   const [vals, t] = await new ethers.Contract(ismAddr, ISM_ABI, provider).validatorsAndThreshold("0x");
-  log(`${name}: ISM novo verifica: ${vals.length} validadores, threshold ${t}`);
-  if (Number(t) !== THRESHOLD || vals.length !== VALIDATORS.length) { log(`${name}: ❌ ISM não confere — abortando`); return; }
+  log(`${name}: new ISM verifies: ${vals.length} validators, threshold ${t}`);
+  if (Number(t) !== THRESHOLD || vals.length !== VALIDATORS.length) { log(`${name}: ❌ ISM does not match — aborting`); return; }
   const tx2 = await new ethers.Contract(warp, WARP_ABI, wallet).setInterchainSecurityModule(ismAddr, opts);
   log(`${name}: setInterchainSecurityModule tx ${tx2.hash} …`); await tx2.wait();
-  log(`${name}: ✓ warp agora usa ${await wRO.interchainSecurityModule()}`);
+  log(`${name}: ✓ warp now uses ${await wRO.interchainSecurityModule()}`);
 }
 
-// ---- Solana: SetValidatorsAndThreshold no multisig-ism-message-id ----
+// ---- Solana: SetValidatorsAndThreshold on the multisig-ism-message-id ----
 async function sol() {
   const { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } = await import("@solana/web3.js");
   const RPC = process.env.SOLANA_RPC ?? "https://api.mainnet-beta.solana.com";
@@ -94,19 +94,19 @@ async function sol() {
   const [domPda] = PublicKey.findProgramAddressSync(
     [Buffer.from("multisig_ism_message_id"), sep, u32(TC_DOMAIN), sep, Buffer.from("domain_data")], ISM);
   const conn = new Connection(RPC, "confirmed");
-  // estado atual (domain_data: initialized u8 · bump u8 · Vec<H160> · threshold u8)
+  // current state (domain_data: initialized u8 · bump u8 · Vec<H160> · threshold u8)
   const di = await conn.getAccountInfo(domPda);
   if (di) {
     const n = di.data.readUInt32LE(2);
     const cur = []; for (let i = 0; i < n; i++) cur.push("0x" + di.data.subarray(6 + i * 20, 26 + i * 20).toString("hex"));
-    log(`SOL: hoje ${n} validador(es) [${cur.join(", ")}] threshold ${di.data[6 + n * 20]}`);
+    log(`SOL: today ${n} validator(s) [${cur.join(", ")}] threshold ${di.data[6 + n * 20]}`);
   }
-  log(`SOL: novo → ${VALIDATORS.length} validadores, threshold ${THRESHOLD}`);
+  log(`SOL: new → ${VALIDATORS.length} validators, threshold ${THRESHOLD}`);
   if (DRY) return;
   const KEYPAIR = process.env.SOLANA_KEYPAIR ?? "/home/lunc/keys/solana-keypair-BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j.json";
   const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(KEYPAIR, "utf8"))));
-  log("SOL: assinando como", kp.publicKey.toBase58());
-  // data = discriminator [1×8] + borsh(enum): variante 1 + { domain u32 LE + Vec<H160> + threshold u8 }
+  log("SOL: signing as", kp.publicKey.toBase58());
+  // data = discriminator [1×8] + borsh(enum): variant 1 + { domain u32 LE + Vec<H160> + threshold u8 }
   const data = Buffer.concat([
     Buffer.alloc(8, 1), Buffer.from([1]), u32(TC_DOMAIN),
     u32(VALIDATORS.length), ...VALIDATORS.map((v) => Buffer.from(v.slice(2), "hex")),
@@ -127,44 +127,44 @@ async function sol() {
   log("SOL: ✓ tx", sig);
   const after = await conn.getAccountInfo(domPda);
   const n = after.data.readUInt32LE(2);
-  log(`SOL: agora ${n} validadores, threshold ${after.data[6 + n * 20]}`);
+  log(`SOL: now ${n} validators, threshold ${after.data[6 + n * 20]}`);
 }
 
-// ---- BSC: vault de recibo também especifica ISM (setIsm, onlyOwner) ----
+// ---- BSC: receipt vault also specifies ISM (setIsm, onlyOwner) ----
 async function fixVaultBsc(target) {
   const provider = new ethers.JsonRpcProvider(process.env.BSC_RPC ?? "https://bsc-dataseed.bnbchain.org");
   const VAULT = ethers.getAddress("0x34e06a7793877ec5251b1dc230ad7cd577d231f4");
   const ABI = ["function interchainSecurityModule() view returns (address)", "function setIsm(address)", "function owner() view returns (address)"];
   const ro = new ethers.Contract(VAULT, ABI, provider);
   const cur = await ro.interchainSecurityModule();
-  log(`BSC vault de recibo ${VAULT}: ISM hoje ${cur} → alvo ${target}`);
-  if (cur.toLowerCase() === target.toLowerCase()) { log("BSC vault: ✓ nada a fazer"); return; }
+  log(`BSC receipt vault ${VAULT}: ISM today ${cur} → target ${target}`);
+  if (cur.toLowerCase() === target.toLowerCase()) { log("BSC vault: ✓ nothing to do"); return; }
   if (DRY) return;
   const pk = process.env.BSC_PRIVATE_KEY;
-  if (!pk) { log("BSC vault: ⚠ falta BSC_PRIVATE_KEY — pulando"); return; }
+  if (!pk) { log("BSC vault: ⚠ missing BSC_PRIVATE_KEY — skipping"); return; }
   const wallet = new ethers.Wallet(pk, provider);
   const opts = { gasPrice: (await provider.getFeeData()).gasPrice };
   const tx = await new ethers.Contract(VAULT, ABI, wallet).setIsm(ethers.getAddress(target.toLowerCase()), opts);
   log(`BSC vault: setIsm tx ${tx.hash} …`); await tx.wait();
-  log(`BSC vault: ✓ agora usa ${await ro.interchainSecurityModule()}`);
+  log(`BSC vault: ✓ now uses ${await ro.interchainSecurityModule()}`);
 }
 
-// ---- reverter: aponta os warps de volta pros ISMs antigos (1-de-1) ----
+// ---- revert: points the warps back to the old ISMs (1-of-1) ----
 async function revert(name, rpc, warp, oldIsm, keyEnv, legacy) {
   const provider = new ethers.JsonRpcProvider(rpc);
   warp = ethers.getAddress(warp.toLowerCase()); oldIsm = ethers.getAddress(oldIsm.toLowerCase());
   const ABI = ["function interchainSecurityModule() view returns (address)", "function setInterchainSecurityModule(address)"];
   const cur = await new ethers.Contract(warp, ABI, provider).interchainSecurityModule();
-  log(`${name} REVERT: warp aponta hoje para ${cur} → volta para ${oldIsm}`);
-  if (cur.toLowerCase() === oldIsm.toLowerCase()) { log(`${name}: ✓ já está no antigo`); return; }
+  log(`${name} REVERT: warp points today to ${cur} → back to ${oldIsm}`);
+  if (cur.toLowerCase() === oldIsm.toLowerCase()) { log(`${name}: ✓ already on the old one`); return; }
   if (DRY) return;
   const pk = process.env[keyEnv];
-  if (!pk) { log(`${name}: ⚠ falta ${keyEnv} — pulando`); return; }
+  if (!pk) { log(`${name}: ⚠ missing ${keyEnv} — skipping`); return; }
   const wallet = new ethers.Wallet(pk, provider);
   const opts = legacy ? { gasPrice: (await provider.getFeeData()).gasPrice } : {};
   const tx = await new ethers.Contract(warp, ABI, wallet).setInterchainSecurityModule(oldIsm, opts);
   log(`${name}: tx ${tx.hash} …`); await tx.wait();
-  log(`${name}: ✓ revertido`);
+  log(`${name}: ✓ reverted`);
 }
 
 const NEW_ISM_BSC = "0xcA21D04eE1B1155d8548391770E1DFE3D9adc661";
@@ -180,4 +180,4 @@ if (want("--revert")) {
   await revert("BSC", process.env.BSC_RPC ?? "https://bsc-dataseed.bnbchain.org",
     "0x3605D8946FC6F5A75d89d92173100F59743B5318", "0xa82087B8eea0394B1476f716B91c10531025Ef42", "BSC_PRIVATE_KEY", true);
 }
-log("fim.");
+log("done.");

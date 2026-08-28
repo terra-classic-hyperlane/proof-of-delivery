@@ -1,12 +1,12 @@
-// Submissão no oracle-governor CosmWasm (Terra Classic):
+// Submission to the oracle-governor CosmWasm (Terra Classic):
 //   ExecuteMsg::SubmitPrice { domain, token_exchange_rate, gas_price }
-// Chave: HEX raw (privateKeyEnv) — formato do relayer Hyperlane (cosmosKey).
-// (mnemonicEnv continua aceito como alternativa.)
+// Key: raw HEX (privateKeyEnv) — Hyperlane relayer format (cosmosKey).
+// (mnemonicEnv is still accepted as an alternative.)
 import { CosmWasmClient, SigningCosmWasmClient } from "@cosmjs/cosmwasm-stargate";
 import { DirectSecp256k1HdWallet, DirectSecp256k1Wallet } from "@cosmjs/proto-signing";
 import { GasPrice } from "@cosmjs/stargate";
 
-/** Valor VIGENTE do oracle de produção (query sem chave). */
+/** CURRENT value of the production oracle (query without key). */
 export async function readOracle(chain, domain) {
   const client = await CosmWasmClient.connect(chain.rpc);
   const res = await client.queryContractSmart(chain.oracle, {
@@ -23,7 +23,7 @@ export async function makeCosmwasmSubmitter(chain) {
     wallet = await DirectSecp256k1Wallet.fromKey(bytes, chain.prefix);
   } else {
     const mnemonic = process.env[chain.mnemonicEnv];
-    if (!mnemonic) throw new Error(`env ${chain.privateKeyEnv ?? chain.mnemonicEnv} ausente`);
+    if (!mnemonic) throw new Error(`env ${chain.privateKeyEnv ?? chain.mnemonicEnv} missing`);
     wallet = await DirectSecp256k1HdWallet.fromMnemonic(mnemonic, { prefix: chain.prefix });
   }
   const [account] = await wallet.getAccounts();

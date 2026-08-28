@@ -1,12 +1,12 @@
-// ⚠️ DESCONTINUADO — modelo ANTIGO (ClaimRemote/atestação, com SetRemoteBinding).
-//   O corredor Solana→TC agora usa o MODELO DE RECIBO: veja
-//   `deploy/rrv-receipt-config-solana.mjs` (+ `tc-receipt-config-solana.sh`) e §G
-//   de `docs/RECIBO-TRUSTLESS.md`. Mantido só como referência histórica.
+// ⚠️ DEPRECATED — OLD model (ClaimRemote/attestation, with SetRemoteBinding).
+//   The Solana→TC corridor now uses the RECEIPT MODEL: see
+//   `deploy/rrv-receipt-config-solana.mjs` (+ `tc-receipt-config-solana.sh`) and §G
+//   of `docs/RECIBO-TRUSTLESS.md`. Kept only as a historical reference.
 //
-// v2 ClaimRemote na Solana: SetRemoteReward + SetRemoteBinding via proposta
-// administrativa (quórum atual 1 → a aprovação do signatário executa).
+// v2 ClaimRemote on Solana: SetRemoteReward + SetRemoteBinding via administrative
+// proposal (current quorum 1 → the signer's approval executes).
 //   node deploy/rrv-remote-config.mjs
-// Assina: BirXd4Q… (operador; keypair local). LOCAL — nada disso roda na VPS.
+// Signs: BirXd4Q… (operator; local keypair). LOCAL — none of this runs on the VPS.
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
@@ -16,13 +16,13 @@ const POD = new PublicKey("2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj");
 const RRV_CONFIG = new PublicKey("Eq1mJGTSbLb8s6gfoyg5aovxFAhXpnVudXXSAmbDwb9w");
 const OPERADOR_SOL = new PublicKey("PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQquWKCM1cwwrkS");
 const DOM_TC = 132556;
-const REWARD = 499000n; // lamports — taxa real medida (tx 4wiG4TtZ…: IGP recebeu 499000)
+const REWARD = 499000n; // lamports — real measured fee (tx 4wiG4TtZ…: IGP received 499000)
 const BINDING = "terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp";
 
 const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(
   process.env.SOLANA_KEYPAIR ?? "/home/lunc/keys/solana-keypair-BirXd4QDxfq2vx9LGqgXXSgZrjT81rhoFGUbQRWDEf1j.json", "utf8"))));
 const conn = new Connection(RPC, "confirmed");
-console.log("signatário:", kp.publicKey.toBase58());
+console.log("signer:", kp.publicKey.toBase58());
 
 const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
@@ -46,17 +46,17 @@ async function adminExec(label, envelope, extra) {
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
       { pubkey: extra, isSigner: false, isWritable: true },
     ],
-    data: Buffer.concat([Buffer.from([0, 3]), envelope]), // [módulo rrv][SubmitAdminAction]
+    data: Buffer.concat([Buffer.from([0, 3]), envelope]), // [rrv module][SubmitAdminAction]
   });
   const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
   await conn.confirmTransaction(sig, "confirmed");
   console.log(`✓ ${label}:`, sig);
 }
 
-// AdminAction::SetRemoteReward = variante 7 { domain u32, reward u64 }
+// AdminAction::SetRemoteReward = variant 7 { domain u32, reward u64 }
 await adminExec("SetRemoteReward(132556, 499000)",
   Buffer.concat([u64(20), Buffer.from([7]), u32(DOM_TC), u64(REWARD)]), rewardPda);
-// AdminAction::SetRemoteBinding = variante 8 { domain, operator, remote_address }
+// AdminAction::SetRemoteBinding = variant 8 { domain, operator, remote_address }
 await adminExec("SetRemoteBinding(132556, PbEo → terra1run9wz…)",
   Buffer.concat([u64(21), Buffer.from([8]), u32(DOM_TC), Buffer.from(OPERADOR_SOL.toBytes()), str(BINDING)]), bindingPda);
-console.log("v2 Solana configurada 🎉");
+console.log("v2 Solana configured 🎉");

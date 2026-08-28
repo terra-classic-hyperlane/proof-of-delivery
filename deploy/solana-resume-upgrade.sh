@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# RETOMA o upgrade do pod a partir do buffer parcial (quando as escritas caem por
-# RPC instável). Reusa o buffer já financiado — NÃO cria outro (economiza ~1,6 SOL).
+# RESUMES the pod upgrade from the partial buffer (when writes drop due to an
+# unstable RPC). Reuses the already-funded buffer — does NOT create another one
+# (saves ~1.6 SOL).
 #
-# ANTES de rodar, recupere a keypair efêmera do buffer com a seed de 12 palavras
-# que o deploy imprimiu ("To recover... following 12-word seed phrase"):
+# BEFORE running, recover the ephemeral buffer keypair with the 12-word seed
+# that the deploy printed ("To recover... following 12-word seed phrase"):
 #
 #   solana-keygen recover -o /tmp/pod-buffer.json 'prompt://'
-#   # cole a seed:  flat stem velvet fun come crack dove parade baby turkey scene shine
-#   # (deixe a passphrase vazia — só ENTER)
+#   # paste the seed:  flat stem velvet fun come crack dove parade baby turkey scene shine
+#   # (leave the passphrase empty — just ENTER)
 #
-# Confira que a chave recuperada == o buffer impresso (EtBMW…):
+# Check that the recovered key == the printed buffer (EtBMW…):
 #   solana-keygen pubkey /tmp/pod-buffer.json
 #
-#   uso:  bash deploy/solana-resume-upgrade.sh
-#         BUFFER_KP=/tmp/pod-buffer.json  (override)
+#   usage:  bash deploy/solana-resume-upgrade.sh
+#           BUFFER_KP=/tmp/pod-buffer.json  (override)
 # =============================================================================
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,22 +26,22 @@ KEYPAIR="${KEYPAIR:-/home/lunc/keys/solana-keypair-BirXd4QDxfq2vx9LGqgXXSgZrjT81
 BUFFER_KP="${BUFFER_KP:-/tmp/pod-buffer.json}"
 say(){ printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
 
-[ -f "$BUFFER_KP" ] || { echo "❌ $BUFFER_KP não existe — recupere a keypair do buffer (veja o cabeçalho)"; exit 1; }
+[ -f "$BUFFER_KP" ] || { echo "❌ $BUFFER_KP does not exist — recover the buffer keypair (see the header)"; exit 1; }
 BUF=$(solana-keygen pubkey "$BUFFER_KP")
-say "retomando upgrade — buffer $BUF"
-echo "buffer saldo: $(solana balance "$BUF" -u "$RPC" | awk '{print $1}') SOL"
+say "resuming upgrade — buffer $BUF"
+echo "buffer balance: $(solana balance "$BUF" -u "$RPC" | awk '{print $1}') SOL"
 echo "authority:    $(solana balance "$KEYPAIR" -u "$RPC" | awk '{print $1}') SOL"
 
-# --buffer reusa o buffer existente: escreve só os chunks faltantes e faz o swap.
-# Se cair de novo por RPC, PODE RODAR OUTRA VEZ — é idempotente (só reenvia o que falta).
+# --buffer reuses the existing buffer: writes only the missing chunks and does the swap.
+# If it drops again due to RPC, YOU CAN RUN IT AGAIN — it is idempotent (only resends what is missing).
 solana program deploy "$SO" \
   --program-id "$POD" \
   --buffer "$BUFFER_KP" \
   --upgrade-authority "$KEYPAIR" \
   -u "$RPC"
 
-say "verificação"
+say "verification"
 solana program show "$POD" -u "$RPC" | grep -E "Program Id|Authority|Last Deployed|Data Length"
 echo
-echo "✅ UPGRADE FEITO. AGORA O PASSO 2 OBRIGATÓRIO:"
+echo "✅ UPGRADE DONE. NOW THE MANDATORY STEP 2:"
 echo "   node deploy/rrv-migrate-applied-base.mjs"

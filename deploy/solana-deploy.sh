@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # =============================================================================
-# tc-proof-of-delivery · Deploy Fase 4 (Solana mainnet)
+# tc-proof-of-delivery · Phase 4 Deploy (Solana mainnet)
 #
-# ORDEM (spec §13): 1) programas + init (este script) → 2) TESTAR a devolução
-# de posse EM DEVNET → 3) só então --transfer-igp / --set-beneficiary / --seed.
+# ORDER (spec §13): 1) programs + init (this script) → 2) TEST ownership return
+# ON DEVNET → 3) only then --transfer-igp / --set-beneficiary / --seed.
 #
-#   bash deploy/solana-deploy.sh            # deploy dos .so + init + domínio
+#   bash deploy/solana-deploy.sh            # deploy of the .so + init + domain
 #   bash deploy/solana-deploy.sh finalize   # transfer IGP + beneficiary + seed
 #
-# Keypair: owner atual do IGP (BirXd4…Ef1j).
-# Custo: ~1,29 SOL de rent do pod.so (vault+governor FUNDIDOS num programa) +
-# ~0,09 SOL de init/top-up. Rent recuperável via `solana program close`.
+# Keypair: current IGP owner (BirXd4…Ef1j).
+# Cost: ~1.29 SOL of rent for pod.so (vault+governor FUSED into one program) +
+# ~0.09 SOL of init/top-up. Rent recoverable via `solana program close`.
 # =============================================================================
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,31 +23,31 @@ done_step(){ grep -q "^$1=" "$STATE"; }
 get_state(){ grep "^$1=" "$STATE" | tail -1 | cut -d= -f2; }
 say(){ printf '\n\033[1;36m== %s ==\033[0m\n' "$*"; }
 
-command -v solana >/dev/null || { echo "solana CLI ausente"; exit 1; }
-say "signer: $(solana address -k "$KEYPAIR") · saldo: $(solana balance -k "$KEYPAIR" -u "$RPC")"
+command -v solana >/dev/null || { echo "solana CLI missing"; exit 1; }
+say "signer: $(solana address -k "$KEYPAIR") · balance: $(solana balance -k "$KEYPAIR" -u "$RPC")"
 
-# symlink p/ o init usar os node_modules do oracle-agent
+# symlink so init uses the oracle-agent node_modules
 [ -e "$ROOT/deploy/node_modules" ] || ln -s ../oracle-agent/node_modules "$ROOT/deploy/node_modules"
 
 if [ "${1:-}" = "finalize" ]; then
   POD=$(get_state POD_ID)
-  [ -n "$POD" ] || { echo "❌ rode o deploy antes"; exit 1; }
-  say "FINALIZE: transfer IGP + beneficiary + seed (você TESTOU em devnet? ctrl-c se não)"
+  [ -n "$POD" ] || { echo "❌ run the deploy first"; exit 1; }
+  say "FINALIZE: transfer IGP + beneficiary + seed (did you TEST on devnet? ctrl-c if not)"
   sleep 5
   SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$POD" --transfer-igp --set-beneficiary --seed
-  echo; echo "⚠️ ÚLTIMO PASSO DE SEGURANÇA (manual, quando o multisig existir):"
+  echo; echo "⚠️ LAST SECURITY STEP (manual, once the multisig exists):"
   echo "   solana program set-upgrade-authority $POD --new-upgrade-authority <MULTISIG> -k $KEYPAIR -u $RPC"
   exit 0
 fi
 
-say "1/2 build-sbf (usa o pod.so já buildado se presente)"
+say "1/2 build-sbf (uses the already-built pod.so if present)"
 [ -f "$ROOT/svm/target/deploy/pod.so" ] || (cd "$ROOT/svm" && cargo build-sbf)
 ls -la "$ROOT"/svm/target/deploy/pod.so
 
-# --max-len = tamanho EXATO do .so → rent pela METADE (sem os 2x de headroom de
-# upgrade). Trade-off: upgrade só p/ binário <= tamanho atual; upgrade maior exige
-# close+redeploy. Como a upgrade authority vai p/ multisig, é aceitável.
-deploy_prog() {  # $1=arquivo.so $2=state_key $3=passo
+# --max-len = EXACT size of the .so → HALF the rent (without the 2x upgrade
+# headroom). Trade-off: upgrade only for a binary <= current size; a larger upgrade requires
+# close+redeploy. Since the upgrade authority goes to a multisig, this is acceptable.
+deploy_prog() {  # $1=file.so $2=state_key $3=step
   local so="$ROOT/svm/target/deploy/$1" key="$2"
   done_step "$key" && { echo "$(get_state "$key")"; return; }
   say "$3 deploy $1 (--max-len $(stat -c%s "$so"))"
@@ -55,25 +55,25 @@ deploy_prog() {  # $1=arquivo.so $2=state_key $3=passo
   out=$(solana program deploy "$so" --max-len "$(stat -c%s "$so")" -k "$KEYPAIR" -u "$RPC" --output json)
   mark "$key" "$(echo "$out" | python3 -c 'import sys,json;print(json.load(sys.stdin)["programId"])')"
 }
-# pod.so = vault + governor FUNDIDOS num programa só (a runtime solana+borsh,
-# ~90% dos bytes, é paga UMA vez): rent 1,29 SOL vs 1,9 dos dois separados.
+# pod.so = vault + governor FUSED into a single program (the solana+borsh runtime,
+# ~90% of the bytes, is paid ONCE): rent 1.29 SOL vs 1.9 for the two separately.
 deploy_prog pod.so POD_ID "2/2" >/dev/null
 echo "✓ pod program (vault+governor): $(get_state POD_ID)"
 
-# VAULT_ONLY=1 → inicializa SÓ o módulo vault e aponta o beneficiary do IGP
-# direto (sem governor). O preço segue com o owner do IGP até a Fase 4b.
+# VAULT_ONLY=1 → initializes ONLY the vault module and points the IGP beneficiary
+# directly (without governor). The price stays with the IGP owner until Phase 4b.
 if [ "${VAULT_ONLY:-0}" = "1" ]; then
-  say "init (SÓ módulo vault — VAULT_ONLY)"
+  say "init (ONLY vault module — VAULT_ONLY)"
   SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state POD_ID)" --vault-only ${VAULT_ONLY_FLAGS:-}
-  echo; echo "governor (já no binário) fica p/ a Fase 4b: rode sem VAULT_ONLY p/ inicializá-lo."
+  echo; echo "governor (already in the binary) is left for Phase 4b: run without VAULT_ONLY to initialize it."
   exit 0
 fi
 
-say "init (vault + governor + domínio 132556 + top-up da config PDA)"
+say "init (vault + governor + domain 132556 + top-up of the config PDA)"
 SOLANA_KEYPAIR="$KEYPAIR" SOLANA_RPC="$RPC" node "$ROOT/deploy/solana-init.mjs" "$(get_state POD_ID)"
 
-say "PRÓXIMOS PASSOS"
-echo "1. TESTE EM DEVNET a devolução de posse (spec §08 — obrigatório):"
-echo "   deploy dos mesmos programas em devnet + TransferIgpOwnership ida e volta"
+say "NEXT STEPS"
+echo "1. TEST ON DEVNET the ownership return (spec §08 — mandatory):"
+echo "   deploy the same programs on devnet + TransferIgpOwnership round trip"
 echo "2. bash deploy/solana-deploy.sh finalize   # transfer + beneficiary + seed"
-echo "3. upgrade authority → multisig (comando impresso no finalize)"
+echo "3. upgrade authority → multisig (command printed in finalize)"

@@ -1,8 +1,8 @@
-// Registra a wallet do relayer Solana como OPERADOR do governor (módulo gov do pod).
-// Assinatura: multisig atual (BirXd4Q…, owner do keypair local).
+// Registers the Solana relayer wallet as OPERATOR of the governor (pod gov module).
+// Signature: current multisig (BirXd4Q…, owner of the local keypair).
 //   node deploy/register-solana-operator.mjs
-// Instrução: pod [module=1][variant=3 SetOperators][add=[PbEo7Fn2…]][remove=[]]
-// Contas: [multisig signer, gov config PDA w]. Quórum permanece 1.
+// Instruction: pod [module=1][variant=3 SetOperators][add=[PbEo7Fn2…]][remove=[]]
+// Accounts: [multisig signer, gov config PDA w]. Quorum stays 1.
 import fs from "node:fs";
 import { Connection, Keypair, PublicKey, Transaction, TransactionInstruction } from "@solana/web3.js";
 
@@ -14,7 +14,7 @@ const NEW_OP = new PublicKey(process.argv[2] ?? "PbEo7Fn2eJ6LYa4B8YU4MexB6s1BEQq
 
 const conn = new Connection(RPC, "confirmed");
 const kp = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(fs.readFileSync(KEYPAIR, "utf8"))));
-console.log("multisig signer:", kp.publicKey.toBase58(), "· novo operador:", NEW_OP.toBase58());
+console.log("multisig signer:", kp.publicKey.toBase58(), "· new operator:", NEW_OP.toBase58());
 
 const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 const data = Buffer.concat([Buffer.from([1, 3]), u32(1), Buffer.from(NEW_OP.toBytes()), u32(0)]);
@@ -28,4 +28,4 @@ const ix = new TransactionInstruction({
 });
 const sig = await conn.sendTransaction(new Transaction().add(ix), [kp]);
 await conn.confirmTransaction(sig, "confirmed");
-console.log("✓ SetOperators(add) confirmado:", sig);
+console.log("✓ SetOperators(add) confirmed:", sig);

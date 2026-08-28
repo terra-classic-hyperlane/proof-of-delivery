@@ -1,6 +1,6 @@
-// Submissão no GasOracleGovernor.sol (BSC/Ethereum):
+// Submission to GasOracleGovernor.sol (BSC/Ethereum):
 //   submitPrice(uint32 domain, uint128 tokenExchangeRate, uint128 gasPrice)
-// Chave: HEX (privateKeyEnv) — mesma do relayer Hyperlane.
+// Key: HEX (privateKeyEnv) — same as the Hyperlane relayer.
 import { Contract, JsonRpcProvider, Wallet } from "ethers";
 
 const GOV_ABI = [
@@ -11,7 +11,7 @@ const ORACLE_ABI = [
   "function getExchangeRateAndGasPrice(uint32) view returns (uint128 tokenExchangeRate, uint128 gasPrice)",
 ];
 
-/** Valor VIGENTE do oracle de produção (call sem chave). */
+/** CURRENT value of the production oracle (call without key). */
 export async function readOracle(chain, domain) {
   const provider = new JsonRpcProvider(chain.rpc);
   const oracle = new Contract(chain.oracle, ORACLE_ABI, provider);
@@ -21,7 +21,7 @@ export async function readOracle(chain, domain) {
 
 export async function makeEvmSubmitter(chain) {
   const pk = process.env[chain.privateKeyEnv];
-  if (!pk) throw new Error(`env ${chain.privateKeyEnv} ausente`);
+  if (!pk) throw new Error(`env ${chain.privateKeyEnv} missing`);
   const provider = new JsonRpcProvider(chain.rpc);
   const wallet = new Wallet(pk, provider);
   const governor = new Contract(chain.governor, GOV_ABI, wallet);

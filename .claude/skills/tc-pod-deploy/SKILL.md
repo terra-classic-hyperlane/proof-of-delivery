@@ -1,57 +1,57 @@
 ---
 name: tc-pod-deploy
 description: >-
-  Runbook de DEPLOY e OPERAÇÃO do tc-proof-of-delivery nas 4 redes (Terra Classic,
-  BSC, Ethereum, Solana): ordem das fases, comandos, transferências de posse
-  (beneficiary/owner), parâmetros da proposta e monitoramento. Use quando o pedido
-  for implantar, configurar governança/multisig, ou operar o sistema em produção.
+  DEPLOY and OPERATION runbook for tc-proof-of-delivery across the 4 networks (Terra
+  Classic, BSC, Ethereum, Solana): phase order, commands, ownership transfers
+  (beneficiary/owner), proposal parameters and monitoring. Use when the request is to
+  deploy, configure governance/multisig, or operate the system in production.
 ---
 
-# tc-proof-of-delivery — deploy e operação (runbook)
+# tc-proof-of-delivery — deploy and operation (runbook)
 
-> Passo a passo completo: `docs/INSTALACAO_E_EXECUCAO.md` §4–§6 · diagramas do processo: `docs/ARQUITETURA.md`.
-> A ordem das fases é LEI (spec §13): 0 ✅ → 1–2 ✅ NO AR (TC, 18/08/2026 — endereços no README:
-> governor terra1z7jmlky…9sv4hj / vault terra1gqkrh2…duzc2q) → 3 (EVM: BSC ✅ + ETH ✅) → 4 (Solana ✅ ATIVA — pod 2mQZcHYL…).
+> Full step-by-step: `docs/INSTALACAO_E_EXECUCAO.md` §4–§6 · process diagrams: `docs/ARQUITETURA.md`.
+> The phase order is LAW (spec §13): 0 ✅ → 1–2 ✅ LIVE (TC, 18/08/2026 — addresses in README:
+> governor terra1z7jmlky…9sv4hj / vault terra1gqkrh2…duzc2q) → 3 (EVM: BSC ✅ + ETH ✅) → 4 (Solana ✅ ACTIVE — pod 2mQZcHYL…).
 
-## Fase 0 — gates antes de QUALQUER deploy
-- [x] Raw query `DELIVERIES` validada em mainnet (README: 2 entregas decodificadas,
+## Phase 0 — gates before ANY deploy
+- [x] `DELIVERIES` raw query validated on mainnet (README: 2 decoded deliveries,
       Mailbox `terra1fwg35n...jpx3p9`, code_id 11371, relayer terra1run9wz…26mawp)
-- [x] `data_hash` de TODOS os 12 contratos TC == wasms staged do tc-cw-hyperlane (README)
-- [x] Build reproduzível dos NOSSOS contratos: optimizer 0.17.0 (checksums no README) · build-sbf ok
-- [x] 91 testes verdes + clippy limpo nos 2 workspaces + forge
+- [x] `data_hash` of ALL 12 TC contracts == staged wasms of tc-cw-hyperlane (README)
+- [x] Reproducible build of OUR contracts: optimizer 0.17.0 (checksums in README) · build-sbf ok
+- [x] 91 tests green + clippy clean on the 2 workspaces + forge
 
-## Sequência por rede (resumo dos pontos que quebram se inverter)
-**TC:** governor → posse do oracle em 2 PASSOS (gov `init_ownership_transfer` no
-oracle → `claim_oracle_ownership` no governor) → `set_bounds` POR domínio →
-vault → gov aponta `IGP.set_beneficiary = vault` → semear pool → monitorar `layout_check`.
+## Sequence per network (summary of the points that break if inverted)
+**TC:** governor → oracle ownership in 2 STEPS (gov `init_ownership_transfer` on the
+oracle → `claim_oracle_ownership` on the governor) → `set_bounds` PER domain →
+vault → gov points `IGP.set_beneficiary = vault` → seed the pool → monitor `layout_check`.
 
 **EVM:** Vault (owner=multisig) → Governor + `setBounds` → `StorageGasOracle.transferOwnership(governor)`
-(OZ, passo ÚNICO — conferir endereço 3×) → `IGP.setBeneficiary(vault)`. Sem Sweep:
-o `claim()` do IGP é permissionless e o vault tem `receive()`.
+(OZ, SINGLE step — check the address 3×) → `IGP.setBeneficiary(vault)`. No Sweep:
+the IGP `claim()` is permissionless and the vault has `receive()`.
 
-**Solana:** deploy do `pod.so` ÚNICO (vault+governor fundidos, 1º byte roteia
-0=rrv/1=gov — rent 1,29 SOL, uma só upgrade authority) → Init dos 2 módulos → `SetDomainConfig` (faixa + token_decimals,
-escala 1e19!) → **TESTAR `TransferIgpOwnership` EM DEVNET** → transferir posse do
-IGP à config PDA do governor → **upgrade authority dos 2 programas → multisig**
-(senão tudo é contornável por redeploy) → manter lamports na config PDA (realloc do IGP).
+**Solana:** deploy the SINGLE `pod.so` (vault+governor merged, 1st byte routes
+0=rrv/1=gov — rent 1.29 SOL, a single upgrade authority) → Init the 2 modules → `SetDomainConfig` (bounds + token_decimals,
+scale 1e19!) → **TEST `TransferIgpOwnership` ON DEVNET** → transfer IGP ownership
+to the governor's config PDA → **upgrade authority of the 2 programs → multisig**
+(otherwise everything can be bypassed via redeploy) → keep lamports on the config PDA (IGP realloc).
 
-## Papéis (matriz §11 da spec — resumo)
-- **Governança TC**: tudo dentro do TC (IGP, ISM, vault, oracle, tarifa, faixa).
-- **Multisig** (remotas): IGP, ISM, faixa, Vault/Governor. Modelo APROVADO pela
-  governança: 3 validadores do TC + 1 não-validador (4 membros). Threshold em
-  aberto: 3-de-4 permite os validadores agirem sozinhos (mitigação PARCIAL do
-  risco nº1 — ISM remoto = acesso indireto ao colateral); evolução: +1
-  não-validador → 4-de-5. Owner fica no deployer até o fim da implantação.
-- **Operadores**: preço dentro da faixa (quórum), relatórios de época (SOL),
-  parâmetros do vault remoto por proposta.
-- **Qualquer um**: entregar mensagens e sacar a PRÓPRIA recompensa.
+## Roles (spec §11 matrix — summary)
+- **TC governance**: everything inside TC (IGP, ISM, vault, oracle, fee, bounds).
+- **Multisig** (remote networks): IGP, ISM, bounds, Vault/Governor. Model APPROVED by
+  governance: 3 TC validators + 1 non-validator (4 members). Threshold still
+  open: 3-of-4 lets the validators act on their own (PARTIAL mitigation of
+  risk #1 — remote ISM = indirect access to the collateral); evolution: +1
+  non-validator → 4-of-5. Owner stays with the deployer until deployment ends.
+- **Operators**: price within bounds (quorum), epoch reports (SOL),
+  remote vault parameters via proposal.
+- **Anyone**: deliver messages and withdraw their OWN reward.
 
-## Parâmetros a fechar NA PROPOSTA (pendências §14)
-tarifa/rede · janela de resgate · faixas por domínio (recalcular por VM!) ·
-operadores + quórum · multisig (composição/threshold) · ISM 3-de-4 · timelock de ISM ·
-decisão aberta: taxa no Warp Route como financiamento alternativo.
+## Parameters to finalize IN THE PROPOSAL (open items §14)
+fee/network · redemption window · bounds per domain (recompute per VM!) ·
+operators + quorum · multisig (composition/threshold) · ISM 3-of-4 · ISM timelock ·
+open decision: Warp Route fee as alternative funding.
 
-## Monitoramento mínimo em produção
-`LayoutCheck` (TC, pós-migrate) · `Solvency`/`claimsPayable` vs backlog ·
-épocas Solana sem quórum (hashes divergentes = alarme + auditoria pública) ·
-preço não aplicado por `DeltaExceeded` → avaliar `ForceSet` pela governança/multisig.
+## Minimum production monitoring
+`LayoutCheck` (TC, post-migrate) · `Solvency`/`claimsPayable` vs backlog ·
+Solana epochs without quorum (divergent hashes = alarm + public audit) ·
+price not applied due to `DeltaExceeded` → evaluate `ForceSet` by governance/multisig.
