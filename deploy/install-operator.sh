@@ -132,7 +132,25 @@ StandardError=append:$CLAIM_DIR/logs/reporter.log
 WantedBy=multi-user.target
 EOF
 
-echo "== 5/5 enable =="
+echo "== 5/6 log rotation (1 GB cap per log file) =="
+cat > /etc/tc-pod-logrotate.conf <<EOF
+$ORACLE_DIR/logs/*.log $CLAIM_DIR/logs/*.log {
+  size 1G
+  rotate 1
+  copytruncate
+  compress
+  missingok
+  notifempty
+}
+EOF
+cat > /etc/cron.hourly/tc-pod-logrotate <<'EOF'
+#!/bin/sh
+# Checks every hour; cuts any operator log that crossed 1 GB (keeps 1 compressed copy).
+/usr/sbin/logrotate --state /var/lib/logrotate/tc-pod.status /etc/tc-pod-logrotate.conf
+EOF
+chmod +x /etc/cron.hourly/tc-pod-logrotate
+
+echo "== 6/6 enable =="
 systemctl daemon-reload
 systemctl enable oracle-agent claim-agent epoch-reporter >/dev/null 2>&1
 

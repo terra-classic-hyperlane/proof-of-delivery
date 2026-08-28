@@ -133,20 +133,100 @@ The script (idempotent — re-run it to update code; it **never** touches your
 3. Creates `config.json` and `.env`/`rpc.env` **templates** if they don't exist;
 4. Installs + enables 3 systemd units (`oracle-agent`, `claim-agent`, `epoch-reporter`).
 
-Then fill in the secrets and start:
+Then fill in every variable per **section 4** below and start:
 
 ```bash
-nano /root/oracle-agent/.env      # TC/BSC/ETH/SOL private keys (oracle operator)
-nano /root/claim-agent/.env       # TC/BSC/SOLANA private keys (tooling wallet)
-nano /root/oracle-agent/config.json   # governors/RPCs/domains (defaults = production)
 systemctl start oracle-agent claim-agent epoch-reporter
 ```
 
+---
+
+## 4. Configuration reference — every variable, file by file
+
 Keys are read **only from environment variables** — never stored in config files.
+The env-var *names* are not fixed: `config.json` says which env each chain reads
+(`privateKeyEnv` / `mnemonicEnv` / `keypairEnv`). The names below are the defaults
+the installer templates use.
+
+### 4.1 `/root/oracle-agent/.env` — oracle operator keys
+
+| Variable | Format | Notes |
+|---|---|---|
+| `TC_PRIVATE_KEY` | raw **hex** secp256k1 key (no `0x`) | Hyperlane relayer format. Alternative: set `TC_MNEMONIC` (BIP-39 24 words) and point `mnemonicEnv` to it in config.json |
+| `BSC_PRIVATE_KEY` | `0x`-prefixed hex EVM key | must be a **registered price operator** on the BSC governor |
+| `ETH_PRIVATE_KEY` | `0x`-prefixed hex EVM key | registered operator on the ETH governor |
+| `SOL_PRIVATE_KEY` | **hex** 32-byte ed25519 seed | Hyperlane relayer format. Alternative: `SOLANA_KEYPAIR_PATH=/path/keypair.json` (config `keypairEnv`) |
+
+### 4.2 `/root/claim-agent/.env` — tooling wallet keys (claim-agent + epoch-reporter)
+
+Use a **separate wallet** from the relayer (avoids account-sequence contention).
+
+| Variable | Format | Used for |
+|---|---|---|
+| `TC_PRIVATE_KEY` | raw hex (no `0x`) — or `TC_MNEMONIC` (24 words) | signing receipt-delivery txs on Terra Classic |
+| `BSC_PRIVATE_KEY` | `0x`-prefixed hex | `sendReceipt` on the BSC vault |
+| `SOLANA_PRIVATE_KEY` | hex 32-byte ed25519 seed — or `SOLANA_KEYPAIR=/path.json` | epoch-reporter submissions (must be a registered pod operator) |
+
+Optional tuning (set in the same `.env`; sensible defaults apply):
+`DRY=1` (simulate, sign nothing) · `LOOKBACK_BLOCKS` (BSC scan window) ·
+`MIN_BATCH` (min receipts per tx) · `STUCK_MINUTES` (re-send threshold).
+
+### 4.3 `/root/claim-agent/rpc.env` — endpoints
+
+| Variable | Default | Consumed by |
+|---|---|---|
+| `TC_RPC` | `https://rpc.terra-classic.hexxagon.io` | tx broadcast on TC |
+| `TC_LCD` | `https://lcd.terra-classic.hexxagon.io` | queries (vault state, mailbox proofs) |
+| `BSC_RPC` | `https://bsc-rpc.publicnode.com` | BSC scans + `sendReceipt` |
+| `ETH_RPC` | `https://ethereum-rpc.publicnode.com` | reserved (ETH receipt replication) |
+| `SOLANA_RPC` | `https://api.mainnet-beta.solana.com` | epoch-reporter |
+
+Any endpoint can be swapped for your own node — these are public defaults.
+
+### 4.4 `/root/oracle-agent/config.json` — the oracle map
+
+Created from `config.example.json`, whose values **already match production** —
+normally you only touch the `*Env` names and RPCs. Field meaning:
+
+**Top level**
+
+| Field | Meaning |
+|---|---|
+| `intervalSeconds` | seconds between rounds (production: `14400` = 4 h) |
+| `coingecko.ids` | CoinGecko id per coin name used in `localCoin`/`remotes.*.coin` |
+
+**Per chain — `chains.<name>` (common fields)**
+
+| Field | Meaning |
+|---|---|
+| `type` | `cosmwasm` \| `evm` \| `solana` — selects the submitter module |
+| `enabled` | `false` skips the chain without deleting its config |
+| `localCoin` | CoinGecko key of the chain's native token |
+| `rpc` | RPC used to submit `SubmitPrice` |
+| `governor` / `oracle` | governor contract that receives submissions / IGP oracle it drives |
+| `privateKeyEnv` · `mnemonicEnv` · `keypairEnv` | **names of the env vars** holding the key (see 4.1) |
+| `remotes.<domain>` | one entry per remote domain priced on this chain (below) |
+
+**Type-specific**: `cosmwasm` also needs `chainId` (`columbus-5`), `gasPrice`
+(`28.325uluna`), `prefix` (`terra`); `solana` uses `governorProgram`, `igpProgram`,
+`igpAccount` instead of `governor`/`oracle`.
+
+**Per remote — `remotes.<domain>`**
+
+| Field | Meaning |
+|---|---|
+| `coin` | CoinGecko key of the remote's native token (rate = remote/local × scale) |
+| `gasPriceSource` | `{"type":"evm-rpc","url":…}` = live `eth_gasPrice` · `{"type":"fixed","value":…}` = constant (used for TC=`29`, Solana=`1`) |
+
+**`claims` subsection** (optional, per chain): the delivery-sweep settings —
+`mailbox`, `vault`, `igp`, `relayer` (whose deliveries are claimed), `lcd`,
+`sweepMinUluna` (min amount worth sweeping), `originSenders` (warp senders →
+domain map), `chunkBlocks`/`maxWindows` (EVM scan batching), `localClaim`
+(false = payment happens at origin only). Defaults = production addresses.
 
 ---
 
-## 4. Verify & operate
+## 5. Verify & operate
 
 ```bash
 # all three must be "active"
@@ -164,7 +244,19 @@ curl -s "https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/contract/terra1g
 Cadence reference: oracle-agent rounds every **4 h**, only submits when drift
 > **300 bps**; epoch = **6 h**; governor max delta = **2000 bps** per epoch.
 
-## 5. Troubleshooting
+### Log rotation — 1 GB hard cap
+
+The installer sets up an hourly size check: any log that crosses **1 GB** is cut
+(`copytruncate` — services keep writing, no restart needed) and one compressed
+copy is kept. Config: `/etc/tc-pod-logrotate.conf` · trigger:
+`/etc/cron.hourly/tc-pod-logrotate`. Verify with:
+
+```bash
+/usr/sbin/logrotate -d --state /var/lib/logrotate/tc-pod.status /etc/tc-pod-logrotate.conf
+du -sh /root/oracle-agent/logs /root/claim-agent/logs
+```
+
+## 6. Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
