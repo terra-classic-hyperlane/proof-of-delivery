@@ -5,7 +5,9 @@
 > source and tests — contains **zero Portuguese**. **Only the Terra Classic relayer-reward-vault
 > changed bytecode** (2 production error strings were translated) and it **was migrated** (§4);
 > every other contract on every chain is byte-identical in executable code to what is deployed, so
-> no migration is required for them (§2a/§2b). All hashes below are reproducible.
+> no migration is required for them (§2a/§2b). The production VPS was redeployed from `main` — after
+> merging a VPS-only hotfix back into the repo (§6) — so repo, on-chain and production are fully
+> consistent. All hashes below are reproducible.
 >
 > **The rule this report demonstrates:** the on-chain `data_hash` covers the **compiled bytecode**,
 > not the source text. Compilers strip comments, and tests are never deployed — so translating
@@ -26,6 +28,7 @@
 | `518c09e` | record executed TC vault migration (code_id 11635, txs + on-chain hash proof) |
 | `2b77e7c` | byte-level proof no Solana/EVM migration is needed (on-chain dump + metadata-trailer analysis) |
 | `81ad764` | final sweep: last 2 PT remnants (EVM test fn name + SVM doc comment) — repo now 100% English |
+| `3ad972c` | merge VPS-only hotfix into main: single price-round PDA per domain in oracle-agent `solana.js` (§6) |
 
 Post-`81ad764` verification: PT-scan over all `.rs`/`.sol` (src + tests) returns **zero matches**;
 `forge test` 48/48 green; `pod.so` rebuilt after the doc-comment edit hashes to the **same**
@@ -119,3 +122,38 @@ curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11587 | jq -
 curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11635 | jq -r .code_info.data_hash   # 339b8257… (vault, current)
 curl -s https://lcd.terra-classic.hexxagon.io/cosmwasm/wasm/v1/code/11596 | jq -r .code_info.data_hash   # f3bc80e6… (vault, pre-migration)
 ```
+
+## 6. VPS redeploy of the English scripts + hotfix merge ✅ EXECUTED (2026-08-28)
+
+The production VPS ran the pre-translation (PT) copies of the operational scripts. They were
+redeployed from `main` so that production and repository match.
+
+**Hotfix discovered and merged into `main` first (commit `3ad972c`).** The pre-deploy checksum
+comparison (VPS files vs the pre-translation repo revision) revealed that the VPS copy of
+`oracle-agent/src/chains/solana.js` carried a local hotfix that was never committed: the price-round
+PDA seed is `["gov","-","price","-",domain_le]` — **one round account per domain, no epoch** — the
+JS companion of the Solana rent-leak fix (program commit `3c9d8e6`), matching the on-chain program's
+`SEED_PRICE` derivation. `main` still derived the old per-epoch PDA; deploying it unmerged would
+have reverted the fix and broken Solana submissions. The hotfix was merged into `main` **before**
+the redeploy. Every other VPS file was checksum-identical to its pre-translation repo version
+(i.e. no other undocumented local changes existed).
+
+**Redeploy procedure (auditable):**
+1. Full backup of the PT copies at `/root/backup-pt-20260828` on the VPS (rollback point).
+2. Files updated from `main`: `oracle-agent/src/{index,claims,prices}.js`,
+   `oracle-agent/src/chains/{evm,solana,terraclassic}.js`, and
+   `claim-agent/{claim-agent-receipt,deliver-receipts-tc,solana-epoch-reporter}.mjs`.
+3. Untouched: `.env`/`rpc.env`, `config.json`, `state.json`, and the legacy `process-*.mjs`
+   (not in the repo, not referenced by any systemd unit).
+4. `node --check` on the VPS for every updated file, then sequential service restarts.
+
+**Post-deploy verification:** all 5 services active with `NRestarts=0`
+(`hyperlane-validator`, `hyperlane-relayer`, `oracle-agent`, `claim-agent`, `epoch-reporter`);
+logs switched from PT to EN across a single restart (claim-agent 17:13 UTC "recibos … pendentes" →
+17:16 UTC "BSC→TC receipts pending delivery on TC: 0"); oracle-agent completed a full cycle
+("stable (<300bps) — no submission", next round scheduled 14400 s); epoch-reporter verified its
+operator and found the epoch already reported. The only outstanding issue is the pre-existing
+ETH gas-delta bound on the TC governor (unrelated to translation or redeploy).
+
+With this step, **repository, on-chain contracts and production VPS are fully consistent in
+English**: the repo is the source of truth and production runs exactly what `main` contains.
