@@ -1,32 +1,32 @@
 # tc-proof-of-delivery
 
-Remuneração de múltiplos relayers na ponte Hyperlane (Terra Classic · BSC · Ethereum · Solana).
-Especificação: `SPEC.html` (v3) · **Mapa do warp IGORFAKE** (endereços/IGP/oracle/ISM/preços das 4 pernas): `docs/WARP-IGORFAKE.md` · **Arquitetura com diagramas**: `docs/ARQUITETURA.md` · **Instalação/execução**: `docs/INSTALACAO_E_EXECUCAO.md` · Skills do repo em `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Cada rede tem um Vault beneficiary do IGP local; o operador
-recebe pelo que ENTREGOU, provado pelo registro de execução da própria chain (TC via raw query
-do storage, EVM via processor(), Solana via quórum de épocas).
+Remuneration of multiple relayers on the Hyperlane bridge (Terra Classic · BSC · Ethereum · Solana).
+Specification: `SPEC.html` (v3) · **IGORFAKE warp map** (addresses/IGP/oracle/ISM/prices of the 4 legs): `docs/WARP-IGORFAKE.md` · **Architecture with diagrams**: `docs/ARQUITETURA.md` · **Installation/execution**: `docs/INSTALACAO_E_EXECUCAO.md` · Repo skills in `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Each network has a Vault as beneficiary of the local IGP; the operator
+gets paid for what it DELIVERED, proven by the execution record of the chain itself (TC via raw query
+of the storage, EVM via processor(), Solana via epoch quorum).
 
-## Verificação de código-fonte (Fase 0 parcial — 18/08/2026)
+## Source-code verification (Phase 0 partial — 08/18/2026)
 
-Confirmado nos repositórios locais (`~/tc-cw-hyperlane` e `~/hyperlane-monorepo`):
+Confirmed in the local repositories (`~/tc-cw-hyperlane` and `~/hyperlane-monorepo`):
 
-| Afirmação da spec | Onde | Status |
+| Spec claim | Where | Status |
 |---|---|---|
-| `Delivery { sender, block_number }` gravado no process() | tc-cw-hyperlane `mailbox/src/state.rs:50` + `execute.rs:191` | ✅ |
-| Query pública usa `.has()` e descarta o executor | `mailbox/src/query.rs:56` | ✅ |
-| Prefixo do Map = `"deliveries"` (10 bytes → chave raw `[0x00,0x0A]+"deliveries"+id`) | `state.rs:64` | ✅ |
-| `claim()` do IGP CosmWasm só aceita o beneficiary | `igps/core/src/execute.rs:90-92` | ✅ (Sweep necessário) |
+| `Delivery { sender, block_number }` written in process() | tc-cw-hyperlane `mailbox/src/state.rs:50` + `execute.rs:191` | ✅ |
+| Public query uses `.has()` and discards the executor | `mailbox/src/query.rs:56` | ✅ |
+| Map prefix = `"deliveries"` (10 bytes → raw key `[0x00,0x0A]+"deliveries"+id`) | `state.rs:64` | ✅ |
+| CosmWasm IGP `claim()` only accepts the beneficiary | `igps/core/src/execute.rs:90-92` | ✅ (Sweep required) |
 | EVM `Delivery { processor, blockNumber }` + `processor(id)` + `processedAt(id)` | `solidity/contracts/Mailbox.sol:55,253,262` | ✅ |
-| `claim()` do IGP EVM é permissionless (paga sempre ao beneficiary) | `hooks/igp/InterchainGasPaymaster.sol:142` | ✅ |
-| Solana `ProcessedMessage` SEM campo de executor | `sealevel/programs/mailbox/src/accounts.rs:260` | ✅ |
-| `Igp { owner, beneficiary, gas_oracles: HashMap }` — oracle dentro do IGP | `hyperlane-sealevel-igp/src/accounts.rs:159-169` | ✅ |
-| `set_gas_oracle_configs` exige owner signer | `hyperlane-sealevel-igp/src/processor.rs:637` (+ ensure_owner_signer) | ✅ |
+| EVM IGP `claim()` is permissionless (always pays the beneficiary) | `hooks/igp/InterchainGasPaymaster.sol:142` | ✅ |
+| Solana `ProcessedMessage` WITHOUT an executor field | `sealevel/programs/mailbox/src/accounts.rs:260` | ✅ |
+| `Igp { owner, beneficiary, gas_oracles: HashMap }` — oracle inside the IGP | `hyperlane-sealevel-igp/src/accounts.rs:159-169` | ✅ |
+| `set_gas_oracle_configs` requires owner signer | `hyperlane-sealevel-igp/src/processor.rs:637` (+ ensure_owner_signer) | ✅ |
 
-## Fase 0 — data_hash: FECHADA ✅ (18/08/2026)
+## Phase 0 — data_hash: CLOSED ✅ (08/18/2026)
 
-O `data_hash` de **TODOS os contratos implantados** no Terra Classic confere byte a byte com os
-artefatos staged do repositório de deploy (`tc-cw-hyperlane/tmp/codes/*.wasm`):
+The `data_hash` of **ALL contracts deployed** on Terra Classic matches byte for byte the
+staged artifacts of the deploy repository (`tc-cw-hyperlane/tmp/codes/*.wasm`):
 
-| Contrato | code_id | Verificação |
+| Contract | code_id | Verification |
 |---|---|---|
 | hpl_mailbox | 11371 | ✅ `B6D789C1A31EE79548FD736BAD241DBCD3B8B319D66A776F31479743FE49EB01` |
 | hpl_validator_announce | 11372 | ✅ |
@@ -35,109 +35,109 @@ artefatos staged do repositório de deploy (`tc-cw-hyperlane/tmp/codes/*.wasm`):
 | hooks (aggregate/merkle/pausable/fee) | 11378–11381 | ✅ |
 | hpl_warp_cw20 | 11389 | ✅ |
 
-Evidência forense adicional: o wasm on-chain embute o rustc `cc66ad46…` = **1.73.0 musl**, o
-toolchain exato do `cosmwasm/optimizer:0.15.0` do Makefile — e o fonte dos contratos não é
-alterado desde jan/2025. Cadeia completa: fonte verificado ➝ artefato staged idêntico ao
-on-chain ➝ comportamento confirmado em mainnet (raw query do DELIVERIES).
+Additional forensic evidence: the on-chain wasm embeds the rustc `cc66ad46…` = **1.73.0 musl**, the
+exact toolchain of the Makefile's `cosmwasm/optimizer:0.15.0` — and the contracts' source has not been
+changed since Jan/2025. Complete chain: verified source ➝ staged artifact identical to the
+on-chain one ➝ behavior confirmed on mainnet (raw query of DELIVERIES).
 
-Nota de reprodutibilidade: o `Cargo.lock` da época do deploy não foi versionado no
-tc-cw-hyperlane (o lock atual, regenerado por cargo novo, resolve crates edition2024 que o
-cargo 1.73 nem compila). Para futuros deploys DESTE repositório os locks são versionados —
-o rebuild-from-source independente do upstream fica como exercício para auditoria externa.
+Reproducibility note: the `Cargo.lock` from the time of the deploy was not versioned in
+tc-cw-hyperlane (the current lock, regenerated by a newer cargo, resolves edition2024 crates that
+cargo 1.73 will not even compile). For future deploys of THIS repository the locks are versioned —
+the independent rebuild-from-source of the upstream remains as an exercise for external audit.
 
-## Fase 0 — evidência de MAINNET (18/08/2026) ✅
+## Phase 0 — MAINNET evidence (08/18/2026) ✅
 
-Raw query no estado do Mailbox em produção (`terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9`,
-code_id 11371, label `cw-hpl: hpl_mailbox`, via LCD Hexxagon — o publicnode bloqueia o endpoint /state):
+Raw query on the Mailbox state in production (`terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9`,
+code_id 11371, label `cw-hpl: hpl_mailbox`, via LCD Hexxagon — publicnode blocks the /state endpoint):
 
-- `nonce` = 13 (mensagens despachadas do TC) · `latest_dispatch_id` = 26096daa…3220
+- `nonce` = 13 (messages dispatched from TC) · `latest_dispatch_id` = 26096daa…3220
 - default_ism = terra1uhzzvt9x3u8hjnkp695hklexx2uywjvfqv454d93ds92sgtpwk7qrpxdg0
-- **2 entradas DELIVERIES** decodificadas com sucesso pela chave bruta `[0x00,0x0A]+"deliveries"+message_id`:
+- **2 DELIVERIES entries** decoded successfully by the raw key `[0x00,0x0A]+"deliveries"+message_id`:
 
-| message_id | delivery (valor bruto decodificado) |
+| message_id | delivery (raw decoded value) |
 |---|---|
 | d039daa1…4f04 | `{"sender":"terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp","block_number":29422362}` |
 | d5e2ab02…cc4f | `{"sender":"terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp","block_number":29423109}` |
 
-Conclusão: o wasm EM PRODUÇÃO grava `{sender, block_number}` exatamente como o repo local — a prova
-por raw query do Vault é viável na mainnet. (Falta só o rigor final: comparar o data_hash do code_id
-11371 com o build do repo.) Ambos os deliveries foram do relayer terra1run9wz…26mawp.
+Conclusion: the wasm IN PRODUCTION writes `{sender, block_number}` exactly like the local repo — the
+proof by raw query of the Vault is viable on mainnet. (Only the final rigor is missing: comparing the
+data_hash of code_id 11371 with the repo build.) Both deliveries were from the relayer terra1run9wz…26mawp.
 
-## Artefatos
+## Artifacts
 
-| Artefato | Estado |
+| Artifact | State |
 |---|---|
-| `contracts/relayer-reward-vault` (CosmWasm) | ✅ escrito · **24 testes passando** (4 unit + 20 integração cw-multi-test) · clippy -D warnings limpo · compila p/ wasm32 |
-| `contracts/oracle-governor` (CosmWasm) | ✅ escrito · **15 testes de integração** passando · clippy -D warnings limpo · compila p/ wasm32 |
-| `evm/src/RelayerRewardVault.sol` + `evm/src/GasOracleGovernor.sol` | ✅ escritos · **32 testes Foundry** passando (16+16) · solc 0.8.22 via-ir |
-| `svm/programs/relayer-reward-vault` + `svm/programs/igp-oracle-governor` (Solana) | ✅ escritos · **15 testes** solana-program-test (10+5, com mock do IGP fiel ao wire-format) · clippy limpo · **cargo build-sbf ok** (.so gerados) |
-| `oracle-agent/` (off-chain, multi-chain) | ✅ escrito · 5 testes node:test · dry-run validado com CoinGecko + RPCs reais (4 chains) |
+| `contracts/relayer-reward-vault` (CosmWasm) | ✅ written · **24 tests passing** (4 unit + 20 cw-multi-test integration) · clippy -D warnings clean · compiles to wasm32 |
+| `contracts/oracle-governor` (CosmWasm) | ✅ written · **15 integration tests** passing · clippy -D warnings clean · compiles to wasm32 |
+| `evm/src/RelayerRewardVault.sol` + `evm/src/GasOracleGovernor.sol` | ✅ written · **32 Foundry tests** passing (16+16) · solc 0.8.22 via-ir |
+| `svm/programs/relayer-reward-vault` + `svm/programs/igp-oracle-governor` (Solana) | ✅ written · **15 tests** solana-program-test (10+5, with an IGP mock faithful to the wire-format) · clippy clean · **cargo build-sbf ok** (.so generated) |
+| `oracle-agent/` (off-chain, multi-chain) | ✅ written · 5 node:test tests · dry-run validated with CoinGecko + real RPCs (4 chains) |
 
-Build de produção: usar o `cosmwasm/optimizer` (build reproduzível) antes do store na chain.
+Production build: use the `cosmwasm/optimizer` (reproducible build) before the store on the chain.
 
 
-## Build reproduzível (CosmWasm) — artefatos p/ a proposta
+## Reproducible build (CosmWasm) — artifacts for the proposal
 
-Gerado com `cosmwasm/optimizer:0.17.0` sobre o commit `27dab3b` (locks versionados —
-qualquer um reproduz com `docker run ... cosmwasm/optimizer:0.17.0` e confere):
+Generated with `cosmwasm/optimizer:0.17.0` over commit `27dab3b` (versioned locks —
+anyone can reproduce with `docker run ... cosmwasm/optimizer:0.17.0` and check):
 
-| Artefato | sha256 |
+| Artifact | sha256 |
 |---|---|
 | `artifacts/relayer_reward_vault.wasm` (355 KB) | `cb753ed7aaa136342e4f685e85b8323e9947965c06ada8f4dbb04662563f19bd` |
 | `artifacts/oracle_governor.wasm` (268 KB) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
 
-> Hash do `relayer_reward_vault.wasm` atualizado ao adicionar a idempotência de
-> emissão de recibo (`SENT_RECEIPT`) — pré-requisito do corredor Solana→TC (o
-> destino que paga na Solana não deduplica no `handle`). Anterior:
+> Hash of `relayer_reward_vault.wasm` updated when adding the idempotency of
+> receipt emission (`SENT_RECEIPT`) — a prerequisite of the Solana→TC corridor (the
+> destination that pays on Solana does not deduplicate in `handle`). Previous:
 > `c9699711a661607bebe30819ee1dc0035ff5276523dbb08b80a108fb03721d82`.
 
-Ao armazenar na chain, o `data_hash` do code DEVE ser igual ao sha256 acima.
+When storing on the chain, the code's `data_hash` MUST equal the sha256 above.
 
-## Documentação de auditoria e operação
+## Audit and operation documentation
 
-- **`docs/RECIBO-TRUSTLESS.md`** — modelo sem confiança (recibo provado pelos validadores): passo a passo dos comandos TC↔BSC.
-- **`docs/SEGURANCA-CLAIMREMOTO.md`** — modelo de confiança do ClaimRemote: o contrato (não o relayer) decide quem recebe; anti-autopagamento; os dois "beneficiários".
-- **`docs/MANUAL-EXPANSAO.md`** — como adicionar chains, operadores e associações (de/para); por id vs por época.
-- **`docs/CLAIM-REMOTO.md`** — Vault v2: como as 4 chains se amarram (vínculos de endereço, atestação com quórum, taxa de origem paga ao operador).
+- **`docs/RECIBO-TRUSTLESS.md`** — trustless model (receipt proven by the validators): step by step of the TC↔BSC commands.
+- **`docs/SEGURANCA-CLAIMREMOTO.md`** — ClaimRemote trust model: the contract (not the relayer) decides who gets paid; anti-self-payment; the two "beneficiaries".
+- **`docs/MANUAL-EXPANSAO.md`** — how to add chains, operators and bindings (from/to); by id vs by epoch.
+- **`docs/CLAIM-REMOTO.md`** — Vault v2: how the 4 chains tie together (address bindings, quorum attestation, origin fee paid to the operator).
 
-- **`docs/REGISTRO-AUDITORIA.md`** — TODOS os endereços/operadores/parâmetros das 4 redes + verificação em 1 linha por invariante.
-- **`docs/OPERACAO-CONTRATOS.md`** — como executar cada contrato: trocar owner, operadores, quórum, faixas, preço, pausa, saques, handoff.
-- **`docs/ORACLE-AGENT.md`** — instalação/execução do agente de preços (modo âncora, chaves hex, systemd, logs).
-- **`docs/RELATORIO-INSTALACAO-ORACLE-AGENT.md`** — relatório da instalação em produção (18/08/2026).
+- **`docs/REGISTRO-AUDITORIA.md`** — ALL addresses/operators/parameters of the 4 networks + one-line verification per invariant.
+- **`docs/OPERACAO-CONTRATOS.md`** — how to execute each contract: change owner, operators, quorum, bounds, price, pause, withdrawals, handoff.
+- **`docs/ORACLE-AGENT.md`** — installation/execution of the price agent (anchor mode, hex keys, systemd, logs).
+- **`docs/RELATORIO-INSTALACAO-ORACLE-AGENT.md`** — report of the production installation (08/18/2026).
 
-## Implantação — Solana (Fase 4): ✅ ATIVA (18/08/2026, finalize incluso)
+## Deployment — Solana (Phase 4): ✅ ACTIVE (08/18/2026, finalize included)
 
-Programa único `pod` (vault+governor fundidos) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
-pool PDA `Eq1mJGTS…Dwb9w` com 0,3 SOL · IGP owner = governor PDA ✓ ·
-beneficiary = pool ✓ (verificado on-chain). Custo total 1,66 SOL (rent recuperável).
-Registro completo: `docs/AUDITORIA-SOLANA.md`.
+Single program `pod` (vault+governor merged) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
+pool PDA `Eq1mJGTS…Dwb9w` with 0.3 SOL · IGP owner = governor PDA ✓ ·
+beneficiary = pool ✓ (verified on-chain). Total cost 1.66 SOL (rent recoverable).
+Complete record: `docs/AUDITORIA-SOLANA.md`.
 
-## Implantação — Ethereum (Fase 3): ✅ NO AR (18/08/2026)
+## Deployment — Ethereum (Phase 3): ✅ LIVE (08/18/2026)
 
 Vault `0xDf90d3b7FF98466E148B334128374807b3e89EbD` · Governor
 `0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` · oracle owner = governor ✓ ·
-IGP beneficiary = vault ✓ · quórum 1. Pool pendente de semente. Registro: `docs/AUDITORIA-ETH.md`.
+IGP beneficiary = vault ✓ · quorum 1. Pool pending seeding. Record: `docs/AUDITORIA-ETH.md`.
 
-## Implantação — BSC (Fase 3): ✅ NO AR (18/08/2026)
+## Deployment — BSC (Phase 3): ✅ LIVE (08/18/2026)
 
 Vault `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` · Governor
 `0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` · oracle owner = governor ✓ ·
-IGP beneficiary = vault ✓ · quórum 1. **Pool ainda não semeado** (saldo).
-Registro completo: `docs/AUDITORIA-BSC.md`.
+IGP beneficiary = vault ✓ · quorum 1. **Pool not yet seeded** (balance).
+Complete record: `docs/AUDITORIA-BSC.md`.
 
-## Implantação — Terra Classic (Fases 1–2): ✅ NO AR (18/08/2026, columbus-5)
+## Deployment — Terra Classic (Phases 1–2): ✅ LIVE (08/18/2026, columbus-5)
 
-| Peça | Valor |
+| Piece | Value |
 |---|---|
 | **oracle-governor** | `terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj` (code_id **11587**) |
 | **relayer-reward-vault** | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` (code_id **11588**) |
-| data_hash on-chain | ✅ = `checksums.txt` (verificado pelo script no store) |
-| Owner do StorageGasOracle | ✅ = oracle-governor (posse em 2 passos, txs `31B0DF7E…`/`EDE72113…`) |
-| Faixas (dom 1 · 56 · 1399811149) | ✅ derivadas do oracle de produção no momento do deploy (÷3·×3) |
-| IGP.beneficiary | ✅ = vault (tx `4895068D…`; confirmado por query `{"igp":{"beneficiary":{}}}`) |
-| Pool | ✅ 5.000 LUNC · tarifa 50 LUNC · **claims_payable = 100** · janela 200k blocos |
-| `layout_check` (msg real `d039daa1…`) | ✅ `ok:true` — prova por raw query operando em produção |
-| Operadores / quórum | 1 (deployer) / 1 — expandir via `docs/OPERADORES.md` |
-| Owner (governor + vault) | deployer — handoff p/ governança: §8 de `docs/PARAMETROS_PROPOSTA.md` |
+| data_hash on-chain | ✅ = `checksums.txt` (verified by the script on store) |
+| StorageGasOracle owner | ✅ = oracle-governor (2-step ownership, txs `31B0DF7E…`/`EDE72113…`) |
+| Bounds (dom 1 · 56 · 1399811149) | ✅ derived from the production oracle at deploy time (÷3·×3) |
+| IGP.beneficiary | ✅ = vault (tx `4895068D…`; confirmed by query `{"igp":{"beneficiary":{}}}`) |
+| Pool | ✅ 5,000 LUNC · fee 50 LUNC · **claims_payable = 100** · window 200k blocks |
+| `layout_check` (real msg `d039daa1…`) | ✅ `ok:true` — proof by raw query operating in production |
+| Operators / quorum | 1 (deployer) / 1 — expand via `docs/OPERADORES.md` |
+| Owner (governor + vault) | deployer — handoff to governance: §8 of `docs/PARAMETROS_PROPOSTA.md` |
 
-**Registro completo de auditoria** (todos os 11 tx hashes e sha256 na íntegra + comandos de verificação): `docs/AUDITORIA-TC.md`.
+**Complete audit record** (all 11 tx hashes and sha256 in full + verification commands): `docs/AUDITORIA-TC.md`.

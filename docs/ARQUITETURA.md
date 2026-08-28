@@ -1,257 +1,257 @@
-# Arquitetura — visão do todo
+# Architecture — the whole picture
 
-Diagramas do sistema completo: o processo Hyperlane de ponta a ponta e onde a
-camada de remuneração (este repositório) se encaixa. Os diagramas renderizam no
-GitHub (Mermaid). Detalhes normativos: `SPEC.html`.
+Diagrams of the complete system: the end-to-end Hyperlane process and where the
+remuneration layer (this repository) fits in. The diagrams render on
+GitHub (Mermaid). Normative details: `SPEC.html`.
 
 ---
 
-## 1. Visão geral — as 4 redes e as duas camadas
+## 1. Overview — the 4 networks and the two layers
 
-O **core Hyperlane** (azul) não é modificado; a **camada de remuneração**
-(verde) só muda configuração: o `beneficiary` de cada IGP vira o Vault e, em
-Solana, o `owner` do IGP vira o governor.
+The **Hyperlane core** (blue) is not modified; the **remuneration layer**
+(green) only changes configuration: the `beneficiary` of each IGP becomes the Vault and, on
+Solana, the `owner` of the IGP becomes the governor.
 
 ```mermaid
 flowchart TB
-    subgraph TC["🌕 TERRA CLASSIC (colateral real · governança on-chain)"]
+    subgraph TC["🌕 TERRA CLASSIC (real collateral · on-chain governance)"]
         direction TB
-        TCmb["Mailbox<br/>(grava sender+block no DELIVERIES)"]
-        TCigp["IGP<br/>claim só p/ beneficiary"]
-        TCora["StorageGasOracle<br/>(contrato separado)"]
-        TCwarp["Warp Route<br/>colateral LUNC"]
-        TCvault["🟢 RelayerRewardVault<br/>prova por RAW QUERY"]
-        TCgov["🟢 OracleGovernor<br/>quórum+mediana+faixa"]
+        TCmb["Mailbox<br/>(writes sender+block into DELIVERIES)"]
+        TCigp["IGP<br/>claim only for beneficiary"]
+        TCora["StorageGasOracle<br/>(separate contract)"]
+        TCwarp["Warp Route<br/>LUNC collateral"]
+        TCvault["🟢 RelayerRewardVault<br/>proof by RAW QUERY"]
+        TCgov["🟢 OracleGovernor<br/>quorum+median+bounds"]
         TCigp -- "beneficiary = vault" --> TCvault
         TCvault -- "raw query DELIVERIES" --> TCmb
-        TCgov -- "owner do oracle" --> TCora
+        TCgov -- "oracle owner" --> TCora
     end
 
-    subgraph EVM["🟡 BSC · 🔵 ETHEREUM (sintético · multisig)"]
+    subgraph EVM["🟡 BSC · 🔵 ETHEREUM (synthetic · multisig)"]
         direction TB
-        Emb["Mailbox v3<br/>processor(id) público"]
-        Eigp["IGP<br/>claim() permissionless"]
+        Emb["Mailbox v3<br/>public processor(id)"]
+        Eigp["IGP<br/>permissionless claim()"]
         Eora["StorageGasOracle"]
-        Ewarp["Warp sintético"]
-        Evault["🟢 RelayerRewardVault.sol<br/>prova por processor()"]
+        Ewarp["synthetic Warp"]
+        Evault["🟢 RelayerRewardVault.sol<br/>proof by processor()"]
         Egov["🟢 GasOracleGovernor.sol"]
-        Eigp -- "empurra saldo (receive)" --> Evault
+        Eigp -- "pushes balance (receive)" --> Evault
         Evault -- "processor(id)" --> Emb
-        Egov -- "owner do oracle" --> Eora
+        Egov -- "oracle owner" --> Eora
     end
 
-    subgraph SOL["🟣 SOLANA (sintético · multisig · SEM registro de executor)"]
+    subgraph SOL["🟣 SOLANA (synthetic · multisig · NO executor record)"]
         direction TB
-        Smb["Mailbox<br/>ProcessedMessage sem executor"]
-        Sigp["IGP<br/>(oracle DENTRO do Igp)"]
-        Swarp["Warp sintético"]
-        Svault["🟢 rrv: PDA config = POOL<br/>quórum por ÉPOCA"]
-        Sgov["🟢 IgpOracleGovernor<br/>duas portas · owner do IGP"]
-        Sigp -- "beneficiary = PDA do vault" --> Svault
-        Sgov -- "owner (CPI assinada pela PDA)" --> Sigp
+        Smb["Mailbox<br/>ProcessedMessage without executor"]
+        Sigp["IGP<br/>(oracle INSIDE the Igp)"]
+        Swarp["synthetic Warp"]
+        Svault["🟢 rrv: PDA config = POOL<br/>quorum by EPOCH"]
+        Sgov["🟢 IgpOracleGovernor<br/>two doors · IGP owner"]
+        Sigp -- "beneficiary = vault PDA" --> Svault
+        Sgov -- "owner (CPI signed by the PDA)" --> Sigp
     end
 
-    TCwarp <-. "mensagens Hyperlane<br/>(validators + relayers)" .-> Ewarp
+    TCwarp <-. "Hyperlane messages<br/>(validators + relayers)" .-> Ewarp
     TCwarp <-. " " .-> Swarp
 ```
 
 ---
 
-## 2. O processo Hyperlane completo (com a remuneração acoplada)
+## 2. The complete Hyperlane process (with remuneration attached)
 
-Uma transferência TC → BSC, do dispatch ao saque do relayer — os passos 1–8 são
-o **core inalterado**; 9–11 são a **camada nova**:
+A TC → BSC transfer, from dispatch to the relayer's withdrawal — steps 1–8 are
+the **unchanged core**; 9–11 are the **new layer**:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor U as Usuário
+    actor U as User
     participant WO as Warp Route (TC)
     participant MO as Mailbox (TC)
     participant IO as IGP (TC)
-    participant V as Validators (assinam checkpoints)
-    actor R as Relayer (qualquer um!)
+    participant V as Validators (sign checkpoints)
+    actor R as Relayer (anyone!)
     participant MD as Mailbox (BSC)
     participant ISM as ISM (BSC)
-    participant WD as Warp sintético (BSC)
+    participant WD as synthetic Warp (BSC)
     participant VD as Vault (BSC)
 
     U->>WO: transfer(1000 LUNC, dest=BSC)
-    WO->>IO: quote + payForGas (LUNC do usuário)
-    Note over IO: arrecadação fica no IGP<br/>até alguém puxar p/ o beneficiary
-    WO->>MO: dispatch(mensagem)
-    MO-->>V: novo checkpoint (merkle root)
-    V-->>V: assinam o checkpoint (threshold ex.: 3-de-4)
-    R->>MD: process(metadata, mensagem)
-    MD->>ISM: verify(assinaturas)
-    ISM-->>MD: ✓ válido
-    MD->>WD: handle() → cunha sintético p/ o destinatário
-    Note over MD: Mailbox grava Delivery{processor=R, block}
+    WO->>IO: quote + payForGas (user's LUNC)
+    Note over IO: proceeds stay in the IGP<br/>until someone pulls them to the beneficiary
+    WO->>MO: dispatch(message)
+    MO-->>V: new checkpoint (merkle root)
+    V-->>V: sign the checkpoint (threshold e.g.: 3-of-4)
+    R->>MD: process(metadata, message)
+    MD->>ISM: verify(signatures)
+    ISM-->>MD: ✓ valid
+    MD->>WD: handle() → mints synthetic for the recipient
+    Note over MD: Mailbox writes Delivery{processor=R, block}
     R->>VD: claim([message_id])
-    VD->>MD: processor(id) == R? processedAt+janela ok?
-    VD-->>R: 💰 recompensa em BNB (do pool)
+    VD->>MD: processor(id) == R? processedAt+window ok?
+    VD-->>R: 💰 reward in BNB (from the pool)
 ```
 
-O caminho de volta (BSC → TC) é espelhado: o usuário paga BNB no IGP da BSC, o
-relayer gasta LUNC no `process()` do TC e saca do **Vault do TC** — cada rede
-se sustenta na própria moeda (spec §05).
+The return path (BSC → TC) is mirrored: the user pays BNB in the BSC IGP, the
+relayer spends LUNC in the TC `process()` and withdraws from the **TC Vault** — each network
+sustains itself on its own coin (spec §05).
 
 ---
 
-## 3. Fluxo do dinheiro (autofinanciado por construção)
+## 3. Money flow (self-funded by construction)
 
 ```mermaid
 flowchart LR
-    U1["Usuários que despacham<br/>DA rede X"] -- "payForGas<br/>(moeda de X)" --> IGP["IGP da rede X"]
-    IGP -- "claim()/Sweep<br/>(saldo inteiro)" --> POOL["🟢 Vault da rede X<br/>(pool na moeda de X)"]
-    POOL -- "reward × entregas<br/>comprovadas" --> REL["Relayers que ENTREGARAM<br/>NA rede X"]
-    GOVx["governança/multisig"] -. "WithdrawSurplus /<br/>tarifa / janela" .-> POOL
+    U1["Users that dispatch<br/>FROM network X"] -- "payForGas<br/>(X's coin)" --> IGP["IGP of network X"]
+    IGP -- "claim()/Sweep<br/>(entire balance)" --> POOL["🟢 Vault of network X<br/>(pool in X's coin)"]
+    POOL -- "reward × proven<br/>deliveries" --> REL["Relayers that DELIVERED<br/>ON network X"]
+    GOVx["governance/multisig"] -. "WithdrawSurplus /<br/>fee / window" .-> POOL
     style POOL fill:#0a6b4e,color:#fff
 ```
 
-Sem uso → sem arrecadação, mas também sem trabalho. Tarifa < arrecadação média
-por entrega ⇒ o pool nunca fica insolvente (spec §01/§05).
+No usage → no proceeds, but also no work. Fee < average proceeds
+per delivery ⇒ the pool never becomes insolvent (spec §01/§05).
 
-**v2 (ClaimRemote):** o pool da rede de ORIGEM também paga a taxa da mensagem ao
-operador que a entregou NUMA OUTRA rede — via atestação com quórum (diagrama 4b):
+**v2 (ClaimRemote):** the ORIGIN network's pool also pays the message fee to the
+operator that delivered it ON ANOTHER network — via quorum attestation (diagram 4b):
 
 ```mermaid
 flowchart LR
-    U2["Usuário despacha<br/>DE X para Y"] -- "taxa (moeda de X)" --> IGPX["IGP de X"] --> POOLX["Vault de X"]
-    RELY["SEU relayer<br/>entrega em Y"] -- "verificada pelo<br/>claim-agent" --> ATT["AttestRemoteDelivery<br/>no Vault de X"]
-    ATT -- "vínculo + quórum +<br/>1x por message_id" --> POOLX
-    POOLX -- "recompensa remota<br/>(≈ taxa de origem)" --> OP["Operador<br/>(endereço em X)"]
+    U2["User dispatches<br/>FROM X to Y"] -- "fee (X's coin)" --> IGPX["IGP of X"] --> POOLX["Vault of X"]
+    RELY["YOUR relayer<br/>delivers on Y"] -- "verified by the<br/>claim-agent" --> ATT["AttestRemoteDelivery<br/>on X's Vault"]
+    ATT -- "binding + quorum +<br/>1x per message_id" --> POOLX
+    POOLX -- "remote reward<br/>(≈ origin fee)" --> OP["Operator<br/>(address on X)"]
     style POOLX fill:#0a6b4e,color:#fff
 ```
 
 ---
 
-## 4. Prova de entrega — os três mecanismos
+## 4. Proof of delivery — the three mechanisms
 
 ```mermaid
 flowchart TB
-    subgraph P1["TERRA CLASSIC · prova por raw query"]
-        A1["Relayer chama Vault::Claim{ids}"] --> B1["raw query: chave<br/>[0x00,0x0A]+'deliveries'+id"]
-        B1 --> C1{"valor parseia<br/>{sender, block_number}?"}
-        C1 -- "não" --> D1["⛔ MailboxLayoutMismatch<br/>(migrate detectado — nunca paga errado)"]
-        C1 -- "sim" --> E1{"sender == relayer?<br/>dentro da janela?<br/>não pago ainda?"}
-        E1 -- "sim (TODOS os ids)" --> F1["💰 BankMsg (lote atômico)"]
-        E1 -- "não" --> G1["⛔ reverte o LOTE inteiro"]
+    subgraph P1["TERRA CLASSIC · proof by raw query"]
+        A1["Relayer calls Vault::Claim{ids}"] --> B1["raw query: key<br/>[0x00,0x0A]+'deliveries'+id"]
+        B1 --> C1{"value parses<br/>{sender, block_number}?"}
+        C1 -- "no" --> D1["⛔ MailboxLayoutMismatch<br/>(migrate detected — never pays wrong)"]
+        C1 -- "yes" --> E1{"sender == relayer?<br/>within the window?<br/>not paid yet?"}
+        E1 -- "yes (ALL ids)" --> F1["💰 BankMsg (atomic batch)"]
+        E1 -- "no" --> G1["⛔ reverts the WHOLE BATCH"]
     end
 
-    subgraph P2["BSC/ETHEREUM · prova direta"]
-        A2["claim(ids)"] --> B2["mailbox.processor(id) == msg.sender?<br/>processedAt(id)+janela ≥ bloco?"]
-        B2 -- sim --> C2["💰 transfer nativo (atômico, reentrancy-guard)"]
+    subgraph P2["BSC/ETHEREUM · direct proof"]
+        A2["claim(ids)"] --> B2["mailbox.processor(id) == msg.sender?<br/>processedAt(id)+window ≥ block?"]
+        B2 -- yes --> C2["💰 native transfer (atomic, reentrancy-guard)"]
     end
 
-    subgraph P4["QUALQUER ORIGEM · v2 ClaimRemote (atestação de entrega REMOTA)"]
-        A4["claim-agent verifica a entrega<br/>na chain de DESTINO"] --> B4["AttestRemoteDelivery{domínio, ids}<br/>no vault da chain de ORIGEM"]
-        B4 --> C4{"atestador registrado?<br/>vínculo (operador,domínio)?<br/>id nunca pago?"}
-        C4 -- sim --> D4{"atestações CONCORDANTES<br/>≥ quórum?"}
-        D4 -- sim --> E4["💰 recompensa fixa do domínio<br/>ao operador vinculado (1x por id)"]
-        D4 -- "ainda não" --> F4["atestação registrada,<br/>aguarda quórum (auditável)"]
-        C4 -- não --> G4["⛔ reverte"]
+    subgraph P4["ANY ORIGIN · v2 ClaimRemote (REMOTE delivery attestation)"]
+        A4["claim-agent verifies the delivery<br/>on the DESTINATION chain"] --> B4["AttestRemoteDelivery{domain, ids}<br/>on the ORIGIN chain's vault"]
+        B4 --> C4{"attester registered?<br/>binding (operator,domain)?<br/>id never paid?"}
+        C4 -- yes --> D4{"AGREEING attestations<br/>≥ quorum?"}
+        D4 -- yes --> E4["💰 fixed reward for the domain<br/>to the bound operator (1x per id)"]
+        D4 -- "not yet" --> F4["attestation recorded,<br/>awaits quorum (auditable)"]
+        C4 -- no --> G4["⛔ reverts"]
     end
 
-    subgraph P3["SOLANA · quórum por época (a chain não registra o executor)"]
-        A3["Época de 6h fecha<br/>(+ folga de finalidade)"] --> B3["cada operador submete o relatório:<br/>janela + créditos ORDENADOS por chave"]
-        B3 --> C3{"hashes idênticos<br/>≥ quórum?"}
-        C3 -- sim --> D3["créditos atribuídos por operador<br/>(PDA OperatorCredit)"]
-        C3 -- "divergência" --> E3["🚨 época travada — alarme,<br/>auditoria pública dos relatórios"]
-        D3 --> F3["Withdraw: débito de lamports<br/>do pool (respeita rent-exempt)"]
+    subgraph P3["SOLANA · quorum by epoch (the chain does not record the executor)"]
+        A3["6h epoch closes<br/>(+ finality slack)"] --> B3["each operator submits the report:<br/>window + credits ORDERED by key"]
+        B3 --> C3{"identical hashes<br/>≥ quorum?"}
+        C3 -- yes --> D3["credits assigned per operator<br/>(PDA OperatorCredit)"]
+        C3 -- "divergence" --> E3["🚨 epoch locked — alarm,<br/>public audit of the reports"]
+        D3 --> F3["Withdraw: lamports debit<br/>from the pool (respects rent-exempt)"]
     end
 ```
 
 ---
 
-## 5. Organograma de governança (spec §04)
+## 5. Governance org chart (spec §04)
 
-Três esferas com escopos que não se sobrepõem — o operacional com quem opera, o
-estrutural com quem tem mandato:
+Three spheres with non-overlapping scopes — the operational with whoever operates, the
+structural with whoever holds a mandate:
 
 ```mermaid
 flowchart TB
-    GOV["🏛️ GOVERNANÇA DO TERRA CLASSIC<br/>proposta on-chain<br/><i>escopo: TUDO dentro do TC —<br/>IGP · ISM · Vault · Oracle · tarifa · faixa</i>"]
-    MS["🔐 MULTISIG (BSC · ETH · SOL)<br/>validadores Hyperlane + signatários EXTERNOS<br/><i>escopo: IGP · ISM · faixa do oracle ·<br/>upgrade authority (Solana) · emergências</i>"]
-    OPS["⚙️ OPERADORES DE RELAYER<br/>quórum on-chain (sem multisig de carteira)<br/><i>escopo: preço DENTRO da faixa · relatórios<br/>de época (SOL) · parâmetros do vault remoto</i>"]
-    ALL["🌐 QUALQUER UM (permissionless)<br/><i>entregar mensagens · sacar a PRÓPRIA<br/>recompensa · Sweep · auditar tudo</i>"]
+    GOV["🏛️ TERRA CLASSIC GOVERNANCE<br/>on-chain proposal<br/><i>scope: EVERYTHING within TC —<br/>IGP · ISM · Vault · Oracle · fee · bounds</i>"]
+    MS["🔐 MULTISIG (BSC · ETH · SOL)<br/>Hyperlane validators + EXTERNAL signers<br/><i>scope: IGP · ISM · oracle bounds ·<br/>upgrade authority (Solana) · emergencies</i>"]
+    OPS["⚙️ RELAYER OPERATORS<br/>on-chain quorum (no wallet multisig)<br/><i>scope: price WITHIN the bounds · epoch<br/>reports (SOL) · remote vault parameters</i>"]
+    ALL["🌐 ANYONE (permissionless)<br/><i>deliver messages · withdraw one's OWN<br/>reward · Sweep · audit everything</i>"]
 
-    GOV -- "dá mandato por<br/>proposta aprovada" --> MS
-    MS -- "define faixa e travas<br/>(nunca os operadores)" --> OPS
+    GOV -- "grants mandate via<br/>approved proposal" --> MS
+    MS -- "defines bounds and locks<br/>(never the operators)" --> OPS
     OPS -.-> ALL
     style GOV fill:#B58CFF,color:#000
     style MS fill:#F0B90B,color:#000
     style OPS fill:#3FD0C9,color:#000
 ```
 
-> ⚠️ O risco nº 1 do projeto mora aqui: quem controla o **ISM do Warp remoto**
-> tem acesso indireto ao colateral do TC (cunhar sintético sem lastro → queimar
-> → mensagem legítima libera colateral). Por isso o multisig **nunca** pode ser
-> composto só pelos validadores que assinam checkpoints, e a troca de ISM pede
+> ⚠️ The project's #1 risk lives here: whoever controls the **remote Warp's ISM**
+> has indirect access to the TC collateral (mint synthetic without backing → burn
+> → legitimate message releases collateral). That is why the multisig can **never** be
+> composed only of the validators that sign checkpoints, and the ISM swap requires a
 > timelock (spec §12).
 
 ---
 
-### 5b. ClaimRemote — quem controla o quê (v2)
+### 5b. ClaimRemote — who controls what (v2)
 
 ```mermaid
 flowchart TB
-    OWN["Owner do vault<br/>(hoje deployer · depois governança/multisig)"]
-    OWN -->|SetRemoteOperators| ATT["Atestadores + quórum<br/>(hoje: 1 operador, quórum 1)"]
-    OWN -->|SetRemoteBinding| BIND["Vínculos de identidade<br/>operador ↔ endereço em cada chain"]
-    OWN -->|SetRemoteReward| RW["Recompensa fixa por domínio<br/>(≈ taxa média de origem)"]
-    ATT -->|AttestRemoteDelivery| PAY["Pagamento 1x por message_id<br/>(effects-first, auditável)"]
+    OWN["Vault owner<br/>(today deployer · later governance/multisig)"]
+    OWN -->|SetRemoteOperators| ATT["Attesters + quorum<br/>(today: 1 operator, quorum 1)"]
+    OWN -->|SetRemoteBinding| BIND["Identity bindings<br/>operator ↔ address on each chain"]
+    OWN -->|SetRemoteReward| RW["Fixed reward per domain<br/>(≈ average origin fee)"]
+    ATT -->|AttestRemoteDelivery| PAY["Payment 1x per message_id<br/>(effects-first, auditable)"]
     BIND --> PAY
     RW --> PAY
-    NOTE["⚠️ com 1 operador o quórum 1 é auto-atestação<br/>(fase de teste) — subir p/ ≥2 com operadores independentes"]
+    NOTE["⚠️ with 1 operator, quorum 1 is self-attestation<br/>(test phase) — raise to ≥2 with independent operators"]
     ATT -.-> NOTE
 ```
 
-## 6. Oracle de preço — o mesmo padrão nas 4 redes
+## 6. Price oracle — the same pattern across the 4 networks
 
 ```mermaid
 flowchart LR
-    subgraph DEFINE["governança (TC) / multisig (remotas)"]
-        FX["faixa [min,max] por domínio<br/>+ variação máx (bps)<br/>+ token_decimals (SOL)"]
+    subgraph DEFINE["governance (TC) / multisig (remotes)"]
+        FX["bounds [min,max] per domain<br/>+ max variation (bps)<br/>+ token_decimals (SOL)"]
     end
-    subgraph OPS["operadores (cada um com seu oracle-agent)"]
-        OA["agente A"] & OB["agente B"] & OC["agente C"]
+    subgraph OPS["operators (each with its oracle-agent)"]
+        OA["agent A"] & OB["agent B"] & OC["agent C"]
     end
-    G["🟢 GOVERNOR<br/>mediana (menor dos centrais)<br/>na faixa? Δ < limite?<br/>1 aplicação por época"]
-    ORC["oracle da rede<br/>(StorageGasOracle / gas_oracles do Igp)"]
-    QUOTE["quotes do IGP<br/>(o que o usuário paga)"]
+    G["🟢 GOVERNOR<br/>median (lower of the central ones)<br/>within bounds? Δ < limit?<br/>1 application per epoch"]
+    ORC["network oracle<br/>(StorageGasOracle / Igp's gas_oracles)"]
+    QUOTE["IGP quotes<br/>(what the user pays)"]
 
-    FX -- "trava on-chain" --> G
-    OA & OB & OC -- "SubmitPrice<br/>(observação independente)" --> G
+    FX -- "on-chain lock" --> G
+    OA & OB & OC -- "SubmitPrice<br/>(independent observation)" --> G
     G -- "CPI / setRemoteGasData" --> ORC --> QUOTE
-    DEFINE -. "EMERGÊNCIA: escrita direta<br/>+ devolução da posse" .-> ORC
+    DEFINE -. "EMERGENCY: direct write<br/>+ return of ownership" .-> ORC
     style G fill:#0a6b4e,color:#fff
 ```
 
-O conflito de interesse (operadores controlam o preço que financia a própria
-remuneração) é neutralizado porque a **faixa é definida por quem não opera**.
+The conflict of interest (operators control the price that funds their own
+remuneration) is neutralized because the **bounds are defined by whoever does not operate**.
 
 ---
 
-## 7. Solana — as duas portas do IgpOracleGovernor
+## 7. Solana — the two doors of the IgpOracleGovernor
 
-Em Solana o oracle vive DENTRO do `Igp` e só o owner escreve — o governor vira
-o owner e reconstrói a separação de poderes:
+On Solana the oracle lives INSIDE the `Igp` and only the owner writes — the governor becomes
+the owner and rebuilds the separation of powers:
 
 ```mermaid
 flowchart TB
-    subgraph GOVSOL["🟢 IgpOracleGovernor (owner do Igp via config PDA)"]
-        P1["PORTA 1 · operadores<br/>SubmitPrice → quórum → mediana<br/>→ faixa/delta → CPI"]
-        P2["PORTA 2 · multisig (1 assinatura)<br/>SetDomainConfig (faixa+decimals)<br/>SetIgpBeneficiary<br/>ForceSetGasData<br/><b>TransferIgpOwnership ← saída de emergência</b>"]
+    subgraph GOVSOL["🟢 IgpOracleGovernor (Igp owner via config PDA)"]
+        P1["DOOR 1 · operators<br/>SubmitPrice → quorum → median<br/>→ bounds/delta → CPI"]
+        P2["DOOR 2 · multisig (1 signature)<br/>SetDomainConfig (bounds+decimals)<br/>SetIgpBeneficiary<br/>ForceSetGasData<br/><b>TransferIgpOwnership ← emergency exit</b>"]
     end
     IGPS["Igp { owner, beneficiary, gas_oracles }"]
-    P1 -- "SetGasOracleConfigs<br/>(assinada pela config PDA)" --> IGPS
-    P2 -- "CPIs administrativas" --> IGPS
+    P1 -- "SetGasOracleConfigs<br/>(signed by the config PDA)" --> IGPS
+    P2 -- "administrative CPIs" --> IGPS
     MS2["multisig"] --> P2
-    MS2 -- "upgrade authority<br/>do programa" --> GOVSOL
+    MS2 -- "program's upgrade<br/>authority" --> GOVSOL
 ```
 
-A separação passa a ser **lógica** (código do governor), não criptográfica —
-por isso as três obrigações da spec §08: `TransferIgpOwnership` testada antes
-do deploy (✅ testada em `svm/.../tests`), lamports mantidos na config PDA, e
-upgrade authority no multisig.
+The separation becomes **logical** (governor code), not cryptographic —
+which is why the three obligations of spec §08: `TransferIgpOwnership` tested before
+the deploy (✅ tested in `svm/.../tests`), lamports kept in the config PDA, and
+upgrade authority in the multisig.

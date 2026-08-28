@@ -1,150 +1,150 @@
-# Parâmetros de partida — proposta baseada em custos reais
+# Starting parameters — proposal based on real costs
 
-Valores sugeridos para a proposta de governança, ancorados em medições de
-18/08/2026. **Tudo aqui é ponto de partida ajustável** — a governança (TC) e o
-multisig (remotas) podem recalibrar depois; o delta/faixa do oracle e a tarifa
-do vault são atualizáveis sem redeploy.
+Suggested values for the governance proposal, anchored in measurements from
+2026-08-18. **Everything here is an adjustable starting point** — governance (TC) and the
+multisig (remotes) can recalibrate later; the oracle's delta/bounds and the vault
+fee are updatable without a redeploy.
 
-## 0. Evidências usadas (18/08/2026)
+## 0. Evidence used (2026-08-18)
 
-| Medição | Valor | Fonte |
+| Measurement | Value | Source |
 |---|---|---|
-| `process()` real no TC | **gas_used 508.260 · gas_wanted 655.344** | tx `4126C514…` bloco 29422362 (mainnet) |
-| Preço mínimo de gás TC | **28,325 uluna/gas** (outra tx do mesmo bloco: 28,5) | RPC tx_search |
-| Gas price BSC | 0,05 gwei | eth_gasPrice publicnode |
-| Gas price Ethereum | ~0,22 gwei (histórico 0,2–5) | eth_gasPrice publicnode |
-| Rent da PDA `ProcessedMessage` (SOL) | (128+56)×3480×2 ≈ **1.280.640 lamports** ≈ 0,00128 SOL | fórmula de rent + size 56 |
-| Preços USD | LUNC 0,00004739 · BNB 602,81 · ETH 1.912,92 · SOL 76,84 | CoinGecko (dry-run do oracle-agent) |
+| Real `process()` on TC | **gas_used 508,260 · gas_wanted 655,344** | tx `4126C514…` block 29422362 (mainnet) |
+| Minimum gas price on TC | **28.325 uluna/gas** (another tx in the same block: 28.5) | RPC tx_search |
+| Gas price BSC | 0.05 gwei | eth_gasPrice publicnode |
+| Gas price Ethereum | ~0.22 gwei (historical 0.2–5) | eth_gasPrice publicnode |
+| Rent of the `ProcessedMessage` PDA (SOL) | (128+56)×3480×2 ≈ **1,280,640 lamports** ≈ 0.00128 SOL | rent formula + size 56 |
+| USD prices | LUNC 0.00004739 · BNB 602.81 · ETH 1,912.92 · SOL 76.84 | CoinGecko (oracle-agent dry-run) |
 
-> ⚠️ **BUG ENCONTRADO NO RELAYER ATUAL:** a tx real de `process()` pagou
-> **28.325 uluna/gas** (mil vezes o mínimo de 28,325) — fee de 18.562 LUNC
-> (~US$ 0,88) numa entrega que custaria ~18,6 LUNC (~US$ 0,0009). Quase
-> certamente `gasPrice: "28325uluna"` em vez de `"28.325uluna"` na config do
-> relayer. **Corrigir antes de qualquer cálculo de sustentabilidade.**
+> ⚠️ **BUG FOUND IN THE CURRENT RELAYER:** the real `process()` tx paid
+> **28,325 uluna/gas** (a thousand times the minimum of 28.325) — a fee of 18,562 LUNC
+> (~US$ 0.88) on a delivery that should cost ~18.6 LUNC (~US$ 0.0009). Almost
+> certainly `gasPrice: "28325uluna"` instead of `"28.325uluna"` in the relayer
+> config. **Fix before any sustainability calculation.**
 
-## 1. Custo real por entrega (com o gás correto)
+## 1. Real cost per delivery (with the correct gas)
 
-| Rede | Cálculo | Custo | ≈ USD |
+| Network | Calculation | Cost | ≈ USD |
 |---|---|---|---|
-| Terra Classic | 655.344 gas × 28,325 uluna | ~18,6 LUNC | $0,0009 |
-| BSC | ~300.000 gas × 0,05 gwei | 0,000015 BNB | $0,009 |
-| Ethereum | ~300.000 gas × 0,22–1 gwei | 0,000067–0,0003 ETH | $0,13–0,57 |
-| Solana | rent 1.280.640 + fee ~25.000 lamports | ~0,0013 SOL | $0,10 |
+| Terra Classic | 655,344 gas × 28.325 uluna | ~18.6 LUNC | $0.0009 |
+| BSC | ~300,000 gas × 0.05 gwei | 0.000015 BNB | $0.009 |
+| Ethereum | ~300,000 gas × 0.22–1 gwei | 0.000067–0.0003 ETH | $0.13–0.57 |
+| Solana | rent 1,280,640 + fee ~25,000 lamports | ~0.0013 SOL | $0.10 |
 
-## 2. Tarifa por entrega (`reward_per_delivery`) — ~2–3× o custo
+## 2. Fee per delivery (`reward_per_delivery`) — ~2–3× the cost
 
-| Rede | Proposta | Em unidades mínimas | ≈ USD | Margem |
+| Network | Proposal | In minimum units | ≈ USD | Margin |
 |---|---|---|---|---|
-| Terra Classic | **50 LUNC** | `50000000` uluna | $0,0024 | 2,7× |
-| BSC | **0,00005 BNB** | `50000000000000` wei | $0,030 | 3,3× |
-| Ethereum | **0,0004 ETH** | `400000000000000` wei | $0,77 | cobre até ~1,3 gwei |
-| Solana | **0,003 SOL** | `3000000` lamports | $0,23 | 2,3× |
+| Terra Classic | **50 LUNC** | `50000000` uluna | $0.0024 | 2.7× |
+| BSC | **0.00005 BNB** | `50000000000000` wei | $0.030 | 3.3× |
+| Ethereum | **0.0004 ETH** | `400000000000000` wei | $0.77 | covers up to ~1.3 gwei |
+| Solana | **0.003 SOL** | `3000000` lamports | $0.23 | 2.3× |
 
-Invariante de solvência: tarifa < arrecadação média do IGP por mensagem.
-Monitorar com `Solvency`/`claimsPayable` vs backlog; ajustar por
-governança/quórum se o pool drenar.
+Solvency invariant: fee < average IGP collection per message.
+Monitor with `Solvency`/`claimsPayable` vs backlog; adjust via
+governance/quorum if the pool drains.
 
-## 3. Janela de resgate (`claim_window_blocks`) — alvo ~14 dias
+## 3. Claim window (`claim_window_blocks`) — target ~14 days
 
-| Rede | Bloco médio | Proposta |
+| Network | Average block | Proposal |
 |---|---|---|
-| Terra Classic | ~6 s | **200.000** |
-| BSC | ~0,75 s (pós-Maxwell — **confirmar**) | **1.600.000** |
-| Ethereum | 12 s | **100.800** |
-| Solana | n/a — créditos por época não expiram | — |
+| Terra Classic | ~6 s | **200,000** |
+| BSC | ~0.75 s (post-Maxwell — **confirm**) | **1,600,000** |
+| Ethereum | 12 s | **100,800** |
+| Solana | n/a — per-epoch credits do not expire | — |
 
-## 4. Oracle — época, delta e faixas por domínio
+## 4. Oracle — epoch, delta, and bounds per domain
 
-- `epoch_duration_secs` = **21.600** (6h) · `max_delta_bps` = **2.000** (20%)
-- Faixas: **min = vigente ÷ 3 · max = vigente × 3** — e o "vigente" é LIDO DO
-  ORACLE EM PRODUÇÃO pelo próprio script NO MOMENTO do deploy (nada de valor
-  fixo: doc envelhece, a chain não). As tabelas abaixo são apenas o RETRATO de
-  18/08/2026 para referência/auditoria. Delta de 20%/época limita a deriva.
+- `epoch_duration_secs` = **21,600** (6h) · `max_delta_bps` = **2,000** (20%)
+- Bounds: **min = current ÷ 3 · max = current × 3** — and "current" is READ FROM
+  THE PRODUCTION ORACLE by the script itself AT THE MOMENT of the deploy (no fixed
+  value: the doc ages, the chain does not). The tables below are only the SNAPSHOT
+  of 2026-08-18 for reference/audit. A 20%/epoch delta limits the drift.
 
-### No Terra Classic — CONVENÇÃO REAL do cw-hyperlane (medida on-chain 18/08)
+### On Terra Classic — REAL CONVENTION of cw-hyperlane (measured on-chain 08-18)
 
-Fórmula da IDA (guia oficial do deploy TC): `fee_uluna = gas × gas_price_destino ×
-exchange_rate / 1e12`, com `exchange_rate = (LUNC_USD / NATIVO_USD) × 1e12` —
-é a razão **local/remoto** (inversa da canônica!). Faixas = vigentes ÷3/×3:
+The IDA formula (official TC deploy guide): `fee_uluna = gas × gas_price_destination ×
+exchange_rate / 1e12`, with `exchange_rate = (LUNC_USD / NATIVE_USD) × 1e12` —
+it is the **local/remote** ratio (inverse of the canonical one!). Bounds = current ÷3/×3:
 
-| Domínio | vigente (rate · gas) | faixa rate | faixa gas_price |
+| Domain | current (rate · gas) | rate bounds | gas_price bounds |
 |---|---|---|---|
-| 1 (Ethereum) | 376 · 1e10 (10 gwei) | [125 · 1.128] | [3,33e9 · 3e10] wei |
-| 56 (BSC) | 1.098 · 3e9 (3 gwei) | [366 · 3.294] | [1e9 · 9e9] wei |
-| 1399811149 (Solana) | 383.001.553.014 · 1 (modelo lamport) | [1,28e11 · 1,15e12] | [1 · 10] |
+| 1 (Ethereum) | 376 · 1e10 (10 gwei) | [125 · 1,128] | [3.33e9 · 3e10] wei |
+| 56 (BSC) | 1,098 · 3e9 (3 gwei) | [366 · 3,294] | [1e9 · 9e9] wei |
+| 1399811149 (Solana) | 383,001,553,014 · 1 (lamport model) | [1.28e11 · 1.15e12] | [1 · 10] |
 
-### Nas remotas (domínio 132556 = Terra Classic) — CONVENÇÃO REAL (medida on-chain 18/08)
+### On the remotes (domain 132556 = Terra Classic) — REAL CONVENTION (measured on-chain 08-18)
 
-⚠️ Os IGPs remotos são CUSTOM (`TerraClassicIGPStandalone` + `TerraClassicOracle`
-no EVM; overhead-IGP na Solana) com calibração própria validada em produção
-(`tc-cw-hyperlane/terraclassic/doc/WARP-GAS-CONFIG.md`). As faixas ancoram os
-VALORES VIGENTES (÷3 · ×3) — não a convenção teórica:
+⚠️ The remote IGPs are CUSTOM (`TerraClassicIGPStandalone` + `TerraClassicOracle`
+on EVM; overhead-IGP on Solana) with their own calibration validated in production
+(`tc-cw-hyperlane/terraclassic/doc/WARP-GAS-CONFIG.md`). The bounds anchor the
+CURRENT VALUES (÷3 · ×3) — not the theoretical convention:
 
-| Chain local | valores vigentes (rate · gas) | faixa rate | faixa gas_price |
+| Local chain | current values (rate · gas) | rate bounds | gas_price bounds |
 |---|---|---|---|
-| BSC | 9.047.190 · 1e10 | [3.015.730 · 27.141.570] | [3,33e9 · 3e10] |
-| Ethereum | 26.585.078 · 1e10 | [8.861.692 · 79.755.234] | [3,33e9 · 3e10] |
-| Solana (scale 1e19 + 10^(9−decimals)) | 2,94e10 · 28.325 · decimals 6 · overhead 3e6 | [9,8e9 · 8,82e10] | [9.442 · 84.975] |
+| BSC | 9,047,190 · 1e10 | [3,015,730 · 27,141,570] | [3.33e9 · 3e10] |
+| Ethereum | 26,585,078 · 1e10 | [8,861,692 · 79,755,234] | [3.33e9 · 3e10] |
+| Solana (scale 1e19 + 10^(9−decimals)) | 2.94e10 · 28,325 · decimals 6 · overhead 3e6 | [9.8e9 · 8.82e10] | [9,442 · 84,975] |
 
-Fórmulas validadas: EVM `wei=(gas+overhead)×gasPrice×rate/1e10` · Solana
+Validated formulas: EVM `wei=(gas+overhead)×gasPrice×rate/1e10` · Solana
 `lamports=(gas+overhead)×gasPrice×rate/1e19×10^(9−decimals)`.
-Oracle EVM: `setRemoteGasData(uint32,uint128,uint128)` FLAT (selector 0x666af432)
-— o GasOracleGovernor.sol usa esta assinatura. TODO: recalibrar a fórmula EVM/SOL
-do oracle-agent para a convenção por alvo (hoje ele calcula na convenção canônica).
+EVM oracle: `setRemoteGasData(uint32,uint128,uint128)` FLAT (selector 0x666af432)
+— GasOracleGovernor.sol uses this signature. TODO: recalibrate the EVM/SOL
+formula of the oracle-agent to the per-target convention (today it computes in the canonical convention).
 
-## 5. Operadores, quórum e época de entregas (Solana)
+## 5. Operators, quorum, and delivery epoch (Solana)
 
-- Partida: **2 operadores, quórum 2-de-2** (os dois agentes atuais) —
-  funcional, mas sem tolerância a queda; **meta imediata: 3 operadores,
-  quórum 2-de-3** (spec §12: sistema aberto, o 3º entra sem pedir licença).
-- Épocas de entrega (Solana): 6h + folga de finalidade de **32 slots (~13s)**
-  antes de fechar o relatório; janela de slots no relatório = a época em slots.
+- Start: **2 operators, quorum 2-of-2** (the two current agents) —
+  functional, but with no tolerance for an outage; **immediate goal: 3 operators,
+  quorum 2-of-3** (spec §12: open system, the 3rd joins without asking permission).
+- Delivery epochs (Solana): 6h + a finality slack of **32 slots (~13s)**
+  before closing the report; slot window in the report = the epoch in slots.
 
-## 6. Multisig e ISM (remotas) — MODELO APROVADO PELA GOVERNANÇA
+## 6. Multisig and ISM (remotes) — MODEL APPROVED BY GOVERNANCE
 
-- **Composição aprovada**: multisig dos validadores Hyperlane — **3 validadores
-  que validam o TC + 1 signatário que NÃO valida** (4 membros). É essa conta
-  multiassinatura que recebe o owner do Vault/Governor/IGP/ISM nas remotas ao
-  fim da implantação (até lá, owner = deployer).
-- **Sobre o threshold** (decisão em aberto dentro do modelo aprovado):
-  - `3-de-4`: tolera 1 ausente, MAS os 3 validadores sozinhos atingem o
-    threshold — o alerta da spec §12 (quem valida checkpoints controlando o ISM
-    tem acesso indireto ao colateral) fica mitigado só parcialmente;
-  - `4-de-4`: exige o não-validador sempre (neutraliza conluio), porém sem
-    tolerância a falha — 1 chave perdida trava tudo;
-  - Evolução recomendada: adicionar um **2º não-validador** (3 val + 2 ext,
-    threshold **4-de-5**) — validadores sozinhos não agem E tolera 1 ausente.
-- ISM **3-de-4** com os 4 validators (tolera 1 offline; forjar exige 3).
-- Timelock de **48h** para troca de ISM (executável no texto da proposta).
+- **Approved composition**: multisig of the Hyperlane validators — **3 validators
+  that validate TC + 1 signer that does NOT validate** (4 members). It is this
+  multi-signature account that receives ownership of the Vault/Governor/IGP/ISM on the
+  remotes at the end of the deployment (until then, owner = deployer).
+- **On the threshold** (decision open within the approved model):
+  - `3-of-4`: tolerates 1 absentee, BUT the 3 validators alone reach the
+    threshold — the spec §12 alert (whoever validates checkpoints controlling the ISM
+    has indirect access to the collateral) is only partially mitigated;
+  - `4-of-4`: always requires the non-validator (neutralizes collusion), but with no
+    fault tolerance — 1 lost key blocks everything;
+  - Recommended evolution: add a **2nd non-validator** (3 val + 2 ext,
+    threshold **4-of-5**) — validators alone cannot act AND it tolerates 1 absentee.
+- ISM **3-of-4** with the 4 validators (tolerates 1 offline; forging requires 3).
+- **48h** timelock to change the ISM (executable in the proposal text).
 
-## 7. Semente dos pools
+## 7. Seeding of the pools
 
-Pool inicial = **100× a tarifa** por rede (cobre o primeiro ciclo antes de o
-Sweep/claim do IGP alimentar): TC 5.000 LUNC (~$0,24) · BSC 0,005 BNB (~$3) ·
-ETH 0,04 ETH (~$77) · SOL 0,3 SOL (~$23).
+Initial pool = **100× the fee** per network (covers the first cycle before the
+IGP Sweep/claim feeds it): TC 5,000 LUNC (~$0.24) · BSC 0.005 BNB (~$3) ·
+ETH 0.04 ETH (~$77) · SOL 0.3 SOL (~$23).
 
-## 8. Checklist de HANDOFF (fim da implantação — nada pode ficar de fora)
+## 8. HANDOFF checklist (end of deployment — nothing can be left out)
 
-Hoje `terra1run9wz…26mawp` é owner E admin de tudo (verificado on-chain em
-18/08/2026). Ao final da implantação, transferir:
+Today `terra1run9wz…26mawp` is owner AND admin of everything (verified on-chain on
+2026-08-18). At the end of the deployment, transfer:
 
-### Terra Classic → módulo de governança (`terra10d07y265gmmuvt4z0w9aw880jnsr700juxf95n` — confirmado no guia oficial do deploy)
-- [ ] `owner` do Mailbox, ISM multisig, IGP e IGP-oracle (Ownable, 2 passos:
-      init pelo deployer + claim via proposta)
-- [ ] `owner` do relayer-reward-vault e do oracle-governor (UpdateConfig/SetOwner)
-- [ ] **`admin` (migrate) de TODOS os contratos** → gov ou `--no-admin`
-      (o admin é o que permite migrate silencioso — não esquecer!)
-- [ ] posse do StorageGasOracle já deve estar no oracle-governor (Fase 1)
+### Terra Classic → governance module (`terra10d07y265gmmuvt4z0w9aw880jnsr700juxf95n` — confirmed in the official deploy guide)
+- [ ] `owner` of the Mailbox, multisig ISM, IGP, and IGP-oracle (Ownable, 2 steps:
+      init by the deployer + claim via proposal)
+- [ ] `owner` of the relayer-reward-vault and the oracle-governor (UpdateConfig/SetOwner)
+- [ ] **`admin` (migrate) of ALL contracts** → gov or `--no-admin`
+      (the admin is what allows a silent migrate — do not forget!)
+- [ ] ownership of the StorageGasOracle should already be on the oracle-governor (Phase 1)
 
-### BSC / Ethereum → multisig dos validadores (3 val do TC + 1 não-validador — modelo aprovado; threshold: ver §6)
-- [ ] `owner` do Vault e do GasOracleGovernor (2 passos: transferOwnership + acceptOwnership)
-- [ ] `owner` do IGP, do ISM e do StorageGasOracle→governor
-- [ ] proxy admin / upgrade rights dos contratos Hyperlane, se upgradeable
+### BSC / Ethereum → validators' multisig (3 TC validators + 1 non-validator — approved model; threshold: see §6)
+- [ ] `owner` of the Vault and the GasOracleGovernor (2 steps: transferOwnership + acceptOwnership)
+- [ ] `owner` of the IGP, the ISM, and the StorageGasOracle→governor
+- [ ] proxy admin / upgrade rights of the Hyperlane contracts, if upgradeable
 
 ### Solana → multisig
-- [ ] `TransferIgpOwnership` → config PDA do governor (com teste em devnet antes)
-- [ ] **upgrade authority dos programas** rrv e igp-oracle-governor → multisig
-- [ ] multisig do governor (`SetMultisig`) apontando para a conta multiassinatura real
+- [ ] `TransferIgpOwnership` → the governor's config PDA (with a test on devnet first)
+- [ ] **upgrade authority of the rrv and igp-oracle-governor programs** → multisig
+- [ ] governor multisig (`SetMultisig`) pointing to the real multi-signature account
 
 
-A proposta de governança final = este handoff + os parâmetros das seções 2–7.
+The final governance proposal = this handoff + the parameters from sections 2–7.

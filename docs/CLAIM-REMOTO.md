@@ -1,161 +1,168 @@
-# ClaimRemote (Vault v2) — como as 4 chains se amarram
+# ClaimRemote (Vault v2) — how the 4 chains tie together
 
-**Para quem opera relayer em TC + BSC + ETH + Solana.** A v2 faz o vault do TC
-pagar, em LUNC, as entregas que os SEUS endereços fizeram nas chains remotas —
-usando o fato de que **o message_id é o mesmo nas duas pontas** de cada mensagem.
+**For those who operate a relayer on TC + BSC + ETH + Solana.** v2 makes the TC
+vault pay, in LUNC, for the deliveries that YOUR addresses made on the remote
+chains — using the fact that **the message_id is the same on both ends** of each
+message.
 
-## 1. A amarração (o mapa de identidade)
+## 1. The binding (the identity map)
 
-Um único operador possui endereços diferentes em cada chain. O vault do TC
-guarda esse mapa (`SetRemoteBinding`, editável só pelo owner — depois, governança):
+A single operator owns different addresses on each chain. The TC vault keeps this
+map (`SetRemoteBinding`, editable only by the owner — later, governance):
 
 ```
-                         VAULT v2 no Terra Classic
+                         VAULT v2 on Terra Classic
                 terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q
                                      │
-     operador terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp (você)
-                                     │ vínculos por domínio:
+     operator terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp (you)
+                                     │ bindings per domain:
         ┌────────────────────────────┼─────────────────────────────┐
         ▼                            ▼                             ▼
   domain 56 (BSC)             domain 1 (ETH)            domain 1399811149 (Solana)
   0x8f085bad…5291             0xef818120…00ae           PbEo7Fn2…cwwrkS
-  (relayer BSC)               (relayer ETH)             (relayer Solana)
+  (BSC relayer)               (ETH relayer)             (Solana relayer)
 ```
 
-## 2. O ciclo completo de uma mensagem TC → remota
+## 2. The full cycle of a TC → remote message
 
 ```
-1. usuário envia IGORFAKE do TC p/ BSC
-   └─ paga a taxa em LUNC → IGP → (Sweep automático) → POOL do vault
-2. SEU relayer BSC (0x8f08…) executa o process() no Mailbox da BSC
-   └─ o message_id da entrega = o MESMO do dispatch no TC
-3. o claim-agent (off-chain, na VPS) VERIFICA a entrega na BSC
-   └─ evento ProcessId no Mailbox + mailbox.processor(id) == 0x8f08…
-4. o claim-agent ATESTA no vault do TC:
+1. user sends IGORFAKE from TC to BSC
+   └─ pays the fee in LUNC → IGP → (automatic Sweep) → vault POOL
+2. YOUR BSC relayer (0x8f08…) executes process() on the BSC Mailbox
+   └─ the delivery's message_id = the SAME as the dispatch on TC
+3. the claim-agent (off-chain, on the VPS) VERIFIES the delivery on BSC
+   └─ ProcessId event on the Mailbox + mailbox.processor(id) == 0x8f08…
+4. the claim-agent ATTESTS on the TC vault:
    AttestRemoteDelivery { domain: 56, message_ids: [id] }
-5. o vault confere: atestador registrado ✓ · vínculo (você, 56) = 0x8f08… ✓
-   · id nunca pago ✓ · quórum atingido ✓ → PAGA a recompensa do domínio
-   em LUNC para terra1run9wz…  ←  a taxa de origem voltou para o operador
+5. the vault checks: registered attestor ✓ · binding (you, 56) = 0x8f08… ✓
+   · id never paid ✓ · quorum reached ✓ → PAYS the domain reward
+   in LUNC to terra1run9wz…  ←  the origin fee returned to the operator
 ```
 
-O mesmo vale para ETH e Solana — só muda o domínio e o endereço vinculado.
-(E a entrega NO PRÓPRIO TC continua com o `Claim` clássico, por prova direta.)
+The same applies to ETH and Solana — only the domain and the bound address
+change. (And delivery ON TC ITSELF still uses the classic `Claim`, by direct
+proof.)
 
-## 3. A economia final: UM pagamento por entrega, na chain de ORIGEM
+## 3. The final economics: ONE payment per delivery, on the ORIGIN chain
 
-**Decisão de 19/08 (owner):** a recompensa de DESTINO era a compensação da
-arquitetura antiga (quando a taxa de origem não alcançava o executor). Com a
-v2, pagar nas duas pontas era pagamento DUPLO — então as recompensas de destino
-foram reduzidas a 1 unidade simbólica (1 uluna / 1 wei / 1 lamport; os
-contratos não aceitam zero) e o claim-agent não gasta mais gás com elas
-(`localClaim: false`). O pagamento REAL é único:
+**Decision of 08/19 (owner):** the DESTINATION reward was the compensation of the
+old architecture (when the origin fee did not reach the executor). With v2,
+paying on both ends was DOUBLE payment — so the destination rewards were reduced
+to 1 symbolic unit (1 uluna / 1 wei / 1 lamport; the contracts do not accept
+zero) and the claim-agent no longer spends gas on them (`localClaim: false`). The
+REAL payment is single:
 
-| Origem da mensagem | Executor recebe | Mecanismo |
+| Message origin | Executor receives | Mechanism |
 |---|---|---|
-| TC | 33 LUNC | por id (`AttestRemoteDelivery`) |
-| BSC | ≈ taxa real em BNB | por id (`attestRemoteDelivery`) |
-| ETH | ≈ taxa real em ETH | por id (`attestRemoteDelivery`) |
-| Solana | 499.000 lamports | por época (`EpochReport.remote`) |
+| TC | 33 LUNC | per id (`AttestRemoteDelivery`) |
+| BSC | ≈ real fee in BNB | per id (`attestRemoteDelivery`) |
+| ETH | ≈ real fee in ETH | per id (`attestRemoteDelivery`) |
+| Solana | 499,000 lamports | per epoch (`EpochReport.remote`) |
 
-Nota: com recompensa de destino simbólica, relayers de TERCEIROS (sem vínculo)
-não têm mais incentivo — decisão consciente da fase atual (1 operador). Para
-reabrir a competição, a governança repõe as recompensas de destino
+Note: with a symbolic destination reward, THIRD-PARTY relayers (without a
+binding) no longer have an incentive — a deliberate decision of the current phase
+(1 operator). To reopen competition, governance restores the destination rewards
 (`update_config`/`setParams`/`SetRewardLamports`).
 
-E, simetricamente, cada chain de ORIGEM paga a taxa ao executor — **por id**
-(registro individual por mensagem) nas chains onde armazenar é barato, e
-**por época** (agregado de 6 h no relatório) na Solana, onde o rent por conta
-custaria mais que a taxa (detalhe: `MANUAL-EXPANSAO.md` §2):
+And, symmetrically, each ORIGIN chain pays the fee to the executor — **per id**
+(individual record per message) on the chains where storing is cheap, and
+**per epoch** (a 6 h aggregate in the report) on Solana, where the rent per
+account would cost more than the fee (detail: `MANUAL-EXPANSAO.md` §2):
 
-| Origem | Mecanismo | Valor por entrega |
+| Origin | Mechanism | Value per delivery |
 |---|---|---|
-| TC | por id (`AttestRemoteDelivery`) | 33 LUNC |
-| BSC | por id (`attestRemoteDelivery`) | 0,0000023 BNB (taxa real) |
-| ETH | por id (`attestRemoteDelivery`) | 0,0000093 ETH (taxa real) |
-| Solana | por época (`EpochReport.remote`) | 0,000499 SOL (taxa real) |
+| TC | per id (`AttestRemoteDelivery`) | 33 LUNC |
+| BSC | per id (`attestRemoteDelivery`) | 0.0000023 BNB (real fee) |
+| ETH | per id (`attestRemoteDelivery`) | 0.0000093 ETH (real fee) |
+| Solana | per epoch (`EpochReport.remote`) | 0.000499 SOL (real fee) |
 
-## 4. O modelo de confiança (honesto)
+## 4. The trust model (honest)
 
-O TC **não enxerga** as outras chains. A v2 não muda isso — ela replica o
-modelo já aprovado para o vault da Solana (que também não registra executor):
-**quórum de atestadores registrados**. As amarras que limitam abuso:
+TC **cannot see** the other chains. v2 does not change this — it replicates the
+model already approved for the Solana vault (which also does not record the
+executor): **quorum of registered attestors**. The guardrails that limit abuse:
 
-1. **Vínculo prévio**: só paga a endereço remoto que o owner/governança vinculou;
-2. **1 pagamento por message_id** (`REMOTE_CLAIMED`, effects-first) — id nunca paga 2×;
-3. **Recompensa fixa por domínio** — um id falso custa no máximo 33 LUNC, nunca o pool;
-4. **Quórum de atestações CONCORDANTES** (mesmo executor). Hoje = 1
-   (auto-atestação — aceitável porque owner = operador único = você, em teste).
-   **Com 2+ operadores independentes, subir para ≥ 2** (`SetRemoteOperators`);
-5. **Auditoria pública**: `RemoteAttestations{message_id}` mostra quem atestou o
-   quê; qualquer um confere o message_id nas duas chains (é o mesmo hash);
-6. `SetPause` congela tudo em emergência.
+1. **Prior binding**: it only pays a remote address that the owner/governance
+   bound;
+2. **1 payment per message_id** (`REMOTE_CLAIMED`, effects-first) — an id never
+   pays twice;
+3. **Fixed reward per domain** — a fake id costs at most 33 LUNC, never the pool;
+4. **Quorum of AGREEING attestations** (same executor). Today = 1
+   (self-attestation — acceptable because owner = single operator = you, in
+   testing). **With 2+ independent operators, raise to ≥ 2**
+   (`SetRemoteOperators`);
+5. **Public audit**: `RemoteAttestations{message_id}` shows who attested what;
+   anyone can check the message_id on both chains (it is the same hash);
+6. `SetPause` freezes everything in an emergency.
 
-## 5. Operação (comandos)
+## 5. Operation (commands)
 
 ```bash
 V=terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q
 TX="--from operador --gas auto --gas-adjustment 1.4 --gas-prices 28.325uluna --chain-id columbus-5 --node https://rpc.terra-classic.hexxagon.io -y"
 
-# owner: atestadores + quórum · vínculos · recompensa por domínio
+# owner: attestors + quorum · bindings · reward per domain
 terrad tx wasm execute $V '{"set_remote_operators":{"attestors":["terra1..."],"quorum":1}}' $TX
 terrad tx wasm execute $V '{"set_remote_binding":{"operator":"terra1...","domain":56,"remote_address":"0x..."}}' $TX
 terrad tx wasm execute $V '{"set_remote_reward":{"domain":56,"reward":"33000000"}}' $TX
 
-# atestador: atesta entregas (o claim-agent faz isso sozinho)
+# attestor: attests deliveries (the claim-agent does this on its own)
 terrad tx wasm execute $V '{"attest_remote_delivery":{"domain":56,"message_ids":["<id_hex64>"]}}' $TX
 
-# consultas de auditoria
+# audit queries
 terrad q wasm contract-state smart $V '{"remote_config":{}}' --node <NODE>
 terrad q wasm contract-state smart $V '{"remote_claimed":{"message_id":"<id>"}}' --node <NODE>
 terrad q wasm contract-state smart $V '{"remote_attestations":{"message_id":"<id>"}}' --node <NODE>
 ```
 
-## 6. Automação (claim-agent)
+## 6. Automation (claim-agent)
 
-O claim-agent já verifica as entregas nas 4 chains; com a v2 ele ganhou o passo
-final: toda entrega REMOTA confirmada como sua entra numa fila
-(`state.json → remoteAttest`) e é atestada no vault do TC na mesma rodada
-horária — log: `✓ atestado dom <n> → <tx>`. Nenhuma ação manual.
+The claim-agent already verifies the deliveries on the 4 chains; with v2 it
+gained the final step: every REMOTE delivery confirmed as yours enters a queue
+(`state.json → remoteAttest`) and is attested on the TC vault in the same hourly
+round — log: `✓ attested dom <n> → <tx>`. No manual action.
 
-## 7. Implantação da v2
+## 7. v2 deployment
 
-Build reproduzível `cosmwasm/optimizer:0.17.0` → `relayer_reward_vault.wasm`
+Reproducible build `cosmwasm/optimizer:0.17.0` → `relayer_reward_vault.wasm`
 sha256 `e24a5e66ab4a503c6acf369710b717310362d2ae5fa7b9800542c8272b2fc801`.
-Migração **no mesmo endereço** EXECUTADA em 19/08/2026 (code_id **11589**,
+Migration **at the same address** EXECUTED on 08/19/2026 (code_id **11589**,
 store `A9866AEE…`, migrate `C4075BA8…`) via `deploy/tc-migrate-vault-v2.sh`
-(LOCAL — regra do projeto: nada de wasm/deploy na VPS). Primeiros pagamentos:
-99 LUNC pelas 3 entregas do dia (txs em `AUDITORIA-TC.md`).
-30 testes verdes (5 novos da v2: quórum 1 paga, anti-duplo, quórum 2 espera
-concordância, rejeições, totais). Registro de execução: `AUDITORIA-TC.md`.
+(LOCAL — project rule: no wasm/deploy on the VPS). First payments:
+99 LUNC for the day's 3 deliveries (txs in `AUDITORIA-TC.md`).
+30 green tests (5 new in v2: quorum 1 pays, anti-double, quorum 2 waits for
+agreement, rejections, totals). Execution record: `AUDITORIA-TC.md`.
 
-## 8. v2 também na BSC e na ETH (espelho do modelo)
+## 8. v2 also on BSC and ETH (mirror of the model)
 
-Os vaults EVM ganharam o MESMO módulo (`attestRemoteDelivery` etc., 38 testes
-foundry). Como os contratos EVM não são migráveis e os pools estavam zerados,
-a v2 é um **deploy novo** + `igp.setBeneficiary(v2)` — script LOCAL
-`deploy/evm-vault-v2.sh bsc|ethereum`, que também configura: atestador = owner,
-quórum 1, vínculo `(owner, 132556) → terra1run9wz…` e **recompensa = cotação
-real do IGP** (`quoteGasPayment(132556, destinationGas)`) — exatamente a taxa
-que o usuário paga na origem.
+The EVM vaults gained the SAME module (`attestRemoteDelivery` etc., 38 foundry
+tests). Since the EVM contracts are not migratable and the pools were empty,
+v2 is a **new deploy** + `igp.setBeneficiary(v2)` — LOCAL script
+`deploy/evm-vault-v2.sh bsc|ethereum`, which also configures: attestor = owner,
+quorum 1, binding `(owner, 132556) → terra1run9wz…` and **reward = the real IGP
+quote** (`quoteGasPayment(132556, destinationGas)`) — exactly the fee the user
+pays at origin.
 
-Fluxo espelhado: usuário despacha DA BSC → paga taxa em BNB → seu relayer
-entrega NO TC → claim-agent detecta a entrega no TC (o evento traz a ORIGEM),
-enfileira e atesta no vault da BSC → **a taxa em BNB volta para o operador**.
-O mesmo para a ETH. Assim, TODAS as 4 chains pagam a taxa de origem ao executor.
+Mirrored flow: user dispatches FROM BSC → pays the fee in BNB → your relayer
+delivers ON TC → claim-agent detects the delivery on TC (the event carries the
+ORIGIN), enqueues and attests on the BSC vault → **the fee in BNB returns to the
+operator**. The same for ETH. Thus, ALL 4 chains pay the origin fee to the
+executor.
 
-## 9. v2 na Solana (via relatório de época)
+## 9. v2 on Solana (via epoch report)
 
-Na Solana, PDA por mensagem custaria mais rent (~0,0015 SOL) que a própria taxa
-(0,000499 SOL). Por isso o `EpochReport` ganhou o campo `remote:
-[(domínio, operador, contagem)]` — os créditos remotos passam pelo MESMO
-hash/quórum do relatório e saem pelo `Withdraw` normal, custo extra zero.
-Config por proposta administrativa: reward `499.000 lamports` (taxa real medida)
-e vínculo `(132556, PbEo7Fn2…) → terra1run9wz…`. O claim-agent agrega as
-entregas de msgs Solana→TC por época e as inclui no relatório automaticamente.
+On Solana, a PDA per message would cost more rent (~0.0015 SOL) than the fee
+itself (0.000499 SOL). That is why the `EpochReport` gained the field `remote:
+[(domain, operator, count)]` — the remote credits go through the SAME
+hash/quorum of the report and are paid out through the normal `Withdraw`, with
+zero extra cost. Config via administrative proposal: reward `499,000 lamports`
+(measured real fee) and binding `(132556, PbEo7Fn2…) → terra1run9wz…`. The
+claim-agent aggregates the deliveries of Solana→TC msgs per epoch and includes
+them in the report automatically.
 
-## 10. Sustentabilidade (atenção do owner/governança)
+## 10. Sustainability (owner/governance attention)
 
-A v2 paga do MESMO pool que o `Claim` local. Com recompensa 33 LUNC ≈ taxa média
-de origem, o pool fica ~neutro (entra taxa, sai recompensa). Se a governança
-subir muito a recompensa remota, o pool drena — monitorar `total_remote_paid`
-vs arrecadação do Sweep (`RemoteConfig{}` + `Solvency{}`).
+v2 pays from the SAME pool as the local `Claim`. With a 33 LUNC reward ≈ the
+average origin fee, the pool stays ~neutral (fee in, reward out). If governance
+raises the remote reward too much, the pool drains — monitor `total_remote_paid`
+vs the Sweep collection (`RemoteConfig{}` + `Solvency{}`).

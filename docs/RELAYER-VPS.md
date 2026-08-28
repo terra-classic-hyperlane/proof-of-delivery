@@ -1,85 +1,85 @@
-# Relayer oficial da Hyperlane na VPS — versão, atualização e configuração
+# Official Hyperlane relayer on the VPS — version, update and configuration
 
-O transporte de TODAS as mensagens entre chains (transferências **e** recibos) é
-feito pelo **relayer oficial da Hyperlane, sem nenhuma modificação de código** —
-como manda a spec (§ "nenhuma linha do core Hyperlane é modificada"). Os nossos
-agentes offline (`oracle-agent`, `claim-agent`, `epoch-reporter`) só fazem os
-papéis que o relayer NÃO faz: preço/gás, emitir os claims (recibos), e o quórum
-de época da Solana. O `deliver-receipts-tc.mjs` é apenas **rede de segurança**
-(plano B, desligado por padrão — ver `RECIBO-TRUSTLESS.md`).
+The transport of ALL cross-chain messages (transfers **and** receipts) is
+handled by the **official Hyperlane relayer, with no code modification whatsoever** —
+as the spec requires (§ "not a single line of the Hyperlane core is modified"). Our
+offline agents (`oracle-agent`, `claim-agent`, `epoch-reporter`) only perform the
+roles the relayer does NOT: price/gas, emitting the claims (receipts), and the
+Solana epoch quorum. `deliver-receipts-tc.mjs` is just a **safety net**
+(plan B, off by default — see `RECIBO-TRUSTLESS.md`).
 
-VPS `31.97.91.4` · serviço `hyperlane-relayer.service` · binário em
+VPS `31.97.91.4` · service `hyperlane-relayer.service` · binary at
 `/root/hyperlane/bin/relayer`.
 
-## Versões
+## Versions
 
-| | Versão | Commit | Origem | Data do binário |
+| | Version | Commit | Source | Binary date |
 |---|---|---|---|---|
-| **Anterior** | build local | `906921a706a01b1d28a4936b06088f7cfa296851` | compilado localmente de `~/hyperlane-monorepo` | 2026-06-04 |
-| **Atual** | **agents-v2.0.0** | `c117895a17dc5a932bc2007c15c53be26014e22d` | **imagem oficial** (não recompilado) | 2026-01-07 |
+| **Previous** | local build | `906921a706a01b1d28a4936b06088f7cfa296851` | compiled locally from `~/hyperlane-monorepo` | 2026-06-04 |
+| **Current** | **agents-v2.0.0** | `c117895a17dc5a932bc2007c15c53be26014e22d` | **official image** (not recompiled) | 2026-01-07 |
 
-O binário anterior (109 MB) tinha dois defeitos próprios do build (não do nosso
-código): rejeição de broadcast Cosmos no CheckTx (a MESMA tx via cosmjs passava)
-e vazamento de file descriptors. Substituído pelo artefato **oficial** v2.0.0
-(114 MB) — atualizar não é modificar código, é trocar um binário oficial velho
-por um novo.
+The previous binary (109 MB) had two defects specific to the build (not to our
+code): rejection of the Cosmos broadcast in CheckTx (the SAME tx via cosmjs passed)
+and file descriptor leakage. Replaced by the **official** v2.0.0 artifact
+(114 MB) — updating is not modifying code, it is swapping an old official binary
+for a new one.
 
-## Como foi feito (extração do binário oficial, sem recompilar)
+## How it was done (extracting the official binary, without recompiling)
 
-O jeito canônico e reproduzível é pegar o binário **da imagem Docker oficial**
-publicada pela Hyperlane, em vez de compilar (que na VPS esbarra na toolchain
-rustc 1.84 vs edition2024 dos deps). Passos executados na VPS:
+The canonical and reproducible way is to take the binary **from the official Docker
+image** published by Hyperlane, instead of compiling (which on the VPS hits the
+toolchain issue, rustc 1.84 vs edition2024 of the deps). Steps executed on the VPS:
 
 ```bash
-# 1. imagem oficial (gcr.io/abacus-labs-dev/hyperlane-agent)
+# 1. official image (gcr.io/abacus-labs-dev/hyperlane-agent)
 docker pull gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0
-#    digest verificado:
+#    verified digest:
 #    sha256:e953983fee85fd01432f9e6a40e192cafc2c39db4a180aac34e55f8f624c964a
 
-# 2. extrai o binário do relayer da imagem (não roda o container)
+# 2. extract the relayer binary from the image (does not run the container)
 C=$(docker create gcr.io/abacus-labs-dev/hyperlane-agent:agents-v2.0.0)
 docker cp $C:/app/relayer /root/hyperlane/bin/relayer-v2.0.0
 docker rm $C
 chmod +x /root/hyperlane/bin/relayer-v2.0.0
 
-# 3. backup do binário antigo (rollback) + troca
+# 3. backup of the old binary (rollback) + swap
 cp /root/hyperlane/bin/relayer /root/hyperlane/bin/relayer-906921a7-backup
 systemctl stop hyperlane-relayer
-until ! ss -tlnp | grep -qE ':(9090|9091)\b'; do sleep 1; done   # porta liberar
+until ! ss -tlnp | grep -qE ':(9090|9091)\b'; do sleep 1; done   # wait for port to free
 cp /root/hyperlane/bin/relayer-v2.0.0 /root/hyperlane/bin/relayer
 systemctl start hyperlane-relayer
 ```
 
-**Rollback** (se preciso): `cp /root/hyperlane/bin/relayer-906921a7-backup
+**Rollback** (if needed): `cp /root/hyperlane/bin/relayer-906921a7-backup
 /root/hyperlane/bin/relayer && systemctl restart hyperlane-relayer`.
 
-## Mudanças de CONFIGURAÇÃO (nenhuma no código)
+## CONFIGURATION changes (none in code)
 
-1. **`metricsPort: 9091`** em `config/relayer.mainnet.json` — **causa dos 3
-   panics `AddrInUse` / relayer zumbi**: na v2.0.0 o servidor do agente lê a chave
-   `metricsPort` (default **9090**) e IGNORA o `--metrics 0.0.0.0:9091` legado do
-   ExecStart; 9090 já é do **validator** → o servidor panica ao bindar e isso
-   **mata os processors de mensagens** (o relayer indexava mas não entregava —
-   era por isso que os recibos ficavam presos). Fixado apontando o relayer para
-   9091 (validator segue no 9090).
-2. **`relayApiEnabled: false` / `relayApiPort: 9092`** — desliga a API HTTP de
-   controle do relayer (não usamos) e, se um dia ligar, fica em porta própria.
+1. **`metricsPort: 9091`** in `config/relayer.mainnet.json` — **the cause of the 3
+   `AddrInUse` panics / zombie relayer**: in v2.0.0 the agent's server reads the
+   `metricsPort` key (default **9090**) and IGNORES the legacy `--metrics 0.0.0.0:9091`
+   from ExecStart; 9090 already belongs to the **validator** → the server panics on
+   bind and this **kills the message processors** (the relayer was indexing but not
+   delivering — that was why receipts got stuck). Fixed by pointing the relayer to
+   9091 (the validator stays on 9090).
+2. **`relayApiEnabled: false` / `relayApiPort: 9092`** — disables the relayer's HTTP
+   control API (we don't use it) and, if it is ever turned on, keeps it on its own port.
 3. **`LimitNOFILE=1048576`** (drop-in `.../hyperlane-relayer.service.d/limits.conf`)
-   — teto de file descriptors elevado (o binário antigo vazava fds; mantido como
-   folga de segurança).
-4. **RPCs** em `config/agent-config.mainnet.json`:
-   - BSC: dataseeds oficiais primeiro (servem `eth_getLogs`) + publicnode/1rpc/drpc
-     de reserva; `index.chunk = 50` (os públicos limitam getLogs a ≤50 blocos).
-   - Solana: **Helius** (`mainnet.helius-rpc.com`, key própria) à frente do
-     `api.mainnet-beta` público.
+   — raised file descriptor ceiling (the old binary leaked fds; kept as a safety
+   margin).
+4. **RPCs** in `config/agent-config.mainnet.json`:
+   - BSC: official dataseeds first (they serve `eth_getLogs`) + publicnode/1rpc/drpc
+     as backup; `index.chunk = 50` (the public ones limit getLogs to ≤50 blocks).
+   - Solana: **Helius** (`mainnet.helius-rpc.com`, own key) ahead of the public
+     `api.mainnet-beta`.
    - Terra Classic: hexxagon + publicnode + binodes.
 
-> Regra operacional (chave compartilhada): a conta `terra1run9wz…` assina para o
-> relayer, o claim-agent e scripts manuais. Depois de rodar qualquer script que
-> assine com ela (migrate, igp-tariff, unenroll…), **reiniciar o relayer** para
-> ressincronizar a sequence: `systemctl restart hyperlane-relayer`.
+> Operational rule (shared key): the account `terra1run9wz…` signs for the
+> relayer, the claim-agent and manual scripts. After running any script that
+> signs with it (migrate, igp-tariff, unenroll…), **restart the relayer** to
+> resync the sequence: `systemctl restart hyperlane-relayer`.
 
-## Verificação pós-atualização
+## Post-update verification
 
 ```bash
 systemctl is-active hyperlane-relayer                       # active
@@ -87,55 +87,54 @@ journalctl -u hyperlane-relayer -n 200 | grep -c panicked   # 0
 ss -tlnp | grep -E ':(9090|9091)'                           # 9091=relayer 9090=validator
 journalctl -u hyperlane-relayer | grep 'starting up with version'  # c117895a…
 ```
-Prova funcional: uma transferência nova deve ser entregue no destino sem
-intervenção (o `delivered()`/`message_delivered` vira true e a comissão cai).
+Functional proof: a new transfer should be delivered at the destination without
+intervention (`delivered()`/`message_delivered` turns true and the commission is paid).
 
-## Painel de monitoramento
+## Monitoring panel
 
-`node deploy/monitor.mjs` — visão única de saúde (4 chains + VPS):
-- **Carteiras-gatilho**: TC operador, BSC 0x8f08, ETH 0xEF81, SOL PbEo (reporter),
-  SOL BirXd4Q (authority) — com alerta ⚠ BAIXO quando o gás acaba.
-- **Pools**: TC vault + IGP acumulado (avisa quando varrer com Sweep), BSC vault,
-  SOL pod/Config + base do bitmap de replay vs época atual.
-- **Serviços VPS**: relayer/validator/oracle-agent/claim-agent/epoch-reporter/
-  deliver-receipts.timer (active?), panics do relayer e nº de fds.
+`node deploy/monitor.mjs` — single health view (4 chains + VPS):
+- **Trigger wallets**: TC operator, BSC 0x8f08, ETH 0xEF81, SOL PbEo (reporter),
+  SOL BirXd4Q (authority) — with a ⚠ LOW alert when gas runs out.
+- **Pools**: TC vault + accumulated IGP (warns when to sweep with Sweep), BSC vault,
+  SOL pod/Config + base of the replay bitmap vs current epoch.
+- **VPS services**: relayer/validator/oracle-agent/claim-agent/epoch-reporter/
+  deliver-receipts.timer (active?), relayer panics and the number of fds.
 
 ```bash
-node deploy/monitor.mjs            # completo (on-chain + SSH na VPS)
-node deploy/monitor.mjs --no-vps   # só on-chain (sem SSH)
-node deploy/monitor.mjs --watch    # atualiza a cada 60s
+node deploy/monitor.mjs            # full (on-chain + SSH into the VPS)
+node deploy/monitor.mjs --no-vps   # on-chain only (no SSH)
+node deploy/monitor.mjs --watch    # refreshes every 60s
 ```
 
-### Painel WEB (navegador)
+### WEB panel (browser)
 
-`node deploy/monitor-web.mjs` — sobe um servidor local e mostra o mesmo painel no
-navegador, atualizando sozinho a cada 30s. As consultas (RPC + SSH) rodam no
-servidor; a página só lê do localhost (nada vai pra internet).
+`node deploy/monitor-web.mjs` — starts a local server and shows the same panel in
+the browser, auto-refreshing every 30s. The queries (RPC + SSH) run on the
+server; the page only reads from localhost (nothing goes to the internet).
 
 ```bash
-node deploy/monitor-web.mjs           # abre http://localhost:8787
-PORT=9000 node deploy/monitor-web.mjs # outra porta
-node deploy/monitor-web.mjs --no-vps  # sem SSH
+node deploy/monitor-web.mjs           # opens http://localhost:8787
+PORT=9000 node deploy/monitor-web.mjs # another port
+node deploy/monitor-web.mjs --no-vps  # without SSH
 ```
-Deixe rodando num terminal e mantenha a aba aberta.
+Leave it running in a terminal and keep the tab open.
 
-### Painel web como SERVIÇO (sobe sozinho)
+### Web panel as a SERVICE (starts on its own)
 
-`bash deploy/install-monitor-web-service.sh` — instala o painel como serviço de
-usuário do systemd (roda como você, com suas chaves SSH), habilita no boot
-(linger) e deixa em http://localhost:8787 sempre no ar.
+`bash deploy/install-monitor-web-service.sh` — installs the panel as a systemd
+user service (runs as you, with your SSH keys), enables it on boot
+(linger) and keeps http://localhost:8787 always up.
 
 ```bash
-systemctl --user status  tcpod-monitor    # estado
-systemctl --user restart tcpod-monitor    # após editar monitor-web.mjs
-systemctl --user stop    tcpod-monitor    # parar
+systemctl --user status  tcpod-monitor    # state
+systemctl --user restart tcpod-monitor    # after editing monitor-web.mjs
+systemctl --user stop    tcpod-monitor    # stop
 journalctl --user -u tcpod-monitor -f     # logs
 ```
 
-O painel web (http://localhost:8787, tempo real via SSE) mostra 8 blocos em tempo real:
-**Operadores** (quem são + quórum de cada oráculo/vault das 4 chains), **Validadores TC** (os 4, índice do checkpoint assinado vs tip, badge 3-de-4),
-**RPCs** (altura + latência das 4 chains), **Mensagens** (filas/presas + processadas
-+ cursor por chain, do relayer), **Épocas & Oracle** (época atual + quando fecha,
-próxima do epoch-reporter, última/próxima do oracle-agent + preços que ele
-escreveu on-chain), **Carteiras**, **Pools** e **Serviços**.
-
+The web panel (http://localhost:8787, real-time via SSE) shows 8 blocks in real time:
+**Operators** (who they are + quorum of each oracle/vault of the 4 chains), **TC validators** (the 4, index of the signed checkpoint vs tip, 3-of-4 badge),
+**RPCs** (height + latency of the 4 chains), **Messages** (queued/stuck + processed
++ cursor per chain, from the relayer), **Epochs & Oracle** (current epoch + when it closes,
+next from the epoch-reporter, last/next from the oracle-agent + prices it
+wrote on-chain), **Wallets**, **Pools** and **Services**.

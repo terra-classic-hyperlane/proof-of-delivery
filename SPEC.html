@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Especificação técnica · Remuneração de Relayers · 4 redes</title>
+<title>Technical specification · Relayer Remuneration · 4 networks</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -93,152 +93,153 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line-strong);
 <div class="wrap">
 
 <header>
-  <span class="eyebrow">Especificação técnica · v3 · Terra Classic · BSC · Ethereum · Solana</span>
-  <h1>Remuneração de múltiplos Relayers<br>na ponte Hyperlane</h1>
-  <p class="lead" style="margin-top:14px">Um operador não recebe porque configurou um IGP. Recebe porque entregou a mensagem. Em três das quatro redes isso é provado pelo próprio core do Hyperlane; na quarta, por consenso entre operadores. Cada rede paga na própria moeda, com o dinheiro que seus usuários já pagaram — sem orçamento, sem tesouraria em moeda estrangeira e sem modificar uma linha do protocolo.</p>
+  <span class="eyebrow">Technical specification · v3 · Terra Classic · BSC · Ethereum · Solana</span>
+  <h1>Remuneration of multiple Relayers<br>on the Hyperlane bridge</h1>
+  <p class="lead" style="margin-top:14px">An operator is not paid because it configured an IGP. It is paid because it delivered the message. On three of the four networks this is proven by Hyperlane's own core; on the fourth, by consensus among operators. Each network pays in its own currency, with the money its users have already paid — no budget, no foreign-currency treasury, and without modifying a single line of the protocol.</p>
 
   <nav class="toc">
-    <a href="#s1"><span class="num">01</span>Sumário executivo</a>
-    <a href="#s2"><span class="num">02</span>Matriz das quatro redes</a>
-    <a href="#s3"><span class="num">03</span>Artefatos de código</a>
-    <a href="#s4"><span class="num">04</span>Modelo de governança</a>
-    <a href="#s5"><span class="num">05</span>Princípio econômico</a>
+    <a href="#s1"><span class="num">01</span>Executive summary</a>
+    <a href="#s2"><span class="num">02</span>Matrix of the four networks</a>
+    <a href="#s3"><span class="num">03</span>Code artifacts</a>
+    <a href="#s4"><span class="num">04</span>Governance model</a>
+    <a href="#s5"><span class="num">05</span>Economic principle</a>
     <a href="#s6"><span class="num">06</span>Terra Classic · CosmWasm</a>
-    <a href="#s7"><span class="num">07</span>BSC e Ethereum · EVM</a>
+    <a href="#s7"><span class="num">07</span>BSC and Ethereum · EVM</a>
     <a href="#s8"><span class="num">08</span>Solana · Sealevel</a>
-    <a href="#s9"><span class="num">09</span>Quórum: épocas e propostas</a>
-    <a href="#s10"><span class="num">10</span>Oracle nas quatro redes</a>
-    <a href="#s11"><span class="num">11</span>Matriz de permissões</a>
-    <a href="#s12"><span class="num">12</span>Riscos</a>
-    <a href="#s13"><span class="num">13</span>Implantação</a>
-    <a href="#s14"><span class="num">14</span>Pendências</a>
+    <a href="#s9"><span class="num">09</span>Quorum: epochs and proposals</a>
+    <a href="#s10"><span class="num">10</span>Oracle across the four networks</a>
+    <a href="#s11"><span class="num">11</span>Permissions matrix</a>
+    <a href="#s12"><span class="num">12</span>Risks</a>
+    <a href="#s13"><span class="num">13</span>Deployment</a>
+    <a href="#s14"><span class="num">14</span>Open items</a>
   </nav>
 </header>
 
 <!-- 01 -->
 <section id="s1">
   <span class="eyebrow">01</span>
-  <h2>Sumário executivo</h2>
+  <h2>Executive summary</h2>
   <div class="rule"></div>
-  <p>A ponte Hyperlane do Terra Classic não tem operadores: os IGPs existentes atendem outras rotas. Para operar de forma descentralizada é preciso que <strong>vários relayers trabalhem em paralelo</strong>, cada um pago pelo que entregou — sem cadastro, sem lista de aprovados, e sem que um operador ocioso receba.</p>
+  <p>The Terra Classic Hyperlane bridge has no operators: the existing IGPs serve other routes. To operate in a decentralized way, <strong>several relayers must work in parallel</strong>, each paid for what it delivered — no registration, no approved list, and without an idle operator being paid.</p>
 
   <div class="grid two" style="margin-top:16px">
     <div class="box">
-      <h3>Regra única</h3>
-      <p style="font-size:13.5px">A identidade econômica do operador é o registro de execução da própria rede, nunca uma declaração dele. Onde a rede não registra, operadores em quórum precisam concordar sobre o que a chain pública mostra.</p>
+      <h3>Single rule</h3>
+      <p style="font-size:13.5px">The operator's economic identity is the network's own execution record, never a claim it makes. Where the network does not record it, operators in quorum must agree on what the public chain shows.</p>
     </div>
     <div class="box">
-      <h3>Financiamento</h3>
-      <p style="font-size:13.5px">Cada rede tem seu Vault, beneficiary do IGP local. Quem despacha daquela rede custeia as entregas feitas nela. O pool cresce com o uso e nunca fica insolvente enquanto a tarifa for menor que a arrecadação média.</p>
+      <h3>Funding</h3>
+      <p style="font-size:13.5px">Each network has its own Vault, the beneficiary of the local IGP. Whoever dispatches from that network pays for the deliveries made on it. The pool grows with usage and never becomes insolvent as long as the fee is smaller than the average revenue.</p>
     </div>
   </div>
 
-  <div class="ok-note"><strong>Nenhuma linha do core é modificada.</strong> Mailbox, ISM, IGP, oracle e Warp Route seguem como no upstream. Muda apenas a configuração: o beneficiary de cada IGP passa a ser o Vault e, em Solana, a posse do IGP passa ao programa governor.</div>
+  <div class="ok-note"><strong>Not a single line of the core is modified.</strong> Mailbox, ISM, IGP, oracle and Warp Route remain as in upstream. Only the configuration changes: the beneficiary of each IGP becomes the Vault and, on Solana, ownership of the IGP passes to the governor program.</div>
 </section>
 
 <!-- 02 -->
 <section id="s2">
   <span class="eyebrow">02</span>
-  <h2>Matriz das quatro redes</h2>
+  <h2>Matrix of the four networks</h2>
   <div class="rule"></div>
-  <p>Cada rede registra a execução de um jeito diferente. Esta tabela é a peça central — tudo o mais decorre dela.</p>
+  <p>Each network records execution in a different way. This table is the centerpiece — everything else follows from it.</p>
 
   <table class="tbl">
     <thead><tr><th>&nbsp;</th><th>Terra Classic</th><th>BSC</th><th>Ethereum</th><th>Solana</th></tr></thead>
     <tbody>
       <tr><td><strong>VM</strong></td><td>CosmWasm</td><td>EVM</td><td>EVM</td><td>Sealevel</td></tr>
-      <tr><td><strong>Registra o executor?</strong></td><td class="mid">sim, não expõe</td><td class="ok">sim, público</td><td class="ok">sim, público</td><td class="no">não registra</td></tr>
-      <tr><td><strong>Como o Vault prova</strong></td><td>raw query no storage</td><td><code>processor(id)</code></td><td><code>processor(id)</code></td><td class="mid">quórum por época</td></tr>
-      <tr><td><strong>Moeda do pool</strong></td><td>LUNC</td><td>BNB</td><td>ETH</td><td>SOL</td></tr>
-      <tr><td><strong><code>claim()</code> do IGP</strong></td><td class="mid">só beneficiary</td><td class="ok">permissionless</td><td class="ok">permissionless</td><td class="ok">permissionless</td></tr>
-      <tr><td><strong>Precisa de Sweep?</strong></td><td>sim, via Vault</td><td>não</td><td>não</td><td>não</td></tr>
-      <tr><td><strong>Oracle</strong></td><td>contrato separado</td><td>separado</td><td>separado</td><td class="mid">dentro do IGP</td></tr>
-      <tr><td><strong>IGP e ISM</strong></td><td class="ok">governança LUNC</td><td>multisig</td><td>multisig</td><td>multisig</td></tr>
-      <tr><td><strong>Vault e Oracle</strong></td><td>governança LUNC</td><td>operadores</td><td>operadores</td><td>operadores</td></tr>
-      <tr><td><strong>Token</strong></td><td>colateral real</td><td>sintético</td><td>sintético</td><td>sintético</td></tr>
-      <tr><td><strong>Fase</strong></td><td>2</td><td>3</td><td>3</td><td>4</td></tr>
+      <tr><td><strong>Records the executor?</strong></td><td class="mid">yes, not exposed</td><td class="ok">yes, public</td><td class="ok">yes, public</td><td class="no">does not record</td></tr>
+      <tr><td><strong>How the Vault proves it</strong></td><td>raw query on storage</td><td><code>processor(id)</code></td><td><code>processor(id)</code></td><td class="mid">quorum per epoch</td></tr>
+      <tr><td><strong>Pool currency</strong></td><td>LUNC</td><td>BNB</td><td>ETH</td><td>SOL</td></tr>
+      <tr><td><strong>IGP <code>claim()</code></strong></td><td class="mid">beneficiary only</td><td class="ok">permissionless</td><td class="ok">permissionless</td><td class="ok">permissionless</td></tr>
+      <tr><td><strong>Needs Sweep?</strong></td><td>yes, via Vault</td><td>no</td><td>no</td><td>no</td></tr>
+      <tr><td><strong>Oracle</strong></td><td>separate contract</td><td>separate</td><td>separate</td><td class="mid">inside the IGP</td></tr>
+      <tr><td><strong>IGP and ISM</strong></td><td class="ok">LUNC governance</td><td>multisig</td><td>multisig</td><td>multisig</td></tr>
+      <tr><td><strong>Vault and Oracle</strong></td><td>LUNC governance</td><td>operators</td><td>operators</td><td>operators</td></tr>
+      <tr><td><strong>Token</strong></td><td>real collateral</td><td>synthetic</td><td>synthetic</td><td>synthetic</td></tr>
+      <tr><td><strong>Phase</strong></td><td>2</td><td>3</td><td>3</td><td>4</td></tr>
     </tbody>
   </table>
 
-  <div class="note"><strong>Três redes provam sozinhas; uma depende de consenso.</strong> O mecanismo de épocas existe por causa de Solana — e, por já existir, serve de contingência caso algum pool remoto seque por assimetria de fluxo.</div>
+  <div class="note"><strong>Three networks prove it on their own; one depends on consensus.</strong> The epoch mechanism exists because of Solana — and, since it already exists, it doubles as a contingency should any remote pool dry up due to flow asymmetry.</div>
 </section>
 
 <!-- 03 -->
 <section id="s3">
   <span class="eyebrow">03</span>
-  <h2>Artefatos de código</h2>
+  <h2>Code artifacts</h2>
   <div class="rule"></div>
-  <p>Sete arquivos escritos, nenhum compilado ainda — o ambiente onde foram gerados não tem acesso à rede para baixar dependências.</p>
+  <p>Seven files written, none compiled yet — the environment where they were generated has no network access to download dependencies.</p>
 
   <table class="tbl">
-    <thead><tr><th>Arquivo</th><th>Rede</th><th>Função</th><th>Estado</th></tr></thead>
+    <thead><tr><th>File</th><th>Network</th><th>Function</th><th>State</th></tr></thead>
     <tbody>
-      <tr><td class="file">relayer-reward-vault/ (Rust)</td><td>Terra Classic</td><td>Pool, prova por raw query, claim, solvência</td><td><span class="status st-done">escrito · 13 testes</span></td></tr>
-      <tr><td class="file">RelayerRewardVault.sol</td><td>BSC · ETH</td><td>Pool, prova por <code>processor()</code>, claim</td><td><span class="status st-done">escrito</span></td></tr>
-      <tr><td class="file">GasOracleGovernor.sol</td><td>BSC · ETH</td><td>Quórum + mediana + faixa sobre o oracle</td><td><span class="status st-done">escrito</span></td></tr>
-      <tr><td class="file">svm/processor.rs</td><td>Solana</td><td>Pool, épocas, créditos, propostas</td><td><span class="status st-done">escrito</span></td></tr>
-      <tr><td class="file">svm/governor.rs</td><td>Solana</td><td>Duas portas sobre o IGP</td><td><span class="status st-done">escrito</span></td></tr>
-      <tr><td class="file">OracleGovernor (CosmWasm)</td><td>Terra Classic</td><td>Quórum + faixa sobre o StorageGasOracle</td><td><span class="status st-todo">pendente</span></td></tr>
-      <tr><td class="file">hyperlane-tc-agent</td><td>todas</td><td>Feed de preço e relatórios de época</td><td><span class="status st-todo">pendente</span></td></tr>
+      <tr><td class="file">relayer-reward-vault/ (Rust)</td><td>Terra Classic</td><td>Pool, proof by raw query, claim, solvency</td><td><span class="status st-done">written · 13 tests</span></td></tr>
+      <tr><td class="file">RelayerRewardVault.sol</td><td>BSC · ETH</td><td>Pool, proof by <code>processor()</code>, claim</td><td><span class="status st-done">written</span></td></tr>
+      <tr><td class="file">GasOracleGovernor.sol</td><td>BSC · ETH</td><td>Quorum + median + bounds over the oracle</td><td><span class="status st-done">written</span></td></tr>
+      <tr><td class="file">svm/processor.rs</td><td>Solana</td><td>Pool, epochs, credits, proposals</td><td><span class="status st-done">written</span></td></tr>
+      <tr><td class="file">svm/governor.rs</td><td>Solana</td><td>Two gates over the IGP</td><td><span class="status st-done">written</span></td></tr>
+      <tr><td class="file">OracleGovernor (CosmWasm)</td><td>Terra Classic</td><td>Quorum + bounds over the StorageGasOracle</td><td><span class="status st-todo">pending</span></td></tr>
+      <tr><td class="file">hyperlane-tc-agent</td><td>all</td><td>Price feed and epoch reports</td><td><span class="status st-todo">pending</span></td></tr>
     </tbody>
   </table>
 
-  <div class="warn"><strong>Antes de qualquer deploy:</strong> <code>cargo test</code>, <code>cargo clippy -- -D warnings</code>, <code>cargo build-sbf</code>, testes de integração com <code>cw-multi-test</code> e <code>solana-program-test</code>, e build reproduzível. Nada disso foi executado.</div>
+  <div class="warn"><strong>Before any deploy:</strong> <code>cargo test</code>, <code>cargo clippy -- -D warnings</code>, <code>cargo build-sbf</code>, integration tests with <code>cw-multi-test</code> and <code>solana-program-test</code>, and a reproducible build. None of this has been run.</div>
 </section>
 
 <!-- 04 -->
 <section id="s4">
   <span class="eyebrow">04</span>
-  <h2>Modelo de governança</h2>
+  <h2>Governance model</h2>
   <div class="rule"></div>
-  <p>Três esferas com escopos que não se sobrepõem. O princípio: <strong>o que é operacional fica com quem opera; o que é estrutural fica com quem tem mandato.</strong></p>
+  <p>Three spheres with scopes that do not overlap. The principle: <strong>what is operational stays with those who operate; what is structural stays with those who hold a mandate.</strong></p>
 
   <div class="flow">┌────────────────────────────────────────────────────────────┐
-│  <u>GOVERNANÇA DO TERRA CLASSIC</u>                              │
-│  proposta on-chain · escopo: tudo dentro do Terra Classic  │
-│  IGP · ISM · Vault · Oracle · tarifa · faixa               │
+│  <u>TERRA CLASSIC GOVERNANCE</u>                                 │
+│  on-chain proposal · scope: everything within Terra Classic│
+│  IGP · ISM · Vault · Oracle · fee · bounds                 │
 └──────────────────────────┬─────────────────────────────────┘
-                           │ dá mandato por proposta aprovada
+                           │ grants mandate via approved proposal
                            ▼
 ┌────────────────────────────────────────────────────────────┐
-│  <i>MULTISIG DOS VALIDADORES HYPERLANE</i>                        │
+│  <i>HYPERLANE VALIDATORS MULTISIG</i>                            │
 │  BSC · Ethereum · Solana                                   │
-│  escopo: IGP · ISM · faixa do oracle                       │
+│  scope: IGP · ISM · oracle bounds                          │
 └──────────────────────────┬─────────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────────┐
-│  <b>OPERADORES DE RELAYER</b>  (quórum on-chain, sem multisig)     │
-│  escopo: Vault e Oracle nas redes remotas                  │
-│  · atualizar preço dentro da faixa                         │
-│  · relatórios de época (Solana)                            │
-│  · parâmetros do Vault, por proposta com quórum            │
+│  <b>RELAYER OPERATORS</b>  (on-chain quorum, no multisig)          │
+│  scope: Vault and Oracle on the remote networks            │
+│  · update price within bounds                              │
+│  · epoch reports (Solana)                                  │
+│  · Vault parameters, via proposal with quorum              │
 └────────────────────────────────────────────────────────────┘
 
-  entregar mensagens: <b>ABERTO A QUALQUER UM, sem permissão</b></div>
+  delivering messages: <b>OPEN TO ANYONE, no permission</b></div>
 
-  <div class="ok-note"><strong>Por que quórum on-chain e não multisig de carteira.</strong> Com multisig, os operadores teriam de coordenar a assinatura da mesma transação quatro vezes por dia. Com quórum on-chain, cada um envia a sua de forma independente e o programa resolve a convergência. Menos atrito operacional e o mesmo nível de proteção.</div>
+  <div class="ok-note"><strong>Why on-chain quorum and not a wallet multisig.</strong> With a multisig, the operators would have to coordinate signing the same transaction four times a day. With on-chain quorum, each one submits its own independently and the program resolves the convergence. Less operational friction and the same level of protection.</div>
 
-  <div class="warn"><strong>Separação obrigatória no multisig.</strong> Os operadores também assinam os checkpoints do ISM. Se forem os únicos signatários do multisig que controla o ISM, um conluio pode forjar mensagens <em>e</em> alterar as regras de verificação. O multisig precisa de signatários que não sejam validadores Hyperlane.</div>
+  <div class="warn"><strong>Mandatory separation in the multisig.</strong> The operators also sign the ISM checkpoints. If they are the only signatories of the multisig that controls the ISM, a collusion could forge messages <em>and</em> alter the verification rules. The multisig needs signatories who are not Hyperlane validators.</div>
 </section>
 
 <!-- 05 -->
 <section id="s5">
   <span class="eyebrow">05</span>
-  <h2>Princípio econômico</h2>
+  <h2>Economic principle</h2>
   <div class="rule"></div>
-  <p>Cada rede se sustenta sozinha. O gas gasto e o pagamento recebido acontecem na mesma moeda, na mesma chain.</p>
+  <p>Each network sustains itself. The gas spent and the payment received happen in the same currency, on the same chain.</p>
 
   <div class="flow">   TC → BSC                          BSC → TC
    ─────────                         ─────────
-   usuário paga LUNC no TC           usuário paga BNB na BSC
-   relayer gasta BNB na BSC          relayer gasta LUNC no TC
-   <i>Vault da BSC paga em BNB</i>           <b>Vault do TC paga em LUNC</b>
-   (do BNB de quem despacha da BSC)  (do LUNC de quem despacha do TC)</div>
+   user pays LUNC on TC              user pays BNB on BSC
+   relayer spends BNB on BSC         relayer spends LUNC on TC
+   <i>BSC Vault pays in BNB</i>              <b>TC Vault pays in LUNC</b>
+   (from the BNB of whoever          (from the LUNC of whoever
+    dispatches from BSC)              dispatches from TC)</div>
 
-  <div class="ok-note"><strong>Autofinanciado por construção.</strong> Sem uso não há arrecadação — mas também não houve trabalho. Com uso, o pool cresce junto. Nenhum orçamento é necessário.</div>
+  <div class="ok-note"><strong>Self-funded by construction.</strong> Without usage there is no revenue — but there was also no work. With usage, the pool grows alongside it. No budget is needed.</div>
 
-  <div class="note"><strong>Contingência para assimetria.</strong> Se quase todo o tráfego sair do Terra Classic, os pools remotos arrecadam pouco. Nesse caso o mecanismo de épocas passa a remunerar a perna remota em LUNC, a partir do pool do TC. Previsto na proposta, construído só se os números exigirem.</div>
+  <div class="note"><strong>Contingency for asymmetry.</strong> If almost all traffic leaves Terra Classic, the remote pools collect little. In that case the epoch mechanism starts to remunerate the remote leg in LUNC, from the TC pool. Provided for in the proposal, built only if the numbers require it.</div>
 </section>
 
 <!-- 06 -->
@@ -246,48 +247,48 @@ footer{margin-top:64px;padding-top:18px;border-top:1px solid var(--line-strong);
   <span class="eyebrow">06</span>
   <h2>Terra Classic · CosmWasm</h2>
   <div class="rule"></div>
-  <div class="chain-head k-tc"><span class="dot"></span>prova local · leitura de storage</div>
+  <div class="chain-head k-tc"><span class="dot"></span>local proof · storage read</div>
 
-  <p>O Mailbox grava o executor, mas a query pública <code>MessageDelivered</code> usa <code>.has()</code> e descarta o endereço. O dado existe — só não é exposto.</p>
+  <p>The Mailbox records the executor, but the public query <code>MessageDelivered</code> uses <code>.has()</code> and discards the address. The data exists — it is just not exposed.</p>
 
   <pre class="code"><span class="c">// hpl-mailbox · execute::process</span>
 DELIVERIES.save(storage, id, &Delivery {
-    sender: info.sender,          <span class="c">← quem assinou a transação</span>
+    sender: info.sender,          <span class="c">← who signed the transaction</span>
     block_number: env.block.height,
 })?;
 
-<span class="c">// chave bruta de Map&lt;Vec&lt;u8&gt;, _&gt; do cw-storage-plus</span>
+<span class="c">// raw key of Map&lt;Vec&lt;u8&gt;, _&gt; from cw-storage-plus</span>
 [0x00, 0x0A] + b"deliveries" + message_id(32 bytes)
-<span class="c">// vazio = não entregue; substitui também MessageDelivered</span></pre>
+<span class="c">// empty = not delivered; also replaces MessageDelivered</span></pre>
 
-  <h4>Fluxo de uma entrega</h4>
-  <div class="flow">mensagem chega → os relayers competem por process()
-   1º no bloco grava seu endereço · os demais revertem
+  <h4>Flow of a delivery</h4>
+  <div class="flow">message arrives → the relayers compete over process()
+   1st in the block records its address · the others revert
         │
         ▼  raw query
 Vault::Claim { message_ids }
-   · não resgatado?  · sender == quem pede?  · dentro da janela?
-   · marca como pago (efeito)  · checa solvência  · BankMsg::Send</div>
+   · not yet claimed?  · sender == requester?  · within the window?
+   · marks as paid (effect)  · checks solvency  · BankMsg::Send</div>
 
-  <h4>Particularidades</h4>
+  <h4>Specifics</h4>
   <ul>
-    <li><code>claim()</code> do IGP só aceita o beneficiary → o Vault precisa do <code>Sweep</code>, que é permissionless e costuma ir na mesma transação do saque</li>
-    <li>Owner é a governança on-chain, não multisig</li>
-    <li>Aqui fica o colateral real que lastreia os sintéticos das outras redes</li>
-    <li>Lote de claim é atômico: um id inválido reverte tudo sem consumir os válidos</li>
+    <li>The IGP <code>claim()</code> only accepts the beneficiary → the Vault needs <code>Sweep</code>, which is permissionless and usually goes in the same transaction as the withdrawal</li>
+    <li>Owner is the on-chain governance, not a multisig</li>
+    <li>This is where the real collateral that backs the synthetics on the other networks resides</li>
+    <li>A claim batch is atomic: one invalid id reverts everything without consuming the valid ones</li>
   </ul>
 
-  <div class="warn"><strong>Fragilidade específica.</strong> Um <code>migrate</code> do Mailbox pode alterar o layout do storage. A query <code>LayoutCheck</code> deve ser monitorada: o contrato falha com <code>MailboxLayoutMismatch</code> em vez de pagar errado. O teste tem de ser feito contra o wasm em produção, não contra o <code>main</code> do upstream.</div>
+  <div class="warn"><strong>Specific fragility.</strong> A Mailbox <code>migrate</code> may change the storage layout. The <code>LayoutCheck</code> query must be monitored: the contract fails with <code>MailboxLayoutMismatch</code> instead of paying incorrectly. The test has to be run against the wasm in production, not against upstream <code>main</code>.</div>
 </section>
 
 <!-- 07 -->
 <section id="s7">
   <span class="eyebrow">07</span>
-  <h2>BSC e Ethereum · EVM</h2>
+  <h2>BSC and Ethereum · EVM</h2>
   <div class="rule"></div>
-  <div class="chain-head k-bsc"><span class="dot"></span>prova local · consulta direta</div>
+  <div class="chain-head k-bsc"><span class="dot"></span>local proof · direct query</div>
 
-  <p>O caso mais simples. O <code>Mailbox.sol</code> v3 expõe tudo o que o Vault precisa.</p>
+  <p>The simplest case. The v3 <code>Mailbox.sol</code> exposes everything the Vault needs.</p>
 
   <pre class="code"><span class="k">address</span> processor = mailbox.processor(id);
 <span class="k">if</span> (processor == address(0)) <span class="k">revert</span> NotDelivered(id);
@@ -295,15 +296,15 @@ Vault::Claim { message_ids }
 
 <span class="k">uint256</span> deadline = mailbox.processedAt(id) + claimWindowBlocks;</pre>
 
-  <h4>Particularidades</h4>
+  <h4>Specifics</h4>
   <ul>
-    <li><code>receive()</code> payable é obrigatório: sem ele o <code>claim()</code> do IGP reverte</li>
-    <li>ISM e IGP associados ao Warp sintético — o Warp cota e paga por conta própria</li>
-    <li><code>GasOracleGovernor</code> vira owner do <code>StorageGasOracle</code>: separação limpa, porque o oracle é contrato independente</li>
-    <li>Épocas de 6h derivadas de <code>block.timestamp</code>, sem coordenação entre operadores</li>
+    <li><code>receive()</code> payable is mandatory: without it the IGP <code>claim()</code> reverts</li>
+    <li>ISM and IGP associated with the synthetic Warp — the Warp quotes and pays on its own</li>
+    <li><code>GasOracleGovernor</code> becomes owner of the <code>StorageGasOracle</code>: a clean separation, because the oracle is an independent contract</li>
+    <li>6h epochs derived from <code>block.timestamp</code>, with no coordination between operators</li>
   </ul>
 
-  <div class="ok-note"><strong>O IGP ligado ao Warp resolve o pagamento opcional.</strong> Como o Warp Route cota e paga o IGP antes de despachar, a arrecadação é imposta pelo fluxo do token — independente de qual hook está configurado como <code>required_hook</code> no Mailbox.</div>
+  <div class="ok-note"><strong>The IGP tied to the Warp resolves optional payment.</strong> Since the Warp Route quotes and pays the IGP before dispatching, the revenue is enforced by the token flow — regardless of which hook is configured as <code>required_hook</code> in the Mailbox.</div>
 </section>
 
 <!-- 08 -->
@@ -311,280 +312,280 @@ Vault::Claim { message_ids }
   <span class="eyebrow">08</span>
   <h2>Solana · Sealevel</h2>
   <div class="rule"></div>
-  <div class="chain-head k-sol"><span class="dot"></span>sem prova local · quórum de operadores</div>
+  <div class="chain-head k-sol"><span class="dot"></span>no local proof · operator quorum</div>
 
-  <p>A exceção. O programa cria uma PDA por mensagem processada — o que impede reprocessamento — mas <strong>não guarda quem a criou</strong>:</p>
+  <p>The exception. The program creates a PDA per processed message — which prevents reprocessing — but <strong>does not store who created it</strong>:</p>
 
   <pre class="code"><span class="k">pub struct</span> ProcessedMessage {
     discriminator: [u8; 8],
     sequence: u64,
     message_id: H256,
-    slot: Slot,                 <span class="c">← nenhum campo de executor</span>
+    slot: Slot,                 <span class="c">← no executor field</span>
 }   <span class="c">size = 56 bytes</span></pre>
 
-  <p style="margin-top:14px">O <code>payer</code> assina e paga o rent, mas a informação é descartada. Verificar apenas se a PDA existe permitiria a outro operador reivindicar o crédito — por isso a autoria vem do quórum.</p>
+  <p style="margin-top:14px">The <code>payer</code> signs and pays the rent, but that information is discarded. Merely checking whether the PDA exists would let another operator claim the credit — this is why authorship comes from the quorum.</p>
 
-  <h4>Dois programas</h4>
+  <h4>Two programs</h4>
   <div class="grid two" style="margin-top:8px">
     <div class="box">
       <h3>RelayerRewardVault</h3>
-      <p style="font-size:13.5px">A PDA de config <em>é</em> o pool — registre-a como beneficiary do IGP. Épocas com quórum, créditos por operador, saque por débito direto de lamports respeitando rent-exempt. Não toca no Mailbox nem no IGP.</p>
+      <p style="font-size:13.5px">The config PDA <em>is</em> the pool — register it as the IGP beneficiary. Epochs with quorum, per-operator credits, withdrawal by direct debit of lamports while respecting rent-exempt. Does not touch the Mailbox or the IGP.</p>
     </div>
     <div class="box">
       <h3>IgpOracleGovernor</h3>
-      <p style="font-size:13.5px">Vira owner do IGP e reconstrói a separação de poderes que a chain não oferece nativamente. Duas portas com autorizações distintas.</p>
+      <p style="font-size:13.5px">Becomes owner of the IGP and rebuilds the separation of powers that the chain does not offer natively. Two gates with distinct authorizations.</p>
     </div>
   </div>
 
-  <h4>Por que o governor é necessário</h4>
-  <div class="flow">Em Solana o oracle NÃO é contrato separado:
+  <h4>Why the governor is necessary</h4>
+  <div class="flow">On Solana the oracle is NOT a separate contract:
    Igp { bump, salt, owner, beneficiary, <b>gas_oracles: HashMap</b> }
-   SetGasOracleConfigs exige ensure_owner_signer(owner)
+   SetGasOracleConfigs requires ensure_owner_signer(owner)
 
-   → quem atualiza preço é forçosamente o owner do IGP
-   → e o owner também controla beneficiary e transferência
+   → whoever updates the price is necessarily the IGP owner
+   → and the owner also controls beneficiary and transfer
 
    ┌──────────────────────────────────────────────┐
-   │  <b>IgpOracleGovernor</b>  (owner do IGP)             │
+   │  <b>IgpOracleGovernor</b>  (IGP owner)                │
    ├──────────────────────────────────────────────┤
-   │  PORTA 1 · operadores, quórum + mediante     │
+   │  GATE 1 · operators, quorum + median         │
    │     SubmitPrice → CPI SetGasOracleConfigs    │
    ├──────────────────────────────────────────────┤
-   │  PORTA 2 · multisig, assinatura única        │
+   │  GATE 2 · multisig, single signature         │
    │     SetBounds                                │
    │     SetIgpBeneficiary                        │
-   │     TransferIgpOwnership  ← saída de emerg.  │
+   │     TransferIgpOwnership  ← emergency exit   │
    └──────────────────────────────────────────────┘</div>
 
-  <div class="warn"><strong>A separação passa a ser lógica, não criptográfica.</strong> Antes, sem a chave do multisig não havia como mexer no IGP. Com o governor, é o código dele que impede. Três consequências obrigatórias: <code>TransferIgpOwnership</code> implementada e <strong>testada antes do deploy</strong>; a PDA de config precisa manter lamports (o realloc do IGP cobra do owner); e a autoridade de upgrade do programa deve ser o multisig, senão tudo é contornável por redeploy.</div>
+  <div class="warn"><strong>The separation becomes logical, not cryptographic.</strong> Before, without the multisig key there was no way to touch the IGP. With the governor, it is its code that prevents it. Three mandatory consequences: <code>TransferIgpOwnership</code> implemented and <strong>tested before deploy</strong>; the config PDA must keep lamports (the IGP realloc charges the owner); and the program's upgrade authority must be the multisig, otherwise everything is circumventable by redeploy.</div>
 
-  <div class="note"><strong>Calibragem separada.</strong> O relayer paga rent da PDA de mensagem processada além da taxa, então a tarifa em Solana é proporcionalmente maior. E o <code>TOKEN_EXCHANGE_RATE_SCALE</code> é 10¹⁹ em Solana contra 10¹⁰ no EVM — as faixas precisam ser recalculadas, não copiadas. O <code>token_decimals</code> é constante da rede e fica com o multisig, fora do quórum.</div>
+  <div class="note"><strong>Separate calibration.</strong> The relayer pays the rent of the processed-message PDA on top of the fee, so the fee on Solana is proportionally higher. And <code>TOKEN_EXCHANGE_RATE_SCALE</code> is 10¹⁹ on Solana versus 10¹⁰ on EVM — the bounds must be recalculated, not copied. <code>token_decimals</code> is a network constant and stays with the multisig, outside the quorum.</div>
 </section>
 
 <!-- 09 -->
 <section id="s9">
   <span class="eyebrow">09</span>
-  <h2>Quórum: épocas e propostas</h2>
+  <h2>Quorum: epochs and proposals</h2>
   <div class="rule"></div>
-  <p>O mesmo mecanismo serve a dois propósitos: atribuir crédito por entregas remotas e aprovar mudanças administrativas. Um só modelo de confiança em todo o sistema.</p>
+  <p>The same mechanism serves two purposes: assigning credit for remote deliveries and approving administrative changes. A single trust model across the whole system.</p>
 
-  <h4>Épocas de entrega</h4>
+  <h4>Delivery epochs</h4>
   <div class="flow">  00:00        06:00        12:00        18:00        00:00 UTC
-    │────época 0───│────época 1───│────época 2───│────época 3───│
-                   │ + folga de confirmações (reorg / finalidade)
+    │────epoch 0───│────epoch 1───│────epoch 2───│────epoch 3───│
+                   │ + confirmation slack (reorg / finality)
                    ▼
       ┌────────────┼────────────┐
    hash A       hash B       hash C
       └──────┬─────┘
-             │ quórum de hashes idênticos → créditos atribuídos
-             └─ divergência → época travada, alarme, resolução manual</div>
+             │ quorum of identical hashes → credits assigned
+             └─ divergence → epoch locked, alarm, manual resolution</div>
 
-  <p style="margin-top:14px">Duas regras impedem falhas de convergência que não são má-fé: a <strong>lista de entregas deve vir ordenada por chave</strong> (senão o mesmo conteúdo em ordens diferentes geraria hashes distintos), e a <strong>janela de blocos fica imutável</strong> após a primeira submissão (senão um operador escolheria um intervalo conveniente).</p>
+  <p style="margin-top:14px">Two rules prevent convergence failures that are not bad faith: the <strong>delivery list must come ordered by key</strong> (otherwise the same content in different orders would produce distinct hashes), and the <strong>block window becomes immutable</strong> after the first submission (otherwise an operator would pick a convenient interval).</p>
 
-  <h4>Propostas administrativas</h4>
-  <p>Não existe admin único no Vault. Qualquer mudança de parâmetro é uma proposta que exige o mesmo quórum:</p>
+  <h4>Administrative proposals</h4>
+  <p>There is no single admin in the Vault. Any parameter change is a proposal that requires the same quorum:</p>
 
   <pre class="code">SubmitAdminAction(AdminEnvelope { nonce, action })
 
-<span class="c">// o hash do envelope É a semente da PDA — todos os operadores</span>
-<span class="c">// convergem na mesma conta sem combinar nada de antemão</span>
+<span class="c">// the envelope hash IS the PDA seed — all operators</span>
+<span class="c">// converge on the same account without agreeing anything beforehand</span>
 seeds = ["rrv", "-", "prop", "-", hash(envelope)]</pre>
 
   <div class="grid two" style="margin-top:14px">
     <div class="box">
-      <h3>O <code>nonce</code></h3>
-      <p style="font-size:13.5px">Permite repetir uma ação idêntica no futuro — pausar, despausar, pausar de novo — sem colidir com a proposta anterior já executada.</p>
+      <h3>The <code>nonce</code></h3>
+      <p style="font-size:13.5px">Allows repeating an identical action in the future — pause, unpause, pause again — without colliding with the previous, already-executed proposal.</p>
     </div>
     <div class="box">
-      <h3>Destino no hash</h3>
-      <p style="font-size:13.5px">Em <code>WithdrawSurplus</code>, o endereço de destino faz parte do hash. Os operadores aprovam <em>aquele</em> endereço, não um saque genérico que o último a assinar poderia redirecionar.</p>
+      <h3>Destination in the hash</h3>
+      <p style="font-size:13.5px">In <code>WithdrawSurplus</code>, the destination address is part of the hash. The operators approve <em>that</em> address, not a generic withdrawal that the last to sign could redirect.</p>
     </div>
   </div>
 
-  <div class="warn"><strong>Limite conhecido.</strong> Um conluio que atinja o quórum pode reportar o que quiser. É o mesmo limiar do ISM que já sustenta a ponte — não é risco novo, mas precisa estar explícito na proposta. Qualquer pessoa consegue auditar o relatório contra a chain pública e denunciar divergência.</div>
+  <div class="warn"><strong>Known limit.</strong> A collusion that reaches the quorum can report whatever it wants. It is the same threshold as the ISM that already underpins the bridge — not a new risk, but it must be explicit in the proposal. Anyone can audit the report against the public chain and report a divergence.</div>
 </section>
 
 <!-- 10 -->
 <section id="s10">
   <span class="eyebrow">10</span>
-  <h2>Oracle nas quatro redes</h2>
+  <h2>Oracle across the four networks</h2>
   <div class="rule"></div>
-  <p>Gas price e exchange rate defasados fazem o quote cobrar de menos (o pool seca) ou de mais (a ponte encarece). O padrão é o mesmo em todas as redes; muda a implementação.</p>
+  <p>A lagging gas price and exchange rate make the quote charge too little (the pool dries up) or too much (the bridge becomes expensive). The pattern is the same on all networks; the implementation changes.</p>
 
-  <div class="flow">   <u>governança / multisig</u> ── define ──▶ faixa [min,max] + variação máx.
-                                            │ trava on-chain
-   operador A ─┐                            ▼
-   operador B ─┼── SubmitPrice ──▶ ┌──────────────────────┐
-   operador C ─┘                   │  <b>Governor</b>             │
-                                   │  mediana              │
-                                   │  dentro da faixa?     │
-                                   │  delta &lt; limite?      │
+  <div class="flow">   <u>governance / multisig</u> ── sets ──▶ bounds [min,max] + max variation
+                                            │ locked on-chain
+   operator A ─┐                            ▼
+   operator B ─┼── SubmitPrice ──▶ ┌──────────────────────┐
+   operator C ─┘                   │  <b>Governor</b>             │
+                                   │  median               │
+                                   │  within bounds?       │
+                                   │  delta &lt; limit?       │
                                    └──────────┬───────────┘
                                               ▼
-                                       oracle da rede</div>
+                                       network oracle</div>
 
   <div class="grid two" style="margin-top:16px">
     <div class="box">
-      <h3>Mediana, não hash idêntico</h3>
-      <p style="font-size:13.5px">Preço é observação de mercado, não fato verificável: agentes honestos veem números levemente diferentes. Exigir igualdade travaria o oracle. Com número par de submissões, usa-se o menor dos centrais — na dúvida cobra menos do usuário.</p>
+      <h3>Median, not identical hash</h3>
+      <p style="font-size:13.5px">Price is a market observation, not a verifiable fact: honest agents see slightly different numbers. Requiring equality would lock the oracle. With an even number of submissions, the lower of the two central ones is used — when in doubt it charges the user less.</p>
     </div>
     <div class="box">
-      <h3>Faixa e limite de variação</h3>
-      <p style="font-size:13.5px">Fora da faixa, rejeita. Salto acima do limite por época (sugestão: 2000 bps), rejeita. Protege contra erro de RPC e movimento brusco, sem supervisão humana.</p>
+      <h3>Bounds and variation limit</h3>
+      <p style="font-size:13.5px">Outside the bounds, it rejects. A jump above the per-epoch limit (suggestion: 2000 bps), it rejects. Protects against RPC error and abrupt movement, without human supervision.</p>
     </div>
   </div>
 
-  <div class="warn"><strong>O conflito de interesse que a faixa neutraliza.</strong> Os operadores controlam o preço que financia a própria remuneração: um exchange rate inflado faz o usuário pagar mais ao IGP, engordando o pool que os paga. Como a faixa é definida pela governança (no TC) ou pelo multisig (nas remotas) — nunca pelos próprios operadores —, ela é trava real e não apenas registro.</div>
+  <div class="warn"><strong>The conflict of interest that the bounds neutralize.</strong> The operators control the price that funds their own remuneration: an inflated exchange rate makes the user pay more to the IGP, fattening the pool that pays them. Since the bounds are set by governance (on TC) or by the multisig (on the remotes) — never by the operators themselves — they are a real lock and not just a record.</div>
 
-  <div class="note"><strong>Caminho de emergência em todas as redes.</strong> Governança e multisig mantêm a capacidade de escrever direto no oracle caso o governor falhe. Sem essa segunda porta, um bug travaria a precificação da ponte inteira.</div>
+  <div class="note"><strong>Emergency path on all networks.</strong> Governance and multisig retain the ability to write directly to the oracle should the governor fail. Without this second gate, a bug would lock the pricing of the entire bridge.</div>
 </section>
 
 <!-- 11 -->
 <section id="s11">
   <span class="eyebrow">11</span>
-  <h2>Matriz de permissões</h2>
+  <h2>Permissions matrix</h2>
   <div class="rule"></div>
   <table class="tbl">
-    <thead><tr><th>Ação</th><th>Governança TC</th><th>Multisig</th><th>Operadores</th><th>Qualquer um</th></tr></thead>
+    <thead><tr><th>Action</th><th>TC Governance</th><th>Multisig</th><th>Operators</th><th>Anyone</th></tr></thead>
     <tbody>
-      <tr><td><strong>Entregar mensagens</strong></td><td class="ok">sim</td><td class="ok">sim</td><td class="ok">sim</td><td class="ok">sim</td></tr>
-      <tr><td><strong>Sacar recompensa</strong></td><td class="no">não</td><td class="no">não</td><td class="ok">só a própria</td><td class="ok">só a própria</td></tr>
-      <tr><td>Puxar fundos do IGP (Sweep)</td><td class="ok">sim</td><td class="ok">sim</td><td class="ok">sim</td><td class="ok">sim</td></tr>
-      <tr><td>Relatório de época</td><td class="no">não</td><td class="no">não</td><td class="ok">quórum</td><td class="no">não</td></tr>
-      <tr><td>Atualizar preço na faixa</td><td class="ok">TC</td><td class="no">não</td><td class="ok">quórum</td><td class="no">não</td></tr>
-      <tr><td>Definir a faixa do oracle</td><td class="ok">TC</td><td class="ok">remotas</td><td class="no">não</td><td class="no">não</td></tr>
-      <tr><td>Tarifa e parâmetros do Vault</td><td class="ok">TC</td><td class="no">não</td><td class="ok">quórum (remotas)</td><td class="no">não</td></tr>
-      <tr><td>Trocar o ISM</td><td class="ok">TC</td><td class="ok">remotas</td><td class="no">não</td><td class="no">não</td></tr>
-      <tr><td>Beneficiary do IGP</td><td class="ok">TC</td><td class="ok">remotas</td><td class="no">não</td><td class="no">não</td></tr>
-      <tr><td>Pausar o Vault</td><td class="ok">TC</td><td class="no">não</td><td class="ok">quórum (remotas)</td><td class="no">não</td></tr>
-      <tr><td>Auditar tudo</td><td class="ok">sim</td><td class="ok">sim</td><td class="ok">sim</td><td class="ok">sim</td></tr>
+      <tr><td><strong>Deliver messages</strong></td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td></tr>
+      <tr><td><strong>Withdraw reward</strong></td><td class="no">no</td><td class="no">no</td><td class="ok">own only</td><td class="ok">own only</td></tr>
+      <tr><td>Pull funds from the IGP (Sweep)</td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td></tr>
+      <tr><td>Epoch report</td><td class="no">no</td><td class="no">no</td><td class="ok">quorum</td><td class="no">no</td></tr>
+      <tr><td>Update price within bounds</td><td class="ok">TC</td><td class="no">no</td><td class="ok">quorum</td><td class="no">no</td></tr>
+      <tr><td>Set the oracle bounds</td><td class="ok">TC</td><td class="ok">remotes</td><td class="no">no</td><td class="no">no</td></tr>
+      <tr><td>Vault fee and parameters</td><td class="ok">TC</td><td class="no">no</td><td class="ok">quorum (remotes)</td><td class="no">no</td></tr>
+      <tr><td>Swap the ISM</td><td class="ok">TC</td><td class="ok">remotes</td><td class="no">no</td><td class="no">no</td></tr>
+      <tr><td>IGP beneficiary</td><td class="ok">TC</td><td class="ok">remotes</td><td class="no">no</td><td class="no">no</td></tr>
+      <tr><td>Pause the Vault</td><td class="ok">TC</td><td class="no">no</td><td class="ok">quorum (remotes)</td><td class="no">no</td></tr>
+      <tr><td>Audit everything</td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td></tr>
     </tbody>
   </table>
-  <div class="note">As duas primeiras linhas são o coração do desenho: <strong>relayar é aberto</strong>, e qualquer endereço que entregue pode sacar. O quórum restringe quem <em>reporta</em> entregas remotas, nunca quem pode fazê-las.</div>
+  <div class="note">The first two rows are the heart of the design: <strong>relaying is open</strong>, and any address that delivers can withdraw. The quorum restricts who <em>reports</em> remote deliveries, never who can make them.</div>
 </section>
 
 <!-- 12 -->
 <section id="s12">
   <span class="eyebrow">12</span>
-  <h2>Riscos</h2>
+  <h2>Risks</h2>
   <div class="rule"></div>
   <table class="tbl">
-    <thead><tr><th>Risco</th><th>Onde</th><th>Mitigação</th></tr></thead>
+    <thead><tr><th>Risk</th><th>Where</th><th>Mitigation</th></tr></thead>
     <tbody>
-      <tr><td><strong>Multisig controla o ISM do Warp sintético</strong></td><td>BSC · ETH · SOL</td><td>Ver alerta abaixo — o risco mais grave do projeto</td></tr>
-      <tr><td>ISM com poucos validadores</td><td>todas</td><td>Com 4 validadores, usar 3‑de‑4: tolera um offline e exige três para forjar</td></tr>
-      <tr><td>Governor tranca o IGP</td><td>Solana</td><td><code>TransferIgpOwnership</code> testada antes do deploy; upgrade authority no multisig</td></tr>
-      <tr><td>Conluio no quórum</td><td>Solana</td><td>Mesmo limiar do ISM; relatórios auditáveis publicamente</td></tr>
-      <tr><td>Operadores inflam o preço</td><td>todas</td><td>Faixa definida por quem não é operador</td></tr>
-      <tr><td><code>migrate</code> muda o layout</td><td>Terra Classic</td><td><code>LayoutCheck</code> monitorado; erro explícito</td></tr>
-      <tr><td>Pool remoto seca</td><td>BSC · ETH · SOL</td><td>Épocas como contingência, pagando em LUNC</td></tr>
-      <tr><td>Rent encarece a entrega</td><td>Solana</td><td>Tarifa calibrada à parte</td></tr>
-      <tr><td>Apenas dois relayers</td><td>todas</td><td>Manter o sistema aberto: um terceiro pode entrar sem pedir licença</td></tr>
+      <tr><td><strong>Multisig controls the synthetic Warp's ISM</strong></td><td>BSC · ETH · SOL</td><td>See the alert below — the project's most serious risk</td></tr>
+      <tr><td>ISM with few validators</td><td>all</td><td>With 4 validators, use 3-of-4: tolerates one offline and requires three to forge</td></tr>
+      <tr><td>Governor locks the IGP</td><td>Solana</td><td><code>TransferIgpOwnership</code> tested before deploy; upgrade authority on the multisig</td></tr>
+      <tr><td>Collusion in the quorum</td><td>Solana</td><td>Same threshold as the ISM; reports publicly auditable</td></tr>
+      <tr><td>Operators inflate the price</td><td>all</td><td>Bounds set by someone who is not an operator</td></tr>
+      <tr><td><code>migrate</code> changes the layout</td><td>Terra Classic</td><td><code>LayoutCheck</code> monitored; explicit error</td></tr>
+      <tr><td>Remote pool dries up</td><td>BSC · ETH · SOL</td><td>Epochs as a contingency, paying in LUNC</td></tr>
+      <tr><td>Rent makes delivery expensive</td><td>Solana</td><td>Fee calibrated separately</td></tr>
+      <tr><td>Only two relayers</td><td>all</td><td>Keep the system open: a third can enter without asking permission</td></tr>
     </tbody>
   </table>
 
-  <div class="warn" style="margin-top:22px"><strong>O risco mais grave não está no Vault.</strong> O colateral real fica travado no Terra Classic e o sintético é emitido nas redes remotas. Quem controla o ISM do Warp remoto controla a emissão: um ISM adulterado permite cunhar sintético sem lastro, queimá‑lo, e a mensagem de queima que chega ao Terra Classic é <strong>legítima</strong> — o ISM honesto do lado do TC vai validá‑la e <strong>liberar colateral real</strong>.<br><br>O multisig que administra o ISM remoto tem, portanto, acesso indireto ao colateral. Exige proteções proporcionais: nunca composto apenas pelos validadores que assinam checkpoints, e idealmente com timelock nas trocas de ISM. Isso não se resolve em contrato — resolve‑se na composição do multisig e no texto da proposta.</div>
+  <div class="warn" style="margin-top:22px"><strong>The most serious risk is not in the Vault.</strong> The real collateral is locked on Terra Classic and the synthetic is minted on the remote networks. Whoever controls the remote Warp's ISM controls the minting: a tampered ISM allows minting synthetic without backing, burning it, and the burn message that reaches Terra Classic is <strong>legitimate</strong> — the honest ISM on the TC side will validate it and <strong>release real collateral</strong>.<br><br>The multisig that administers the remote ISM therefore has indirect access to the collateral. It requires proportional protections: never composed solely of the validators who sign checkpoints, and ideally with a timelock on ISM swaps. This is not solved in a contract — it is solved in the composition of the multisig and in the text of the proposal.</div>
 </section>
 
 <!-- 13 -->
 <section id="s13">
   <span class="eyebrow">13</span>
-  <h2>Implantação</h2>
+  <h2>Deployment</h2>
   <div class="rule"></div>
   <div class="box">
     <div class="phase">
-      <div class="p">FASE 0</div>
+      <div class="p">PHASE 0</div>
       <div>
-        <h3>Verificação em mainnet</h3>
-        <p style="font-size:13.5px">Ler o <code>DELIVERIES</code> de uma mensagem real já entregue no Terra Classic. Conferir os hooks do Mailbox e o <code>data_hash</code> do código implantado contra o repositório. <strong>Nada é escrito ou implantado antes disso.</strong></p>
+        <h3>Verification on mainnet</h3>
+        <p style="font-size:13.5px">Read the <code>DELIVERIES</code> of a real message already delivered on Terra Classic. Check the Mailbox hooks and the <code>data_hash</code> of the deployed code against the repository. <strong>Nothing is written or deployed before this.</strong></p>
       </div>
     </div>
     <div class="phase">
-      <div class="p">FASE 1</div>
+      <div class="p">PHASE 1</div>
       <div>
-        <h3>Oracle no Terra Classic</h3>
-        <p style="font-size:13.5px">OracleGovernor + agente rodando só o módulo de preço. É obrigatório de qualquer forma e valida se os operadores conseguem manter o processo de pé. Falhas aqui são reversíveis.</p>
+        <h3>Oracle on Terra Classic</h3>
+        <p style="font-size:13.5px">OracleGovernor + agent running only the price module. It is mandatory anyway and validates whether the operators can keep the process running. Failures here are reversible.</p>
       </div>
     </div>
     <div class="phase">
-      <div class="p">FASE 2</div>
+      <div class="p">PHASE 2</div>
       <div>
-        <h3>Vault no Terra Classic</h3>
-        <p style="font-size:13.5px">Deploy, <code>IGP.beneficiary = Vault</code>, pagamento das entregas locais. Não depende do agente.</p>
+        <h3>Vault on Terra Classic</h3>
+        <p style="font-size:13.5px">Deploy, <code>IGP.beneficiary = Vault</code>, payment of local deliveries. Does not depend on the agent.</p>
       </div>
     </div>
     <div class="phase">
-      <div class="p">FASE 3</div>
+      <div class="p">PHASE 3</div>
       <div>
-        <h3>BSC e Ethereum</h3>
-        <p style="font-size:13.5px">Vault e GasOracleGovernor em Solidity, multisig configurado, beneficiary apontado, oracle transferido ao governor. Prova local direta, sem agente e sem épocas.</p>
+        <h3>BSC and Ethereum</h3>
+        <p style="font-size:13.5px">Vault and GasOracleGovernor in Solidity, multisig configured, beneficiary pointed, oracle transferred to the governor. Direct local proof, no agent and no epochs.</p>
       </div>
     </div>
     <div class="phase">
-      <div class="p">FASE 4</div>
+      <div class="p">PHASE 4</div>
       <div>
         <h3>Solana</h3>
-        <p style="font-size:13.5px">Vault com épocas primeiro — é independente e não toca no IGP. Só depois o governor, testando a saída de emergência antes de transferir a posse. Em paralelo: auditoria externa e ampliação do conjunto de validadores.</p>
+        <p style="font-size:13.5px">Vault with epochs first — it is independent and does not touch the IGP. Only then the governor, testing the emergency exit before transferring ownership. In parallel: external audit and expansion of the validator set.</p>
       </div>
     </div>
   </div>
 
-  <h4>Checklist por rede</h4>
+  <h4>Checklist per network</h4>
   <pre class="code"><span class="c">// Terra Classic</span>
-1. deploy do Vault           4. governança: IGP.beneficiary = Vault
-2. deploy do OracleGovernor  5. governança: Oracle.owner = Governor
-3. semear o pool             6. monitorar LayoutCheck
+1. deploy the Vault          4. governance: IGP.beneficiary = Vault
+2. deploy the OracleGovernor 5. governance: Oracle.owner = Governor
+3. seed the pool             6. monitor LayoutCheck
 
 <span class="c">// BSC / Ethereum</span>
-1. deploy do Vault (owner = multisig)
-2. deploy do GasOracleGovernor + setBounds
-3. transferOwnership do StorageGasOracle → Governor
+1. deploy the Vault (owner = multisig)
+2. deploy the GasOracleGovernor + setBounds
+3. transferOwnership of the StorageGasOracle → Governor
 4. multisig: IGP.beneficiary = Vault
 
 <span class="c">// Solana</span>
-1. deploy do Vault + Init      → PDA de config = beneficiary
-2. deploy do Governor + Init   → SetBounds pelo multisig
-3. <span class="k">TESTAR TransferIgpOwnership em devnet</span>
-4. transferir posse do IGP ao Governor
-5. upgrade authority do Governor → multisig</pre>
+1. deploy the Vault + Init     → config PDA = beneficiary
+2. deploy the Governor + Init  → SetBounds by the multisig
+3. <span class="k">TEST TransferIgpOwnership on devnet</span>
+4. transfer IGP ownership to the Governor
+5. Governor upgrade authority → multisig</pre>
 </section>
 
 <!-- 14 -->
 <section id="s14">
   <span class="eyebrow">14</span>
-  <h2>Pendências</h2>
+  <h2>Open items</h2>
   <div class="rule"></div>
   <div class="grid two">
     <div class="box">
-      <h3>Definir na proposta</h3>
+      <h3>To define in the proposal</h3>
       <ul>
-        <li>Tarifa por entrega em cada rede</li>
-        <li>Janela de resgate e de créditos</li>
-        <li>Faixa do oracle por domínio e por rede</li>
-        <li>Endereços dos operadores e quórum</li>
-        <li>Composição e threshold do multisig</li>
-        <li>Threshold do ISM (recomendado 3‑de‑4)</li>
-        <li>Timelock para troca de ISM</li>
+        <li>Fee per delivery on each network</li>
+        <li>Claim and credit window</li>
+        <li>Oracle bounds per domain and per network</li>
+        <li>Operator addresses and quorum</li>
+        <li>Multisig composition and threshold</li>
+        <li>ISM threshold (recommended 3-of-4)</li>
+        <li>Timelock for ISM swap</li>
       </ul>
     </div>
     <div class="box">
-      <h3>Verificar tecnicamente</h3>
+      <h3>To verify technically</h3>
       <ul>
-        <li>Leitura raw do <code>DELIVERIES</code> em mainnet</li>
-        <li>Se o fork do TC diverge do upstream</li>
-        <li>Como o Warp cota e paga o IGP em cada rede</li>
-        <li>Finalidade a esperar antes de fechar época</li>
-        <li>Custo real de rent por entrega em Solana</li>
-        <li>Compilação e testes de tudo o que foi escrito</li>
+        <li>Raw read of <code>DELIVERIES</code> on mainnet</li>
+        <li>Whether the TC fork diverges from upstream</li>
+        <li>How the Warp quotes and pays the IGP on each network</li>
+        <li>Finality to wait for before closing an epoch</li>
+        <li>Real rent cost per delivery on Solana</li>
+        <li>Compilation and tests of everything written</li>
       </ul>
     </div>
   </div>
 
-  <div class="warn"><strong>Decisão ainda aberta.</strong> Financiar os pools com uma taxa no Warp Route — uma fração de cada transferência — é a única versão que não depende do volume de despachos de saída em cada rede. Muda a economia de longo prazo e vale avaliar antes de fechar a proposta.</div>
+  <div class="warn"><strong>Decision still open.</strong> Funding the pools with a fee on the Warp Route — a fraction of each transfer — is the only version that does not depend on the volume of outbound dispatches on each network. It changes the long-term economics and is worth evaluating before closing the proposal.</div>
 </section>
 
 <footer>
-  v3 · quatro redes · nenhuma linha do core Hyperlane é modificada · sujeito a revisão após a Fase 0
+  v3 · four networks · not a single line of the Hyperlane core is modified · subject to review after Phase 0
 </footer>
 
 </div>

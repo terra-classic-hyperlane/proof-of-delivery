@@ -1,82 +1,82 @@
-# Segurança do ClaimRemote — modelo de confiança e quem decide o pagamento
+# ClaimRemote security — trust model and who decides the payment
 
-Responde: "o relayer não pode decidir quem recebe; isso tem de estar no contrato".
+Answers: "the relayer cannot decide who gets paid; that has to be in the contract".
 
-## 1. Dois "beneficiários" diferentes — não confundir
+## 1. Two different "beneficiaries" — don't confuse them
 
-| Termo | Quem é | Papel |
+| Term | Who it is | Role |
 |---|---|---|
-| **`beneficiary` do IGP** | **o contrato VAULT** | recebe a arrecadação de gás da ponte (é para onde o `claim()` do IGP empurra os fundos). É dinheiro ENTRANDO no pool. |
-| **`executor` (ClaimRemote)** | um **operador** (endereço vinculado) | recebe a recompensa da taxa de origem por uma entrega remota. É dinheiro SAINDO do pool. |
+| **IGP `beneficiary`** | **the VAULT contract** | receives the bridge's gas collection (it is where the IGP's `claim()` pushes the funds). It is money COMING INTO the pool. |
+| **`executor` (ClaimRemote)** | an **operator** (bound address) | receives the origin fee reward for a remote delivery. It is money LEAVING the pool. |
 
-O vault é o **cofre**: o gás entra nele (como IGP beneficiary) e a recompensa
-sai dele para o operador (como pagamento de ClaimRemote). O relayer nunca toca
-no cofre — só **aciona** funções cujas regras estão 100% no contrato.
+The vault is the **vault**: gas enters it (as IGP beneficiary) and the reward
+leaves it to the operator (as ClaimRemote payment). The relayer never touches
+the vault — it only **triggers** functions whose rules are 100% in the contract.
 
-## 2. O que o CONTRATO decide (não o relayer)
+## 2. What the CONTRACT decides (not the relayer)
 
-O relayer/agente só EXECUTA a transação. Cada regra abaixo é imposta pelo
-bytecode — modificar o agente não as contorna:
+The relayer/agent only EXECUTES the transaction. Each rule below is enforced by
+the bytecode — modifying the agent does not bypass them:
 
-1. **Destinatário travado por allowlist.** O pagamento só vai para um endereço
-   que o **owner/governança** vinculou (`remoteBinding`). Um agente malicioso
-   NÃO consegue redirecionar para uma carteira de atacante nova — a tx reverte
-   com `NoBinding`. Quem decide o conjunto de destinatários é o owner, no contrato.
-2. **1 pagamento por `message_id`** (`remote_claimed`, effects-first). Nunca paga
-   a mesma mensagem 2×, mesmo sob reentrância (guard) ou corrida entre agentes.
-3. **Teto fixo por domínio** (`remote_reward`). Um id forjado custa no máximo a
-   recompensa do domínio, nunca o pool inteiro. Só o owner muda o teto.
-4. **Anti-autopagamento (quórum ≥ 2).** A atestação do PRÓPRIO beneficiário não
-   conta para o quórum: pagar o operador X exige `quorum` atestadores
-   INDEPENDENTES (≠ X). Uma chave sozinha não se paga. (EVM/CW: exclusão do voto
-   próprio; Solana: `quorum` relatórios byte-idênticos de operadores distintos.)
-5. **Pausa de emergência** (`SetPause`) congela toda atestação.
+1. **Recipient locked by allowlist.** The payment only goes to an address
+   that the **owner/governance** bound (`remoteBinding`). A malicious agent
+   CANNOT redirect it to a new attacker wallet — the tx reverts
+   with `NoBinding`. Who decides the set of recipients is the owner, in the contract.
+2. **1 payment per `message_id`** (`remote_claimed`, effects-first). Never pays
+   the same message twice, even under reentrancy (guard) or a race between agents.
+3. **Fixed cap per domain** (`remote_reward`). A forged id costs at most the
+   domain's reward, never the whole pool. Only the owner changes the cap.
+4. **Anti self-payment (quorum ≥ 2).** The attestation of the beneficiary ITSELF
+   does not count toward the quorum: paying operator X requires `quorum`
+   INDEPENDENT attesters (≠ X). A single key cannot pay itself. (EVM/CW: exclusion of one's
+   own vote; Solana: `quorum` byte-identical reports from distinct operators.)
+5. **Emergency pause** (`SetPause`) freezes all attestation.
 
-## 3. O limite físico (e o que ele exige)
+## 3. The physical limit (and what it requires)
 
-A chain de ORIGEM **não enxerga** a chain de destino. Logo, "a mensagem X foi
-entregue lá pelo operador Z" é a ÚNICA afirmação que o contrato não pode
-verificar sozinho — ela vem dos atestadores. Isso é irredutível sem um dos dois:
+The ORIGIN chain **cannot see** the destination chain. Therefore "message X was
+delivered over there by operator Z" is the ONLY claim the contract cannot
+verify on its own — it comes from the attesters. This is irreducible without one of two things:
 
-- **(hoje) Atestação com quórum** — confiança distribuída entre N operadores
-  independentes. Seguro se **quórum ≥ 2** e os operadores forem separados
-  (chaves/máquinas distintas). **Com quórum = 1 (fase de teste, 1 operador) a
-  chave única é a autoridade — nenhum contrato remove isso; é a definição de 1
-  operador.** Por isso quórum = 1 é EXPLICITAMENTE só-teste.
-- **(alvo trustless) Recibo de volta via Hyperlane** — o vault de DESTINO (que
-  PODE verificar a entrega on-chain, via `processor(id)`/DELIVERIES) despacha uma
-  mensagem de volta para o vault de ORIGEM afirmando "id X entregue por Z". Essa
-  mensagem passa pela MESMA segurança de validadores/ISM da ponte. O vault de
-  origem a recebe pelo seu Mailbox e paga — **sem confiar em atestador nenhum**;
-  o contrato determina o destinatário a partir de uma mensagem assinada pelos
-  validadores. Custo: o gás de uma mensagem de retorno por entrega. É o caminho
-  para eliminar 100% a confiança — está proposto, não implementado (decisão da
-  governança pelo custo/benefício).
+- **(today) Quorum attestation** — trust distributed among N independent
+  operators. Safe if **quorum ≥ 2** and the operators are separate
+  (distinct keys/machines). **With quorum = 1 (test phase, 1 operator) the
+  single key is the authority — no contract removes this; it is the definition of 1
+  operator.** That is why quorum = 1 is EXPLICITLY test-only.
+- **(trustless target) Return receipt via Hyperlane** — the DESTINATION vault (which
+  CAN verify the delivery on-chain, via `processor(id)`/DELIVERIES) dispatches a
+  message back to the ORIGIN vault asserting "id X delivered by Z". That
+  message passes through the SAME validator/ISM security of the bridge. The origin
+  vault receives it through its Mailbox and pays — **without trusting any attester**;
+  the contract determines the recipient from a message signed by the
+  validators. Cost: the gas of one return message per delivery. This is the path
+  to eliminate 100% of the trust — it is proposed, not implemented (a governance
+  decision on cost/benefit).
 
-## 4. Resposta direta à preocupação
+## 4. Direct answer to the concern
 
-> "Código malicioso no relayer é um problema."
+> "Malicious code in the relayer is a problem."
 
-Verdadeiro, e mitigado em camadas: um agente comprometido **detém a chave de UM
-operador** — ou seja, equivale a UM atestador malicioso. Contra isso:
-- ele **não** pode pagar endereço fora da allowlist (regra 1);
-- ele **não** pode pagar 2× nem acima do teto (regras 2–3);
-- com **quórum ≥ 2** ele **não** atinge o quórum sozinho (regra 4) — precisa
-  comprometer N operadores independentes ao mesmo tempo.
+True, and mitigated in layers: a compromised agent **holds the key of ONE
+operator** — that is, it is equivalent to ONE malicious attester. Against this:
+- it **cannot** pay an address outside the allowlist (rule 1);
+- it **cannot** pay twice nor above the cap (rules 2–3);
+- with **quorum ≥ 2** it **cannot** reach the quorum alone (rule 4) — it needs
+  to compromise N independent operators at the same time.
 
-O único cenário em que uma chave sozinha tem autoridade total é **quórum = 1**,
-que existe apenas porque hoje há **1 operador em teste**. A ação de segurança
-para produção é **operacional e já suportada pelo contrato**: adicionar
-operadores independentes e subir o quórum (`MANUAL-EXPANSAO.md` §3). O
-anti-autopagamento (regra 4) já está no bytecode, pronto para o momento em que o
-quórum passar de 1.
+The only scenario in which a single key has full authority is **quorum = 1**,
+which exists only because today there is **1 operator in test**. The security
+action for production is **operational and already supported by the contract**:
+add independent operators and raise the quorum (`MANUAL-EXPANSAO.md` §3). The
+anti self-payment (rule 4) is already in the bytecode, ready for the moment the
+quorum goes above 1.
 
-## 5. Estado do código
+## 5. State of the code
 
-- Regra 4 implementada e testada: EVM 39 testes · CW 30 testes (`cargo`+`forge`
-  verdes). CW rebuild reproduzível: sha256
+- Rule 4 implemented and tested: EVM 39 tests · CW 30 tests (`cargo`+`forge`
+  green). Reproducible CW rebuild: sha256
   `ee8893da963bb2dd6eb20a6090f241e80c523f867a5b2a923baa5f601cce29d4`.
-- **Deploy:** a regra 4 é NO-OP em quórum = 1 (idempotente com o que já está no
-  ar), então não exige redeploy para a fase de teste. Deve ser implantada
-  **antes** de qualquer mudança para quórum ≥ 2 (bundle com o go-live
-  multi-operador): TC `migrate` + EVM redeploy + config.
+- **Deploy:** rule 4 is a NO-OP at quorum = 1 (idempotent with what is already
+  live), so it does not require a redeploy for the test phase. It must be deployed
+  **before** any change to quorum ≥ 2 (bundled with the multi-operator go-live):
+  TC `migrate` + EVM redeploy + config.

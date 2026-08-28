@@ -1,112 +1,112 @@
-# Instalação do claim-agent na VPS — coleta automática de comissões
+# Installing the claim-agent on the VPS — automatic commission collection
 
-O `claim-agent` **emite os recibos sozinho** (a cada 5 min) em todas as chains vivas, e
-as comissões caem nas suas **carteiras de operador**. Roda na VPS como serviço
-`systemd`, assinando com uma **carteira-gatilho dedicada** (só paga o gás). Sua chave
-real **nunca vai para a VPS**.
+The `claim-agent` **emits the receipts on its own** (every 5 min) on every live chain, and
+the commissions land in your **operator wallets**. It runs on the VPS as a `systemd`
+service, signing with a **dedicated trigger wallet** (which only pays gas). Your real
+key **never goes to the VPS**.
 
-## Conceito: carteira-gatilho
-- É uma carteira **nova, descartável**, com **só um pouco de gás** (BNB no BSC, LUNC no TC).
-- Ela **assina** o `sendReceipt`/`send_receipt` e paga o gás.
-- A **comissão SEMPRE cai na sua carteira de operador** (`terra1run…` / `0x8f08…`),
-  porque o contrato paga o endereço do **registro de/para**, não quem assinou.
-- Se a VPS ou a carteira-gatilho vazar, o atacante **só pega o troco de gás** — suas
-  chaves reais e suas comissões ficam intactas.
+## Concept: trigger wallet
+- It is a **new, disposable** wallet, with **just a little gas** (BNB on BSC, LUNC on TC).
+- It **signs** the `sendReceipt`/`send_receipt` and pays the gas.
+- The **commission ALWAYS lands in your operator wallet** (`terra1run…` / `0x8f08…`),
+  because the contract pays the address in the **from/to registry**, not whoever signed.
+- If the VPS or the trigger wallet leaks, the attacker **only gets the gas change** — your
+  real keys and your commissions stay intact.
 
-## O que JÁ está instalado (feito)
-Na VPS `31.97.91.4` (`~/claim-agent/`):
-- `claim-agent-receipt.mjs` (o agente, sem `terrad` — usa cosmjs + ethers).
-- `solana-epoch-reporter.mjs` (reporter do quórum TC→Solana — ver §final).
-- `node_modules` → symlink para o do `oracle-agent`.
-- `.claim-agent-seen.json` (estado local, pré-semeado).
-- `/etc/systemd/system/claim-agent.service` (**enabled**, parado).
+## What is ALREADY installed (done)
+On the VPS `31.97.91.4` (`~/claim-agent/`):
+- `claim-agent-receipt.mjs` (the agent, without `terrad` — uses cosmjs + ethers).
+- `solana-epoch-reporter.mjs` (the TC→Solana quorum reporter — see §final).
+- `node_modules` → symlink to the `oracle-agent`'s.
+- `.claim-agent-seen.json` (local state, pre-seeded).
+- `/etc/systemd/system/claim-agent.service` (**enabled**, stopped).
 - `.env` (template, `chmod 600`).
 
-## O que VOCÊ faz (2 passos)
+## What YOU do (2 steps)
 
-### Passo 1 — criar e financiar as carteiras-gatilho
-- **BSC:** crie uma carteira EVM **nova** (ex.: `cast wallet new`, ou MetaMask). Pegue
-  a **chave privada hex `0x…`**. Envie **~0,05 BNB** para o endereço dela.
-- **TC:** crie uma carteira Terra **nova**. Pegue o **mnemônico** (ou a chave hex de 32
-  bytes). Envie **uns LUNC** (ex.: 200 LUNC) para o endereço dela.
+### Step 1 — create and fund the trigger wallets
+- **BSC:** create a **new** EVM wallet (e.g. `cast wallet new`, or MetaMask). Take
+  the **hex private key `0x…`**. Send **~0.05 BNB** to its address.
+- **TC:** create a **new** Terra wallet. Take the **mnemonic** (or the 32-byte hex
+  key). Send **some LUNC** (e.g. 200 LUNC) to its address.
 
-> Dica: depois de pôr as chaves no `.env` (passo 2), o agente **imprime os endereços
-> das carteiras-gatilho** no log ("mande BNB/LUNC p/ gás: …") — use para financiar.
+> Tip: after putting the keys in the `.env` (step 2), the agent **prints the trigger
+> wallet addresses** in the log ("send BNB/LUNC for gas: …") — use it to fund them.
 
-### Passo 2 — pôr as chaves e iniciar
+### Step 2 — set the keys and start
 ```bash
 ssh root@31.97.91.4
 nano ~/claim-agent/.env
 ```
-Preencha (carteira-gatilho, **não** a real):
+Fill in (trigger wallet, **not** the real one):
 ```
-BSC_PRIVATE_KEY=0xSUACHAVEHEX_DA_GATILHO_BSC
-TC_PRIVATE_KEY=chave_hex_32bytes_da_gatilho_TC
-#   (alternativa p/ o TC:  TC_MNEMONIC=palavra1 palavra2 ... )
+BSC_PRIVATE_KEY=0xYOURHEXKEY_OF_THE_BSC_TRIGGER
+TC_PRIVATE_KEY=hex_key_32bytes_of_the_TC_trigger
+#   (alternative for TC:  TC_MNEMONIC=word1 word2 ... )
 ```
-Inicie e acompanhe:
+Start and follow along:
 ```bash
 systemctl start claim-agent
-tail -f ~/claim-agent/logs/agent.log      # ou: journalctl -u claim-agent -f
+tail -f ~/claim-agent/logs/agent.log      # or: journalctl -u claim-agent -f
 ```
-Você verá as rodadas a cada 5 min, os endereços das gatilhos e os `txhash` dos recibos
-emitidos. As comissões chegam nas carteiras de operador em seguida (o relayer nativo
-entrega o recibo de volta e a origem paga).
+You will see the rounds every 5 min, the trigger wallet addresses and the `txhash` of
+the emitted receipts. The commissions arrive in the operator wallets shortly after (the
+native relayer delivers the receipt back and the origin pays).
 
-## Operação
+## Operation
 ```bash
-systemctl status claim-agent      # estado
-systemctl restart claim-agent     # após editar o .env
-systemctl stop claim-agent        # pausar
+systemctl status claim-agent      # state
+systemctl restart claim-agent     # after editing the .env
+systemctl stop claim-agent        # pause
 tail -n 100 ~/claim-agent/logs/agent.log
 ```
 
-## Testar sem chaves (DRY — só leitura)
+## Test without keys (DRY — read only)
 ```bash
 cd ~/claim-agent && DRY=1 node claim-agent-receipt.mjs
 ```
-Mostra o que ele emitiria (quantos pendentes por chain), sem assinar nada.
+Shows what it would emit (how many pending per chain), without signing anything.
 
-## Ajustes (env no `.env` ou no service)
-- `--loop 300` → intervalo em segundos (padrão 5 min).
-- `MIN_BATCH=3` → só emite quando juntar ≥ N entregas da mesma origem (amortiza gás).
-- `DISPATCH_PAGES=100` → quantos dispatches recentes varrer.
-- IGP do recibo: **cotado dinamicamente** (desde 20/08/2026 — nada de valor fixo).
-  O agente consulta `quote_gas_payment` do IGP do TC para o gás real de entrega
-  (`RECEIPT_GAS_56=300000` / `RECEIPT_GAS_SOL=500000`, ajustáveis no `.env`) e
-  anexa a cotação +2%; o `send_receipt` passa esse `gas_limit` via metadata, então
-  o recibo paga só o gás real (~100 LUNC p/ BSC, ~20 p/ SOL) e não a tarifa cheia
-  de usuário ($0,08). Detalhes: `TARIFAS-E-RECOMPENSAS.md`.
+## Tuning (env in the `.env` or in the service)
+- `--loop 300` → interval in seconds (default 5 min).
+- `MIN_BATCH=3` → only emits when ≥ N deliveries from the same origin accumulate (amortizes gas).
+- `DISPATCH_PAGES=100` → how many recent dispatches to scan.
+- Receipt IGP: **quoted dynamically** (since 2026-08-20 — no fixed value).
+  The agent queries `quote_gas_payment` on the TC IGP for the real delivery gas
+  (`RECEIPT_GAS_56=300000` / `RECEIPT_GAS_SOL=500000`, tunable in the `.env`) and
+  attaches the quote +2%; the `send_receipt` passes this `gas_limit` via metadata, so
+  the receipt pays only the real gas (~100 LUNC for BSC, ~20 for SOL) and not the full
+  user fee ($0.08). Details: `TARIFAS-E-RECOMPENSAS.md`.
 
-## Segurança
-- `.env` é `chmod 600` (só root lê).
-- A carteira-gatilho **só tem gás**; recarregue quando esvaziar.
-- A comissão nunca passa pela gatilho — cai direto na carteira de operador do de/para.
-- O agente **não** entrega mensagens (isso é o relayer nativo) e **não** toca em
-  contrato nativo — só dispara os recibos, que qualquer um poderia disparar.
+## Security
+- `.env` is `chmod 600` (only root reads it).
+- The trigger wallet **only has gas**; recharge it when it empties.
+- The commission never passes through the trigger — it lands directly in the operator wallet of the from/to.
+- The agent does **not** deliver messages (that is the native relayer) and does **not** touch a
+  native contract — it only fires the receipts, which anyone could fire.
 
-## Corredores cobertos
-- **TC→BSC** → `sendReceipt` no BSC (gás BNB) → comissão em **LUNC no TC**.
-- **BSC→TC** → `send_receipt` no TC (gás LUNC) → comissão em **BNB no BSC**.
-- **Solana→TC** → `send_receipt` no TC (gás LUNC) → comissão em **SOL na Solana**.
-- **ETH** → automático quando o vault do ETH existir.
+## Corridors covered
+- **TC→BSC** → `sendReceipt` on BSC (BNB gas) → commission in **LUNC on TC**.
+- **BSC→TC** → `send_receipt` on TC (LUNC gas) → commission in **BNB on BSC**.
+- **Solana→TC** → `send_receipt` on TC (LUNC gas) → commission in **SOL on Solana**.
+- **ETH** → automatic once the ETH vault exists.
 
 ---
 
-## Reporter do quórum (TC→Solana) — INSTALADO como serviço
-O `~/claim-agent/solana-epoch-reporter.mjs` reporta as entregas **TC→Solana** (modelo
-de quórum — ver `AUTOMACAO-CLAIMS.md`). Roda como serviço **`epoch-reporter.service`**
-(systemd), carregando o `.env` do relayer (`EnvironmentFile=/root/hyperlane/.env`) e
-assinando com a `SOLANA_PRIVATE_KEY` do relayer — que é o operador **PbEo** (registrado),
-então o `SubmitEpochReport` é aceito. A cada hora ele reporta a época fechada nova;
-época já reportada → "nada a fazer" (idempotente).
+## Quorum reporter (TC→Solana) — INSTALLED as a service
+The `~/claim-agent/solana-epoch-reporter.mjs` reports the **TC→Solana** deliveries (quorum
+model — see `AUTOMACAO-CLAIMS.md`). It runs as the **`epoch-reporter.service`** service
+(systemd), loading the relayer's `.env` (`EnvironmentFile=/root/hyperlane/.env`) and
+signing with the relayer's `SOLANA_PRIVATE_KEY` — which is the **PbEo** operator (registered),
+so the `SubmitEpochReport` is accepted. Every hour it reports the newly closed epoch;
+an already-reported epoch → "nothing to do" (idempotent).
 ```bash
 systemctl status epoch-reporter
 tail -f /root/claim-agent/logs/reporter.log
 # manual/DRY:
-cd ~/claim-agent && node solana-epoch-reporter.mjs           # mostra o relatório sem enviar
+cd ~/claim-agent && node solana-epoch-reporter.mjs           # shows the report without sending
 ```
-**Ajuste pendente:** `reward_lamports` está em **1** (placeholder) — a recompensa por
-entrega TC→Solana. Quando você definir o valor (governança do `pod`), os relatórios
-futuros creditam esse valor; o operador saca os créditos com a instrução `Withdraw` do
-`pod` (posso automatizar o saque também, se quiser).
+**Pending adjustment:** `reward_lamports` is set to **1** (placeholder) — the reward per
+TC→Solana delivery. Once you define the value (`pod` governance), future reports credit
+that value; the operator withdraws the credits with the `pod`'s `Withdraw` instruction (I
+can automate the withdrawal too, if you want).

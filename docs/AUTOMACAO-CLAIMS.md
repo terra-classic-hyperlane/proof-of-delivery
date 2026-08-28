@@ -1,103 +1,103 @@
-# Automação de Comissões — claim-agent + epoch-reporter
+# Commission Automation — claim-agent + epoch-reporter
 
-> Dois agentes off-chain que emitem/reportam as comissões automaticamente em todas as
-> chains. **Nenhum contrato é alterado; nenhum relayer é customizado** — os agentes só
-> observam a chain e disparam as transações que qualquer operador já faria à mão.
+> Two off-chain agents that emit/report commissions automatically across all
+> chains. **No contract is changed; no relayer is customized** — the agents only
+> observe the chain and fire the transactions any operator would already do by hand.
 
-Resumo:
-| Corredor | Como a comissão é reivindicada | Ferramenta |
+Summary:
+| Corridor | How the commission is claimed | Tool |
 |---|---|---|
-| TC→BSC, BSC→TC, Solana→TC | **modelo de recibo** (emite recibo no destino) | `claim-agent-receipt.mjs` |
-| **TC→Solana** | **quórum de operadores** (relatório de época) | `solana-epoch-reporter.mjs` |
+| TC→BSC, BSC→TC, Solana→TC | **receipt model** (emits a receipt on the destination) | `claim-agent-receipt.mjs` |
+| **TC→Solana** | **operator quorum** (epoch report) | `solana-epoch-reporter.mjs` |
 
-Por que dois: no modelo de recibo o destino **prova a entrega on-chain** e o ISM
-valida. Isso funciona onde o destino grava o executor (TC/BSC/ETH). A Solana **não
-grava o executor**, então o sentido TC→Solana usa **quórum**: os operadores observam
-off-chain quem entregou e submetem o mesmo relatório; a maioria honesta credita.
+Why two: in the receipt model the destination **proves delivery on-chain** and the ISM
+validates. This works where the destination records the executor (TC/BSC/ETH). Solana **does
+not record the executor**, so the TC→Solana direction uses **quorum**: operators observe
+off-chain who delivered and submit the same report; the honest majority credits.
 
 ---
 
-## 1. `claim-agent-receipt.mjs` — modelo de recibo (TC↔BSC + Solana→TC)
+## 1. `claim-agent-receipt.mjs` — receipt model (TC↔BSC + Solana→TC)
 
-Para cada chain de DESTINO, acha as entregas feitas **pelo operador** que ainda não
-foram pagas, batela por origem e emite o recibo:
-- **TC** (`send_receipt`) → paga **BSC→TC** (BNB) e **Solana→TC** (SOL)
-- **BSC** (`sendReceipt`) → paga **TC→BSC** (LUNC no TC)
-- **ETH** — quando o vault do ETH existir (auto-skip)
+For each DESTINATION chain, finds the deliveries made **by the operator** that have not
+yet been paid, batches them by origin, and emits the receipt:
+- **TC** (`send_receipt`) → pays **BSC→TC** (BNB) and **Solana→TC** (SOL)
+- **BSC** (`sendReceipt`) → pays **TC→BSC** (LUNC on TC)
+- **ETH** — once the ETH vault exists (auto-skip)
 
-A comissão sempre cai na chain de **origem**; o agente só dispara. O relayer nativo
-entrega o recibo de volta e a origem paga sozinha.
+The commission always lands on the **origin** chain; the agent only fires. The native relayer
+delivers the receipt back and the origin pays on its own.
 
-**Rodar:**
+**Run:**
 ```bash
-# ver o que faria (sem chaves, só leitura):
+# see what it would do (no keys, read only):
 DRY=1 node deploy/claim-agent-receipt.mjs
-# emitir 1 rodada (precisa das chaves):
-BSC_PRIVATE_KEY=0x… TC_KEYRING_PASS='senha' node deploy/claim-agent-receipt.mjs
-# serviço (a cada 5 min):
-BSC_PRIVATE_KEY=0x… TC_KEYRING_PASS='senha' node deploy/claim-agent-receipt.mjs --loop 300
+# emit 1 round (needs the keys):
+BSC_PRIVATE_KEY=0x… TC_KEYRING_PASS='password' node deploy/claim-agent-receipt.mjs
+# service (every 5 min):
+BSC_PRIVATE_KEY=0x… TC_KEYRING_PASS='password' node deploy/claim-agent-receipt.mjs --loop 300
 ```
 
-Detalhes:
-- **Descoberta sem `getLogs`** (o RPC público do BSC não suporta): varre os dispatches
-  do TC (`tx_search`) e confirma estado com `eth_call`/query.
-- **Dedup por origem** (evita reemitir e gastar gás): TC→BSC checa `remote_claimed` no
-  TC; BSC→TC checa `remoteClaimed` no BSC; Solana→TC usa estado local
-  (`deploy/.claim-agent-seen.json`) + a idempotência on-chain do `send_receipt`.
-- **Exclui recibos** (recipient == vault) para não "receber comissão de recibo".
-- **Batching**: junta N entregas da mesma origem num recibo só (1 gás).
+Details:
+- **Discovery without `getLogs`** (the BSC public RPC does not support it): scans the TC
+  dispatches (`tx_search`) and confirms state with `eth_call`/query.
+- **Dedup by origin** (avoids re-emitting and wasting gas): TC→BSC checks `remote_claimed` on
+  TC; BSC→TC checks `remoteClaimed` on BSC; Solana→TC uses local state
+  (`deploy/.claim-agent-seen.json`) + the on-chain idempotence of `send_receipt`.
+- **Excludes receipts** (recipient == vault) so it does not "receive a commission on a receipt".
+- **Batching**: joins N deliveries from the same origin into a single receipt (1 gas).
 
-> Economia: cada recibo custa gás; junte várias entregas. O imposto do Terra (~1,5%)
-> incide 1× por transferência de saída, não por id — mais um motivo pra batelar.
+> Savings: each receipt costs gas; batch several deliveries. The Terra tax (~1.5%)
+> is charged 1× per outgoing transfer, not per id — one more reason to batch.
 
 ---
 
-## 2. `solana-epoch-reporter.mjs` — quórum (TC→Solana)
+## 2. `solana-epoch-reporter.mjs` — quorum (TC→Solana)
 
-O relayer NATIVO entrega as msgs TC→Solana (nada muda). O reporter **observa off-chain
-quem entregou** (fee payer da tx de entrega, lido da `ProcessedMessage`), monta o
-`EpochReport` e submete ao `pod`. Quando um **quórum** de operadores submete o MESMO
-relatório (hash idêntico), o contrato credita cada operador; cada um **saca** do pool.
+The NATIVE relayer delivers the TC→Solana messages (nothing changes). The reporter **observes
+off-chain who delivered** (fee payer of the delivery tx, read from `ProcessedMessage`), builds
+the `EpochReport` and submits it to the `pod`. When a **quorum** of operators submits the SAME
+report (identical hash), the contract credits each operator; each one **withdraws** from the pool.
 
-Determinístico p/ o quórum: cada entrega é atribuída a uma época pelo `blockTime` do
-seu slot (tudo lido da chain), então todos os operadores chegam ao MESMO relatório.
+Deterministic for the quorum: each delivery is assigned to an epoch by the `blockTime` of
+its slot (all read from the chain), so every operator arrives at the SAME report.
 
-**Confiança:** maioria honesta do quórum — **o mesmo que você já deposita nos
-validadores** (e onde operador = validador, é o mesmo grupo). Não é a prova
-criptográfica do ISM (impossível aqui, a Solana não grava o executor), mas é
-descentralizado e sem agente único.
+**Trust:** honest majority of the quorum — **the same one you already place in the
+validators** (and where operator = validator, it is the same group). It is not the ISM's
+cryptographic proof (impossible here, Solana does not record the executor), but it is
+decentralized and has no single agent.
 
-**Rodar:**
+**Run:**
 ```bash
-# ver o relatório da última época fechada (só leitura):
+# see the report for the last closed epoch (read only):
 node deploy/solana-epoch-reporter.mjs
-# de uma época específica:
+# for a specific epoch:
 node deploy/solana-epoch-reporter.mjs --epoch 82736
-# submeter (assina como operador do rrv; cada operador do quórum roda isso):
+# submit (signs as an rrv operator; each quorum operator runs this):
 node deploy/solana-epoch-reporter.mjs --submit
-# saque depois: o operador saca sua PDA de crédito (Withdraw do pod)
+# withdraw afterward: the operator withdraws from its credit PDA (pod Withdraw)
 ```
 
-Detalhes:
-- **Só credita operadores registrados** (`config.operators`) por padrão — o pool não
-  paga relayers estranhos. `INCLUDE_ALL=1` credita qualquer um que entregou (modo
-  permissionless).
-- **Ativação:** quórum ≥ maioria (com 2 operadores, `quorum=2` p/ ser trustless de
-  fato; com `quorum=1` é um operador só) e `reward_lamports` > 0 (**hoje está em 1,
-  placeholder — ajuste**). Config via ação administrativa do `pod` (governança).
+Details:
+- **Credits only registered operators** (`config.operators`) by default — the pool does not
+  pay unknown relayers. `INCLUDE_ALL=1` credits anyone who delivered (permissionless
+  mode).
+- **Activation:** quorum ≥ majority (with 2 operators, `quorum=2` to be genuinely
+  trustless; with `quorum=1` it is a single operator) and `reward_lamports` > 0 (**today it is 1,
+  a placeholder — adjust**). Config via administrative action of the `pod` (governance).
 
-> **PROVADO EM PRODUÇÃO:** o operador `PbEo7Fn2…` foi **creditado 6.000.000 lamports e
-> sacou os 6.000.000** via este mecanismo — o ciclo TC→Solana (entrega nativa →
-> relatório de quórum → crédito → saque) funciona fim a fim.
+> **PROVEN IN PRODUCTION:** the operator `PbEo7Fn2…` was **credited 6,000,000 lamports and
+> withdrew the 6,000,000** via this mechanism — the TC→Solana cycle (native delivery →
+> quorum report → credit → withdrawal) works end to end.
 
 ---
 
-## Regras que ambos respeitam
-- Relayer nativo do Hyperlane **sem alteração** (os agentes não entregam mensagens).
-- **Nenhum contrato nativo** do Hyperlane tocado.
-- **Sem keeper** (relayer customizado). O reporter é um observador, não um relayer.
-- Escala para **N operadores**: cada um roda o(s) agente(s); no quórum, a maioria
-  honesta credita.
+## Rules both respect
+- Hyperlane native relayer **unchanged** (the agents do not deliver messages).
+- **No native Hyperlane contract** touched.
+- **No keeper** (customized relayer). The reporter is an observer, not a relayer.
+- Scales to **N operators**: each one runs the agent(s); at quorum, the honest
+  majority credits.
 
-Endereços e conversões: `GUIA-OPERADORES-VALIDADORES.md`. Modelo de recibo:
-`RECIBO-TRUSTLESS.md`. Auditoria de pagamentos: `AUDITORIA-COMISSOES.md`.
+Addresses and conversions: `GUIA-OPERADORES-VALIDADORES.md`. Receipt model:
+`RECIBO-TRUSTLESS.md`. Payment audit: `AUDITORIA-COMISSOES.md`.

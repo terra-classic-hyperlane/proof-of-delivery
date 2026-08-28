@@ -1,117 +1,117 @@
-# Vault — como consultar, configurar e operar
+# Vault — how to query, configure, and operate
 
-Guia operacional do RelayerRewardVault nas 4 redes: o que o **owner** pode
-mudar, como o **relayer** saca, e as consultas de monitoramento.
+Operational guide for the RelayerRewardVault across the 4 networks: what the
+**owner** can change, how the **relayer** withdraws, and the monitoring queries.
 
-## O que é configurável (e por quem)
+## What is configurable (and by whom)
 
-| Parâmetro | O que controla | Quem muda |
+| Parameter | What it controls | Who changes it |
 |---|---|---|
-| `reward_per_delivery` | tarifa fixa paga por entrega comprovada | owner (TC/EVM) · quórum (SOL) |
-| `claim_window_blocks` | prazo p/ resgatar após a entrega | idem |
-| `paused` | bloqueia claims (emergência) | idem |
-| `owner` | quem administra (→ governança/multisig no handoff) | owner atual |
-| `mailbox` / `igp` (só TC) | fontes da prova e do Sweep | owner |
-| retirada de excedente | saque do pool p/ um destino | owner (TC/EVM) · quórum com destino no hash (SOL) |
+| `reward_per_delivery` | fixed fee paid per proven delivery | owner (TC/EVM) · quorum (SOL) |
+| `claim_window_blocks` | deadline to claim after delivery | same |
+| `paused` | blocks claims (emergency) | same |
+| `owner` | who administers (→ governance/multisig at handoff) | current owner |
+| `mailbox` / `igp` (TC only) | sources of the proof and of the Sweep | owner |
+| surplus withdrawal | withdraw from the pool to a destination | owner (TC/EVM) · quorum with destination in the hash (SOL) |
 
-O que **ninguém** configura: quem pode sacar recompensa — o `Claim` paga
-exclusivamente quem o registro da chain aponta como executor da entrega.
+What **nobody** configures: who can claim the reward — the `Claim` pays
+exclusively whoever the chain's registry points to as the executor of the delivery.
 
 ---
 
 ## Terra Classic
 
-**Consultar:**
+**Query:**
 ```bash
-terrad q wasm contract-state smart <VAULT> '{"config":{}}'    --node $NODE   # tudo, incl. total pago
-terrad q wasm contract-state smart <VAULT> '{"solvency":{}}'  --node $NODE   # pool e quantas entregas banca
+terrad q wasm contract-state smart <VAULT> '{"config":{}}'    --node $NODE   # everything, incl. total paid
+terrad q wasm contract-state smart <VAULT> '{"solvency":{}}'  --node $NODE   # pool and how many deliveries it can fund
 terrad q wasm contract-state smart <VAULT> '{"claimed":{"message_id":"<hex64>"}}' --node $NODE
-terrad q wasm contract-state smart <VAULT> '{"layout_check":{"message_id":"<id entregue>"}}' --node $NODE  # alarme de migrate
+terrad q wasm contract-state smart <VAULT> '{"layout_check":{"message_id":"<delivered id>"}}' --node $NODE  # migrate alarm
 ```
 
-**Configurar (owner assina — hoje o deployer; depois, proposta de governança):**
+**Configure (owner signs — today the deployer; later, a governance proposal):**
 ```bash
-# tarifa e/ou janela (campos são opcionais — mande só o que muda):
+# fee and/or window (fields are optional — send only what changes):
 terrad tx wasm execute <VAULT> '{"update_config":{"reward_per_delivery":"75000000","claim_window_blocks":300000}}' $TXFLAGS
-# pausar / despausar:
+# pause / unpause:
 terrad tx wasm execute <VAULT> '{"set_pause":{"paused":true}}' $TXFLAGS
-# retirar excedente:
+# withdraw surplus:
 terrad tx wasm execute <VAULT> '{"withdraw_surplus":{"to":"terra1...","amount":"1000000000"}}' $TXFLAGS
-# handoff do owner (governança):
-terrad tx wasm execute <VAULT> '{"update_config":{"owner":"<MODULO_GOV>"}}' $TXFLAGS
+# owner handoff (governance):
+terrad tx wasm execute <VAULT> '{"update_config":{"owner":"<GOV_MODULE>"}}' $TXFLAGS
 ```
 
-**Uso pelo relayer (permissionless):**
+**Relayer usage (permissionless):**
 ```bash
-# puxa a arrecadação do IGP p/ o pool e resgata na MESMA tx (lote atômico):
+# pulls the IGP collection into the pool and claims in the SAME tx (atomic batch):
 terrad tx wasm execute <VAULT> '{"sweep":{}}' $TXFLAGS
 terrad tx wasm execute <VAULT> '{"claim":{"message_ids":["<hex64>","<hex64>"]}}' $TXFLAGS
 ```
 
-**Abastecer o pool:** qualquer `bank send` de uluna para o endereço do vault.
+**Fund the pool:** any `bank send` of uluna to the vault address.
 
 ---
 
 ## BSC / Ethereum
 
-**Consultar:**
+**Query:**
 ```bash
 cast call $VAULT "rewardPerDelivery()(uint256)" --rpc-url $RPC
 cast call $VAULT "claimWindowBlocks()(uint256)" --rpc-url $RPC
 cast call $VAULT "paused()(bool)"               --rpc-url $RPC
-cast call $VAULT "claimsPayable()(uint256)"     --rpc-url $RPC   # solvência
+cast call $VAULT "claimsPayable()(uint256)"     --rpc-url $RPC   # solvency
 cast call $VAULT "claimedBy(bytes32)(address)"  0x<id> --rpc-url $RPC
 cast call $VAULT "totalPaid()(uint256)"         --rpc-url $RPC
 ```
 
-**Configurar (owner assina):**
+**Configure (owner signs):**
 ```bash
 cast send $VAULT "setParams(uint256,uint256)" <REWARD_WEI> <WINDOW> --private-key $PK --rpc-url $RPC
 cast send $VAULT "setPause(bool)" true --private-key $PK --rpc-url $RPC
 cast send $VAULT "withdrawSurplus(address,uint256)" 0xDEST <WEI> --private-key $PK --rpc-url $RPC
-# handoff (2 passos — o multisig precisa ACEITAR):
+# handoff (2 steps — the multisig must ACCEPT):
 cast send $VAULT "transferOwnership(address)" 0xMULTISIG --private-key $PK --rpc-url $RPC
-# ... e o multisig executa: acceptOwnership()
+# ... and the multisig executes: acceptOwnership()
 ```
 
-**Uso pelo relayer:** `igp.claim()` (permissionless, empurra a arrecadação ao
-vault) e `vault.claim(bytes32[] ids)` — pode ir na mesma tx via multicall próprio.
+**Relayer usage:** `igp.claim()` (permissionless, pushes the collection to the
+vault) and `vault.claim(bytes32[] ids)` — can go in the same tx via its own multicall.
 
-**Abastecer o pool:** transferir BNB/ETH direto ao vault (`receive()` aceita).
+**Fund the pool:** transfer BNB/ETH directly to the vault (`receive()` accepts it).
 
 ---
 
 ## Solana (rrv)
 
-Aqui NÃO há owner único: mudanças são **propostas com quórum de operadores**
-(`AdminEnvelope { nonce, action }` — ver `docs/OPERADORES.md` §Solana):
+Here there is NO single owner: changes are **proposed with an operator quorum**
+(`AdminEnvelope { nonce, action }` — see `docs/OPERADORES.md` §Solana):
 
-| Ação | Envelope |
+| Action | Envelope |
 |---|---|
-| tarifa | `SetRewardLamports(u64)` |
-| pausa | `SetPaused(bool)` |
-| duração da época | `SetEpochDuration(u64)` |
-| operadores/quórum | `AddOperator/RemoveOperator/SetQuorum` |
-| excedente | `WithdrawSurplus { to, amount }` — o **destino faz parte do hash**: aprova-se AQUELE destino |
+| fee | `SetRewardLamports(u64)` |
+| pause | `SetPaused(bool)` |
+| epoch duration | `SetEpochDuration(u64)` |
+| operators/quorum | `AddOperator/RemoveOperator/SetQuorum` |
+| surplus | `WithdrawSurplus { to, amount }` — the **destination is part of the hash**: THAT destination is approved |
 
-**Consultar:** ler a config PDA `["rrv","-","config"]` (o init imprime o
-endereço) — o saldo de lamports da PDA acima do rent-exempt É o pool. Créditos
-por operador: PDA `["rrv","-","credit","-",<operador>]`.
+**Query:** read the config PDA `["rrv","-","config"]` (the init prints the
+address) — the PDA's lamport balance above the rent-exempt IS the pool. Credits
+per operator: PDA `["rrv","-","credit","-",<operator>]`.
 
-**Uso pelo operador:** `SubmitEpochReport` (relatório da época, quórum de
-hashes idênticos credita) e `Withdraw { amount }` (débito direto do pool,
-limitado ao próprio crédito e ao rent-exempt).
+**Operator usage:** `SubmitEpochReport` (epoch report, a quorum of identical
+hashes credits) and `Withdraw { amount }` (direct debit from the pool,
+limited to one's own credit and to the rent-exempt).
 
-**Abastecer o pool:** transfer de SOL para a config PDA (e registrar a PDA como
-beneficiary do IGP — feito no `finalize` do deploy).
+**Fund the pool:** transfer SOL to the config PDA (and register the PDA as the
+IGP beneficiary — done in the deploy's `finalize`).
 
 ---
 
-## Monitoramento mínimo (alarmes)
+## Minimal monitoring (alarms)
 
-| Sinal | Onde | Ação |
+| Signal | Where | Action |
 |---|---|---|
-| `layout_check.ok = false` (TC) | query no vault | migrate no Mailbox — **pausar** e investigar |
-| `claims_payable` caindo < backlog | Solvency / claimsPayable | Sweep/claim do IGP não está rodando, ou tarifa > arrecadação |
-| claims revertendo `NotProcessor` | logs do relayer | relayer usando carteira errada p/ o claim |
-| `ClaimWindowExpired` frequente | logs | relayer resgatando tarde — automatizar claim pós-entrega |
+| `layout_check.ok = false` (TC) | query on the vault | migrate on the Mailbox — **pause** and investigate |
+| `claims_payable` dropping < backlog | Solvency / claimsPayable | Sweep/claim from the IGP is not running, or fee > collection |
+| claims reverting `NotProcessor` | relayer logs | relayer using the wrong wallet for the claim |
+| frequent `ClaimWindowExpired` | logs | relayer claiming late — automate the claim after delivery |
