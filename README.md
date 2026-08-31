@@ -1,147 +1,126 @@
 # tc-proof-of-delivery
 
-Remuneration of multiple relayers on the Hyperlane bridge (Terra Classic · BSC · Ethereum · Solana).
+Remuneration of relayers on the Terra Classic Hyperlane bridge
+(**Terra Classic · BSC · Ethereum · Solana**). Each network has a **Vault** as
+the beneficiary of the local IGP: users pay interchain gas, fees flow into the
+vault pool, and the operator gets paid for what it **provably delivered** —
+proven by the chain's own execution record (TC via raw storage query, EVM via
+`processor()`, Solana via epoch quorum). Gas prices are proposed by the
+**oracle-agent** and applied only after a **quorum of validator operators**
+approves.
 
-> **Start here:** 📋 [`docs/install/AUDIT.md`](docs/install/AUDIT.md) — consolidated audit (contracts,
-> hashes, powers, how to verify) · 🛠️ [`docs/install/INSTALL.md`](docs/install/INSTALL.md) — operator
-> install guide (architecture + one-shot installer `deploy/install-operator.sh`).
-Specification: `SPEC.html` (v3) · **IGORFAKE warp map** (addresses/IGP/oracle/ISM/prices of the 4 legs): `docs/WARP-IGORFAKE.md` · **Architecture with diagrams**: `docs/ARCHITECTURE.md` · **Installation/execution**: `docs/INSTALL-AND-RUN.md` · Repo skills in `.claude/skills/` (tc-pod-contratos · tc-pod-deploy · tc-pod-oracle-agent). Each network has a Vault as beneficiary of the local IGP; the operator
-gets paid for what it DELIVERED, proven by the execution record of the chain itself (TC via raw query
-of the storage, EVM via processor(), Solana via epoch quorum).
+> **Start here:** 📖 [org documentation hub](https://github.com/terra-classic-hyperlane/docs) ·
+> 🛠️ [`docs/install/INSTALL.md`](docs/install/INSTALL.md) (operator install) ·
+> 📋 [`docs/install/AUDIT.md`](docs/install/AUDIT.md) (contracts, hashes, powers, verification)
 
-## Source-code verification (Phase 0 partial — 08/18/2026)
+---
 
-Confirmed in the local repositories (`~/tc-cw-hyperlane` and `~/hyperlane-monorepo`):
+## 1. What is in this repo (and what compiles)
 
-| Spec claim | Where | Status |
+| Path | Stack | Contents | Compile / test |
+|---|---|---|---|
+| [`contracts/`](contracts/) | CosmWasm (Rust workspace) | `relayer-reward-vault` (the TC vault) · `oracle-governor` (quorum-gated gas-price governance) | `cargo check --workspace` — reproducible artifacts: §5 |
+| [`evm/`](evm/) | Solidity (Foundry) | `RelayerRewardVault.sol` · `GasOracleGovernor.sol` + unit tests | `cd evm && forge build && forge test` |
+| [`svm/`](svm/) | Solana (Rust workspace) | programs `pod` (proof-of-delivery / receipts) · `relayer-reward-vault` · `igp-oracle-governor` · `mock-igp` (test-only mock) | `cd svm && cargo check` (deployable `.so` via `cargo build-sbf`) |
+| [`oracle-agent/`](oracle-agent/) | Node.js | the gas-price oracle agent (proposes prices on the 4 networks; quorum applies them) | `cd oracle-agent && npm ci` |
+| [`deploy/`](deploy/) | Node.js / bash | production agents, deploy scripts and admin tooling (§3–§4) | `cd deploy && npm ci` |
+| [`docs/`](docs/) | — | operator/validator guides, architecture, audit — see §6 | — |
+| `artifacts/`, `deploy/*.state` | — | built wasm + deployment state records (read by the scripts to resume/skip) | do not edit |
+
+All three contract stacks compile clean as of 2026-08-31.
+
+## 2. Production services (what actually runs)
+
+Four systemd services run in production, all from this repo:
+
+| Service | Entry point | What it does |
 |---|---|---|
-| `Delivery { sender, block_number }` written in process() | tc-cw-hyperlane `mailbox/src/state.rs:50` + `execute.rs:191` | ✅ |
-| Public query uses `.has()` and discards the executor | `mailbox/src/query.rs:56` | ✅ |
-| Map prefix = `"deliveries"` (10 bytes → raw key `[0x00,0x0A]+"deliveries"+id`) | `state.rs:64` | ✅ |
-| CosmWasm IGP `claim()` only accepts the beneficiary | `igps/core/src/execute.rs:90-92` | ✅ (Sweep required) |
-| EVM `Delivery { processor, blockNumber }` + `processor(id)` + `processedAt(id)` | `solidity/contracts/Mailbox.sol:55,253,262` | ✅ |
-| EVM IGP `claim()` is permissionless (always pays the beneficiary) | `hooks/igp/InterchainGasPaymaster.sol:142` | ✅ |
-| Solana `ProcessedMessage` WITHOUT an executor field | `sealevel/programs/mailbox/src/accounts.rs:260` | ✅ |
-| `Igp { owner, beneficiary, gas_oracles: HashMap }` — oracle inside the IGP | `hyperlane-sealevel-igp/src/accounts.rs:159-169` | ✅ |
-| `set_gas_oracle_configs` requires owner signer | `hyperlane-sealevel-igp/src/processor.rs:637` (+ ensure_owner_signer) | ✅ |
+| `oracle-agent` | `oracle-agent/src/index.js` | updates the gas oracles on the 4 networks every 4 h — proposes via the governor; a validator quorum approves ([docs/ORACLE-AGENT.md](docs/ORACLE-AGENT.md)) |
+| `claim-agent` | `deploy/claim-agent-receipt.mjs --loop 300` | issues receipts and sweeps/claims commissions (runs on the tooling wallet, not the relayer wallet) |
+| `epoch-reporter` | `deploy/solana-epoch-reporter.mjs --submit --loop 3600` | TC→Solana epoch quorum reporting |
+| `deliver-receipts` (timer, plan B) | `deploy/deliver-receipts-tc.mjs` | safety net: delivers BSC→TC receipts stuck > 30 min (the official relayer is primary) |
 
-## Phase 0 — data_hash: CLOSED ✅ (08/18/2026)
+Related keeper (run on demand): `deploy/solana-receipt-keeper.mjs` — delivers a
+pending TC→Solana message and dispatches its receipt in one atomic transaction.
 
-The `data_hash` of **ALL contracts deployed** on Terra Classic matches byte for byte the
-staged artifacts of the deploy repository (`tc-cw-hyperlane/tmp/codes/*.wasm`):
+## 3. Configuration
 
-| Contract | code_id | Verification |
-|---|---|---|
-| hpl_mailbox | 11371 | ✅ `B6D789C1A31EE79548FD736BAD241DBCD3B8B319D66A776F31479743FE49EB01` |
-| hpl_validator_announce | 11372 | ✅ |
-| hpl_ism_multisig / routing | 11374 / 11376 | ✅ |
-| hpl_igp / hpl_igp_oracle | 11377 / 11388 | ✅ |
-| hooks (aggregate/merkle/pausable/fee) | 11378–11381 | ✅ |
-| hpl_warp_cw20 | 11389 | ✅ |
-
-Additional forensic evidence: the on-chain wasm embeds the rustc `cc66ad46…` = **1.73.0 musl**, the
-exact toolchain of the Makefile's `cosmwasm/optimizer:0.15.0` — and the contracts' source has not been
-changed since Jan/2025. Complete chain: verified source ➝ staged artifact identical to the
-on-chain one ➝ behavior confirmed on mainnet (raw query of DELIVERIES).
-
-Reproducibility note: the `Cargo.lock` from the time of the deploy was not versioned in
-tc-cw-hyperlane (the current lock, regenerated by a newer cargo, resolves edition2024 crates that
-cargo 1.73 will not even compile). For future deploys of THIS repository the locks are versioned —
-the independent rebuild-from-source of the upstream remains as an exercise for external audit.
-
-## Phase 0 — MAINNET evidence (08/18/2026) ✅
-
-Raw query on the Mailbox state in production (`terra1fwg35n5esjgny7d8pxnz8usjpwsvpguk0txsy6cnqxy58x9fdlksjpx3p9`,
-code_id 11371, label `cw-hpl: hpl_mailbox`, via LCD Hexxagon — publicnode blocks the /state endpoint):
-
-- `nonce` = 13 (messages dispatched from TC) · `latest_dispatch_id` = 26096daa…3220
-- default_ism = terra1uhzzvt9x3u8hjnkp695hklexx2uywjvfqv454d93ds92sgtpwk7qrpxdg0
-- **2 DELIVERIES entries** decoded successfully by the raw key `[0x00,0x0A]+"deliveries"+message_id`:
-
-| message_id | delivery (raw decoded value) |
+| File | Configures |
 |---|---|
-| d039daa1…4f04 | `{"sender":"terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp","block_number":29422362}` |
-| d5e2ab02…cc4f | `{"sender":"terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp","block_number":29423109}` |
+| [`oracle-agent/config.example.json`](oracle-agent/config.example.json) | the oracle-agent: RPCs, contracts per network, `originSenders` (add every new warp sender here so its deliveries are swept), intervals — copy to `config.json` |
+| [`deploy/rpc.env`](deploy/rpc.env) | RPC endpoints used by the deploy/admin scripts |
+| [`deploy/topup.env.example`](deploy/topup.env.example) | auto-topup thresholds/wallets (optional service) |
+| systemd units | see [`docs/install/INSTALL.md`](docs/install/INSTALL.md) and `deploy/install-operator.sh` — the one-shot operator installer |
 
-Conclusion: the wasm IN PRODUCTION writes `{sender, block_number}` exactly like the local repo — the
-proof by raw query of the Vault is viable on mainnet. (Only the final rigor is missing: comparing the
-data_hash of code_id 11371 with the repo build.) Both deliveries were from the relayer terra1run9wz…26mawp.
+Keys are provided via environment only (never in files). The claim/receipt
+tooling signs with a **separate wallet** from the relayer to avoid account
+sequence contention.
 
-## Artifacts
+## 4. Execution — common operations
 
-| Artifact | State |
+```bash
+cd deploy && npm ci
+
+# Become an operator (one-shot installer: agents + systemd units)
+bash install-operator.sh
+
+# Register as a Solana operator / adjust bounds
+node register-solana-operator.mjs
+node raise-bounds.mjs
+
+# Vault administration (owner/multisig)
+node rrv-admin.mjs                  # inspect/administer the vaults
+node rrv-set-reward.mjs             # reward = the tariff (pass-through, never fixed)
+node rrv-remote-config.mjs          # remote/router configuration
+node rrv-withdraw-operator.mjs      # operator withdrawal
+
+# IGP tariff (origin-side, ~USD 0.08 pass-through)
+node igp-tariff.mjs                 # see docs/FEES-AND-REWARDS.md
+
+# ISM validator rotation (mutable ISMs — one owner tx per chain)
+node update-ism-validators.mjs      # see docs/ISM-VALIDATORS.md
+node storage-ism.mjs                # deploy a mutable StorageMessageIdMultisigIsm (EVM)
+
+# Diagnostics / monitoring
+node solana-quem-entregou.mjs       # who delivered a given message
+node monitor.mjs                    # CLI monitor · monitor-web.mjs + installer = web version
+```
+
+First-time network deploys (already done on mainnet — needed only for a new
+environment): `tc-deploy.sh`, `evm-deploy.sh` / `evm-vault-receipt.sh`,
+`solana-deploy.sh` + `solana-init.mjs`.
+
+## 5. Reproducible build & audit
+
+- **CosmWasm artifacts** (byte-for-byte `data_hash` match on columbus-5):
+  `docker run --rm -v "$(pwd)":/code cosmwasm/optimizer:0.16.0` → `artifacts/`
+- **Full audit trail** (addresses, hashes, powers, verify commands):
+  [`docs/install/AUDIT.md`](docs/install/AUDIT.md)
+- **Historical phase log** (source-code verification + phase-by-phase mainnet
+  evidence, 08/2026): [`docs/archive/PHASE-LOG.md`](docs/archive/PHASE-LOG.md)
+- Specification: [`SPEC.html`](SPEC.html) (v3)
+
+## 6. Documentation index
+
+| Topic | Doc |
 |---|---|
-| `contracts/relayer-reward-vault` (CosmWasm) | ✅ written · **24 tests passing** (4 unit + 20 cw-multi-test integration) · clippy -D warnings clean · compiles to wasm32 |
-| `contracts/oracle-governor` (CosmWasm) | ✅ written · **15 integration tests** passing · clippy -D warnings clean · compiles to wasm32 |
-| `evm/src/RelayerRewardVault.sol` + `evm/src/GasOracleGovernor.sol` | ✅ written · **32 Foundry tests** passing (16+16) · solc 0.8.22 via-ir |
-| `svm/programs/relayer-reward-vault` + `svm/programs/igp-oracle-governor` (Solana) | ✅ written · **15 tests** solana-program-test (10+5, with an IGP mock faithful to the wire-format) · clippy clean · **cargo build-sbf ok** (.so generated) |
-| `oracle-agent/` (off-chain, multi-chain) | ✅ written · 5 node:test tests · dry-run validated with CoinGecko + real RPCs (4 chains) |
+| Architecture (diagrams) | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Install & run everything | [docs/INSTALL-AND-RUN.md](docs/INSTALL-AND-RUN.md) · [docs/install/INSTALL.md](docs/install/INSTALL.md) |
+| Vault (how the relayer is paid) | [docs/VAULT.md](docs/VAULT.md) |
+| Oracle agent + quorum | [docs/ORACLE-AGENT.md](docs/ORACLE-AGENT.md) · [docs/PROPOSAL-PARAMETERS.md](docs/PROPOSAL-PARAMETERS.md) |
+| Fees & rewards (tariff pass-through) | [docs/FEES-AND-REWARDS.md](docs/FEES-AND-REWARDS.md) |
+| ISM validator sets & rotation | [docs/ISM-VALIDATORS.md](docs/ISM-VALIDATORS.md) |
+| Operators / validators guides | [docs/OPERATORS.md](docs/OPERATORS.md) · [docs/OPERATORS-VALIDATORS-GUIDE.md](docs/OPERATORS-VALIDATORS-GUIDE.md) · [docs/TCV-VALIDATOR-MAINNET-GUIDE.md](docs/TCV-VALIDATOR-MAINNET-GUIDE.md) |
+| Trustless receipt / remote claim | [docs/TRUSTLESS-RECEIPT.md](docs/TRUSTLESS-RECEIPT.md) · [docs/REMOTE-CLAIM.md](docs/REMOTE-CLAIM.md) ([security](docs/REMOTE-CLAIM-SECURITY.md)) |
+| Contract-level operations | [docs/CONTRACT-OPERATION.md](docs/CONTRACT-OPERATION.md) |
+| Expanding to a new chain | [docs/EXPANSION-MANUAL.md](docs/EXPANSION-MANUAL.md) |
 
-Production build: use the `cosmwasm/optimizer` (reproducible build) before the store on the chain.
+## 🗄️ Archive (arquivo morto)
 
-
-## Reproducible build (CosmWasm) — artifacts for the proposal
-
-Generated with `cosmwasm/optimizer:0.17.0` over commit `27dab3b` (versioned locks —
-anyone can reproduce with `docker run ... cosmwasm/optimizer:0.17.0` and check):
-
-| Artifact | sha256 |
-|---|---|
-| `artifacts/relayer_reward_vault.wasm` (355 KB) | `cb753ed7aaa136342e4f685e85b8323e9947965c06ada8f4dbb04662563f19bd` |
-| `artifacts/oracle_governor.wasm` (268 KB) | `3383e2bc929f0d9907a95567c35ec17f4399dedc5f712b4198c244d039c41744` |
-
-> Hash of `relayer_reward_vault.wasm` updated when adding the idempotency of
-> receipt emission (`SENT_RECEIPT`) — a prerequisite of the Solana→TC corridor (the
-> destination that pays on Solana does not deduplicate in `handle`). Previous:
-> `c9699711a661607bebe30819ee1dc0035ff5276523dbb08b80a108fb03721d82`.
-
-When storing on the chain, the code's `data_hash` MUST equal the sha256 above.
-
-## Audit and operation documentation
-
-- **`docs/TRUSTLESS-RECEIPT.md`** — trustless model (receipt proven by the validators): step by step of the TC↔BSC commands.
-- **`docs/REMOTE-CLAIM-SECURITY.md`** — ClaimRemote trust model: the contract (not the relayer) decides who gets paid; anti-self-payment; the two "beneficiaries".
-- **`docs/EXPANSION-MANUAL.md`** — how to add chains, operators and bindings (from/to); by id vs by epoch.
-- **`docs/REMOTE-CLAIM.md`** — Vault v2: how the 4 chains tie together (address bindings, quorum attestation, origin fee paid to the operator).
-
-- **`docs/install/AUDIT.md`** — consolidated audit: current addresses/hashes/powers of the 4 networks + verification commands (launch snapshot: `docs/archive/AUDIT-LOG.md`).
-- **`docs/CONTRACT-OPERATION.md`** — how to execute each contract: change owner, operators, quorum, bounds, price, pause, withdrawals, handoff.
-- **`docs/ORACLE-AGENT.md`** — installation/execution of the price agent (anchor mode, hex keys, systemd, logs).
-- **`docs/archive/ORACLE-AGENT-INSTALL-REPORT.md`** — report of the production installation (08/18/2026).
-
-## Deployment — Solana (Phase 4): ✅ ACTIVE (08/18/2026, finalize included)
-
-Single program `pod` (vault+governor merged) `2mQZcHYLFCXL1XnmmQdgCinYZW7yvuksqrdoHmNfZUFj` ·
-pool PDA `Eq1mJGTS…Dwb9w` with 0.3 SOL · IGP owner = governor PDA ✓ ·
-beneficiary = pool ✓ (verified on-chain). Total cost 1.66 SOL (rent recoverable).
-Complete record: `docs/archive/AUDIT-SOLANA.md`.
-
-## Deployment — Ethereum (Phase 3): ✅ LIVE (08/18/2026)
-
-Vault `0xDf90d3b7FF98466E148B334128374807b3e89EbD` · Governor
-`0xa1803b366af48Cb16E0f44D24B4eb9f58643fEFA` · oracle owner = governor ✓ ·
-IGP beneficiary = vault ✓ · quorum 1. Pool pending seeding. Record: `docs/archive/AUDIT-ETH.md`.
-
-## Deployment — BSC (Phase 3): ✅ LIVE (08/18/2026)
-
-Vault `0x8b3A9eEBE949D8ce6Be651C75a54872cd382145D` · Governor
-`0x5CF7A3a7EA0c264c86a5faf248AfD5EDCd7913E5` · oracle owner = governor ✓ ·
-IGP beneficiary = vault ✓ · quorum 1. **Pool not yet seeded** (balance).
-Complete record: `docs/archive/AUDIT-BSC.md`.
-
-## Deployment — Terra Classic (Phases 1–2): ✅ LIVE (08/18/2026, columbus-5)
-
-| Piece | Value |
-|---|---|
-| **oracle-governor** | `terra1z7jmlky2cmsd9aslm4uxrsase2yjwz8k9rlk00ga8s7pxgljczjq9sv4hj` (code_id **11587**) |
-| **relayer-reward-vault** | `terra1gqkrh2va5mqdrlp90ez6lc2hgagxqju6fc7md4kldlz8lap9w4usduzc2q` (code_id **11588**) |
-| data_hash on-chain | ✅ = `checksums.txt` (verified by the script on store) |
-| StorageGasOracle owner | ✅ = oracle-governor (2-step ownership, txs `31B0DF7E…`/`EDE72113…`) |
-| Bounds (dom 1 · 56 · 1399811149) | ✅ derived from the production oracle at deploy time (÷3·×3) |
-| IGP.beneficiary | ✅ = vault (tx `4895068D…`; confirmed by query `{"igp":{"beneficiary":{}}}`) |
-| Pool | ✅ 5,000 LUNC · fee 50 LUNC · **claims_payable = 100** · window 200k blocks |
-| `layout_check` (real msg `d039daa1…`) | ✅ `ok:true` — proof by raw query operating in production |
-| Operators / quorum | 1 (deployer) / 1 — expand via `docs/OPERATORS.md` |
-| Owner (governor + vault) | deployer — handoff to governance: §8 of `docs/PROPOSAL-PARAMETERS.md` |
-
-**Complete audit record** (all 11 tx hashes and sha256 in full + verification commands): `docs/archive/AUDIT-TC.md`.
+Executed one-time migrations/upgrades and superseded material — reference only,
+never re-run: [`deploy/archive/`](deploy/archive/) (vault v2/i18n/gas-recibo/receipt
+migrations, Solana pod upgrades, devnet cleanup) and [`docs/archive/`](docs/archive/)
+(incl. the [phase log](docs/archive/PHASE-LOG.md) and the discontinued
+[IGORFAKE warp map](docs/archive/WARP-IGORFAKE.md) — the live routes are
+[LUNC](https://github.com/terra-classic-hyperlane/cw-hyperlane/blob/main/terraclassic/doc/install/WARP-LUNC.md) and
+[USTC](https://github.com/terra-classic-hyperlane/cw-hyperlane/blob/main/terraclassic/doc/install/WARP-USTC.md)).

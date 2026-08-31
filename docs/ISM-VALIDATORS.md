@@ -43,7 +43,7 @@ from this step were orphaned hours later, replaced by the mutable ones above.
 
 > These ISMs verify the messages **coming from Terra Classic (domain 132556)**
 > on the synthetics. The ISMs on the TC side (entry of msgs from the remotes) use the
-> official Hyperlane validators and were NOT changed — see `WARP-IGORFAKE.md`.
+> official Hyperlane validators and were NOT changed — see archive/WARP-IGORFAKE.md (route discontinued 2026-08-29).
 
 ## Validator set (sign TC checkpoints)
 

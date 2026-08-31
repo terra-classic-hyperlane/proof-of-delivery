@@ -87,7 +87,7 @@ or in tests, and tests are not compiled into deployed artifacts).
 - EVM (`forge test`): 48 passed, 0 failed.
 
 ## 4. Terra Classic vault migration transactions ✅ EXECUTED (2026-08-28)
-> Executed via `deploy/tc-migrate-vault-i18n.sh` (admin `terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp`,
+> Executed via `deploy/archive/tc-migrate-vault-i18n.sh` (admin `terra1run9wz09uhh6pu7ggcwwetrgye4wu7wn26mawp`,
 > chain `columbus-5`). Reversible to code_id 11596. Built reproducibly with `cosmwasm/optimizer:0.17.0`.
 
 | Step | tx hash | result |

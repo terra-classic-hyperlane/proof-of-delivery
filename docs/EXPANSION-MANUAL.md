@@ -119,7 +119,7 @@ the scope of this system). Then, 6 steps:
 
 1. **This system's vault on the new network** (same contract, both roles):
    - EVM: `deploy/evm-vault-receipt.sh <chain>` (deploy + beneficiary + config);
-   - CosmWasm: pattern of `deploy/tc-migrate-vault-receipt.sh`;
+   - CosmWasm: pattern of `deploy/archive/tc-migrate-vault-receipt.sh`;
    - SVM: same `pod` program (no new deploy — just config).
    In all: `IGP.beneficiary → vault`.
 2. **Cross router** — each pair of vaults registers the other as a trusted

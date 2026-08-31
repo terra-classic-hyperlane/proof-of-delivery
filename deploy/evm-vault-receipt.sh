@@ -101,5 +101,5 @@ echo "reward[TC]:   $(cast call --rpc-url "$RPC" "$V" 'remoteReward(uint32)(uint
 echo "op0/local:    $(cast call --rpc-url "$RPC" "$V" 'operatorOfLocal(address)(bool,uint32)' $OPERATOR_LOCAL)"
 echo "ism:          $(cast call --rpc-url "$RPC" "$V" 'interchainSecurityModule()(address)')"
 say "RECEIPT VAULT ($CHAIN) LIVE: $V"
-echo "➡️  now run:  BSC_VAULT=$V bash deploy/tc-migrate-vault-receipt.sh"
+echo "➡️  now run:  BSC_VAULT=$V bash deploy/archive/tc-migrate-vault-receipt.sh   # (one-time migration, already applied on mainnet)"
 echo "   (registers this vault as router on TC + seeds the pools to pay)"

@@ -127,7 +127,7 @@ round — log: `✓ attested dom <n> → <tx>`. No manual action.
 Reproducible build `cosmwasm/optimizer:0.17.0` → `relayer_reward_vault.wasm`
 sha256 `e24a5e66ab4a503c6acf369710b717310362d2ae5fa7b9800542c8272b2fc801`.
 Migration **at the same address** EXECUTED on 08/19/2026 (code_id **11589**,
-store `A9866AEE…`, migrate `C4075BA8…`) via `deploy/tc-migrate-vault-v2.sh`
+store `A9866AEE…`, migrate `C4075BA8…`) via `deploy/archive/tc-migrate-vault-v2.sh`
 (LOCAL — project rule: no wasm/deploy on the VPS). First payments:
 99 LUNC for the day's 3 deliveries (txs in `archive/AUDIT-TC.md`).
 30 green tests (5 new in v2: quorum 1 pays, anti-double, quorum 2 waits for
@@ -138,7 +138,7 @@ agreement, rejections, totals). Execution record: `archive/AUDIT-TC.md`.
 The EVM vaults gained the SAME module (`attestRemoteDelivery` etc., 38 foundry
 tests). Since the EVM contracts are not migratable and the pools were empty,
 v2 is a **new deploy** + `igp.setBeneficiary(v2)` — LOCAL script
-`deploy/evm-vault-v2.sh bsc|ethereum`, which also configures: attestor = owner,
+`deploy/archive/evm-vault-v2.sh bsc|ethereum`, which also configures: attestor = owner,
 quorum 1, binding `(owner, 132556) → terra1run9wz…` and **reward = the real IGP
 quote** (`quoteGasPayment(132556, destinationGas)`) — exactly the fee the user
 pays at origin.

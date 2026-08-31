@@ -68,7 +68,7 @@ PRIVATE_KEY=0x<bsc_key> bash deploy/evm-vault-receipt.sh bsc
 #    → prints BSC_VAULT=0x…  (new address)
 
 # 2) migrate the TC vault (same address, pool preserved) + config the TC side
-BSC_VAULT=0x<from_step_1> bash deploy/tc-migrate-vault-receipt.sh
+BSC_VAULT=0x<from_step_1> bash deploy/archive/tc-migrate-vault-receipt.sh
 #    → asks for the keyring password (hyperlane-deploy key)
 
 # 3) seed the BSC pool (the TC one already has 5,000 LUNC); any value:
@@ -274,7 +274,7 @@ does not pass account 0). Consequences:
 solana program deploy svm/target/deploy/pod.so --program-id <pod_keypair>   # or upgrade
 
 # 2) migrate the TC vault (SENT_RECEIPT idempotency) — preserves pool/registry
-bash deploy/tc-remigrate.sh                       # wasm sha256 cb753ed7…563f19bd
+bash deploy/archive/tc-remigrate.sh                       # wasm sha256 cb753ed7…563f19bd
 
 # 3) config the corridor (both sides)
 node deploy/rrv-receipt-config-solana.mjs         # pod: router(TC)+operator_sol(+reward)

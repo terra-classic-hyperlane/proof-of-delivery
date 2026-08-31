@@ -46,7 +46,7 @@ pays only the real delivery gas. The warp does not expose metadata → the user 
 paying $0.08, with no hole in the fee. The claim-agent quotes the IGP dynamically
 (`quote_gas_payment` of the `gas_limit`, +2% margin; env `RECEIPT_GAS_56` /
 `RECEIPT_GAS_SOL`) — no fixed values. Migration:
-`deploy/tc-migrate-vault-gas-recibo.sh`.
+`deploy/archive/tc-migrate-vault-gas-recibo.sh`.
 
 ### Receipt map per corridor (post-migrate)
 
@@ -166,5 +166,5 @@ rent. Done in production:
   Config correctly.
 - Cost of the TC→Solana report: from US$1.29/epoch (permanent rent) → ~US$0 (refundable).
 
-Scripts: `deploy/solana-upgrade-pod.sh` (+`solana-resume-upgrade.sh` for unstable RPC) ·
-`deploy/rrv-migrate-applied-base.mjs`.
+Scripts: `deploy/archive/solana-upgrade-pod.sh` (+`archive/solana-resume-upgrade.sh` for unstable RPC) ·
+`deploy/archive/rrv-migrate-applied-base.mjs`.

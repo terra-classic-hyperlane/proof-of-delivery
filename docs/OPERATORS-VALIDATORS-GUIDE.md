@@ -395,5 +395,5 @@ solana balance <CONFIG_PDA> -u https://api.mainnet-beta.solana.com   # pool bala
 ---
 
 *Living document. On-chain proofs and implementation details: `TRUSTLESS-RECEIPT.md`.
-IGORFAKE warp addresses per chain: `WARP-IGORFAKE.md`. Audit per chain:
+IGORFAKE warp addresses per chain (route discontinued 2026-08-29): archive/WARP-IGORFAKE.md. Audit per chain:
 `AUDIT-{TC,BSC,ETH,SOLANA}.md`.*
