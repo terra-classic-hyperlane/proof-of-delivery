@@ -192,7 +192,7 @@ normally you only touch the `*Env` names and RPCs. Field meaning:
 
 | Field | Meaning |
 |---|---|
-| `intervalSeconds` | seconds between rounds (production: `14400` = 4 h) |
+| `intervalSeconds` | seconds between rounds (production: `86400` = 24 h; low volume doesn't cover the gas cost of more frequent rounds) |
 | `coingecko.ids` | CoinGecko id per coin name used in `localCoin`/`remotes.*.coin` |
 
 **Per chain — `chains.<name>` (common fields)**

@@ -1,6 +1,6 @@
 {
   "$comment": "Copy to config.json. Each entry in `chains` is ONE local chain where the agent updates the oracle (via the governor); `remotes` are the remote domains whose price is quoted IN the local currency. WARNING: each deployment has its own convention — TC uses rate=LUNC/NATIVE×1e12 (inverse!), EVM/SOL remotes are calibrated per target (WARP-GAS-CONFIG.md). The RANGES in the governors protect against submitting in the wrong convention; TODO: per-chain formulas in the agent.",
-  "intervalSeconds": 14400,
+  "intervalSeconds": 86400,
   "coingecko": {
     "baseUrl": "https://api.coingecko.com/api/v3",
     "ids": {

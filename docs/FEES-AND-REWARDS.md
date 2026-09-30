@@ -3,7 +3,7 @@
 Model: **whoever sends pays the fee at the origin IGP (~US$ 0.08) and the operator's
 reward mirrors the corridor fee** — with no fixed value of its own ("what the user
 paid goes to the operator; their profit is what's left after the gas they spend").
-The fee floats with real gas/exchange rates (the oracle-agent updates the oracles every 4h),
+The fee floats with real gas/exchange rates (the oracle-agent updates the oracles every 24h),
 so the value in $ drifts with the market; **to re-center at $0.08, run the script
 again** (idempotent).
 
